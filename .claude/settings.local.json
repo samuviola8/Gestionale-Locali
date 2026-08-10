@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /tmp/m -w \"HTTP %{http_code}\\\\n\" --retry 60 --retry-delay 1 --retry-connrefused --max-time 90 -H \"Host: bar-centrale.localhost:3000\" \"http://localhost:3000/t/7\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /tmp/l -w 'HTTP %{http_code}\\\\n' --retry 60 --retry-delay 1 --retry-connrefused --max-time 90 -H 'Host: bar-centrale.localhost:3000' http://localhost:3000/login)",
+      "Bash(curl -s --retry 60 --retry-delay 1 --retry-connrefused --max-time 90 -H 'Host: bar-centrale.localhost:3000' -H 'Cookie: comanda_session=devtesttoken123' http://localhost:3000/api/orders)",
+      "Bash(curl -s -o /tmp/o -w 'HTTP %{http_code}\\\\n' --max-time 60 -H 'Host: bar-centrale.localhost:3000' -H 'Cookie: comanda_session=devtesttoken123' http://localhost:3000/dashboard/orders)",
+      "Bash(netstat -ano)",
+      "PowerShell(Stop-Process -Id 47576 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(\"kill inviato a 47576\")",
+      "Bash(rm -rf \"app/s\")",
+      "Bash(rm -f \"middleware.ts\")",
+      "Bash(ls middleware.ts)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

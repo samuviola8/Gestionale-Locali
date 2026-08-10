@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "menu_skin" text DEFAULT 'base' NOT NULL;

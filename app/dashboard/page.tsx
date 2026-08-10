@@ -1,0 +1,112 @@
+import { redirect } from "next/navigation";
+import { and, eq, gte, inArray, isNull } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { orders, orderItems } from "@/lib/db/schema";
+import { getSessionUser } from "@/lib/auth";
+import { formatPrice } from "@/lib/menu";
+import { IconOrders, IconBill, IconMenu, IconQr } from "@/components/icons";
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+      <div className="text-sm text-neutral-500">{label}</div>
+      <div className="mt-1 text-2xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+export default async function DashboardHome() {
+  const session = await getSessionUser();
+  if (!session) redirect("/login");
+
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+
+  const todays = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.tenantId, session.tenantId), gte(orders.createdAt, start)));
+  const ordersToday = todays.length;
+
+  const todayIds = todays.map((o) => o.id);
+  const todayItems = todayIds.length
+    ? await db.select().from(orderItems).where(inArray(orderItems.orderId, todayIds))
+    : [];
+  const incassoToday = todayItems
+    .filter((i) => i.paid)
+    .reduce((s, i) => s + i.priceCents * i.quantity, 0);
+
+  const open = await db
+    .select({ tableNumber: orders.tableNumber, status: orders.status })
+    .from(orders)
+    .where(and(eq(orders.tenantId, session.tenantId), isNull(orders.closedAt)));
+  const tavoliAperti = new Set(open.map((o) => o.tableNumber)).size;
+  const inCoda = open.filter(
+    (o) => o.status === "new" || o.status === "preparing"
+  ).length;
+
+  const today = new Intl.DateTimeFormat("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(start);
+
+  const links = [
+    {
+      href: "/dashboard/orders",
+      label: "Coda ordini",
+      desc: "Ordini in arrivo",
+      Icon: IconOrders,
+    },
+    {
+      href: "/dashboard/bill",
+      label: "Conti aperti",
+      desc: "Incassa e chiudi",
+      Icon: IconBill,
+    },
+    { href: "/dashboard/menu", label: "Menu", desc: "Prodotti e foto", Icon: IconMenu },
+    {
+      href: "/dashboard/tables",
+      label: "Tavoli e QR",
+      desc: "Genera i codici",
+      Icon: IconQr,
+    },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold">{session.tenantName}</h1>
+        <p className="mt-0.5 text-sm capitalize text-neutral-500">{today}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Ordini oggi" value={ordersToday} />
+        <Stat label="Incasso oggi" value={formatPrice(incassoToday)} />
+        <Stat label="Tavoli aperti" value={tavoliAperti} />
+        <Stat label="In coda" value={inCoda} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-neutral-500">Gestione</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {links.map(({ href, label, desc, Icon }) => (
+            <a
+              key={href}
+              href={href}
+              className="rounded-xl border border-neutral-200 bg-white p-4 transition hover:border-neutral-300 hover:shadow-sm"
+            >
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand-50)] text-[var(--brand-text)]"
+              >
+                <Icon size={18} />
+              </div>
+              <div className="mt-3 font-medium">{label}</div>
+              <div className="text-sm text-neutral-500">{desc}</div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

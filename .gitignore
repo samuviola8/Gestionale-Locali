@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+build/
+.env*.local
+.DS_Store
+npm-debug.log*
+next-env.d.ts
+/public/uploads/
+/CREDENZIALI.local.md

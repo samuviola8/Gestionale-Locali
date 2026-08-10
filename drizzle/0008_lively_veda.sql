@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "suspended" boolean DEFAULT false NOT NULL;
