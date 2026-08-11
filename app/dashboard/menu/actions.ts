@@ -8,6 +8,7 @@ import {
   menuCategories,
   menuProducts,
   menuProductVariants,
+  tenants,
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { saveImage } from "@/lib/uploads";
@@ -28,6 +29,22 @@ function splitList(v: FormDataEntryValue | null): string[] {
 function euroToCents(v: string): number {
   const n = parseFloat(v.replace(",", ".").replace(/[^0-9.]/g, ""));
   return Number.isNaN(n) ? 0 : Math.round(n * 100);
+}
+
+// Il coperto e' una scelta di listino: lo decide il locale, senza passare dal
+// gestore del servizio.
+export async function setCoverCharge(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const raw = String(formData.get("coverCharge") ?? "").trim();
+  // Campo vuoto = il locale non applica il coperto.
+  const cents = raw ? euroToCents(raw) : 0;
+  if (cents < 0 || cents > 10000) return;
+
+  await db
+    .update(tenants)
+    .set({ coverChargeCents: cents })
+    .where(eq(tenants.id, tenantId));
+  revalidatePath("/dashboard/menu");
 }
 
 export async function addCategory(formData: FormData): Promise<void> {

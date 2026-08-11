@@ -431,6 +431,13 @@ export default function NewLocaleForm({
             </p>
           </div>
           <div>
+            <label className={label}>Coperto a persona</label>
+            <input name="coverCharge" placeholder="2,00" className={field} />
+            <p className="mt-1 text-xs text-neutral-500">
+              In euro. Lascia vuoto se il locale non lo applica.
+            </p>
+          </div>
+          <div>
             <label className={label}>Durata sessione al tavolo (minuti)</label>
             <input
               name="tableSessionMinutes"

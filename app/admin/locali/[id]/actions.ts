@@ -51,6 +51,34 @@ export async function saveModules(formData: FormData): Promise<void> {
   revalidatePath(`/admin/locali/${id}`);
 }
 
+// 2,00 / "2.5" / "2" -> centesimi. Vuoto o non numerico = nessun coperto.
+function euroToCents(v: string): number {
+  const n = parseFloat(v.replace(",", ".").replace(/[^0-9.]/g, ""));
+  return Number.isNaN(n) || n < 0 ? 0 : Math.round(n * 100);
+}
+
+export async function saveService(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const minutes = parseInt(String(formData.get("tableSessionMinutes") ?? ""), 10);
+
+  await db
+    .update(tenants)
+    .set({
+      coverChargeCents: euroToCents(String(formData.get("coverCharge") ?? "")),
+      tableSessionMinutes:
+        Number.isInteger(minutes) && minutes >= 15 && minutes <= 1440
+          ? minutes
+          : 120,
+    })
+    .where(eq(tenants.id, id));
+
+  revalidatePath(`/admin/locali/${id}`);
+}
+
 export async function saveBranding(formData: FormData): Promise<void> {
   const admin = await getAdminUser();
   if (!admin) return;
@@ -58,7 +86,6 @@ export async function saveBranding(formData: FormData): Promise<void> {
   if (!id) return;
 
   const defaultTheme = String(formData.get("defaultTheme") ?? "");
-  const minutes = parseInt(String(formData.get("tableSessionMinutes") ?? ""), 10);
   const logoUrl = await saveImage(formData.get("logo"));
 
   await db
@@ -69,10 +96,6 @@ export async function saveBranding(formData: FormData): Promise<void> {
       defaultTheme: isValidTheme(defaultTheme) ? defaultTheme : "system",
       brandColor: safeColor(String(formData.get("brandColor") ?? "")),
       brandAccent: safeColor(String(formData.get("brandAccent") ?? "")),
-      tableSessionMinutes:
-        Number.isInteger(minutes) && minutes >= 15 && minutes <= 1440
-          ? minutes
-          : 120,
       // Nessun file caricato: si tiene il logo attuale.
       ...(logoUrl ? { logoUrl } : {}),
     })

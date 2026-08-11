@@ -73,7 +73,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "loyalty",
-    label: "Programma fedelta",
+    label: "Programma fedeltà",
     description:
       "Sconti e consumazioni omaggio per i clienti ricorrenti. Add-on ad abbonamento mensile.",
     defaultEnabled: false,

@@ -47,7 +47,11 @@ export const tenants = pgTable("tenants", {
   // Durata della sessione tavolo aperta scansionando il QR.
   tableSessionMinutes: integer("table_session_minutes").notNull().default(120),
 
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Coperto: prezzo fisso a persona, addebitato a ciascun commensale.
+  // 0 = il locale non lo applica.
+  coverChargeCents: integer("cover_charge_cents").notNull().default(0),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Moduli attivi per locale. Il catalogo dei moduli vive in lib/modules.ts:
@@ -63,7 +67,7 @@ export const tenantModules = pgTable(
     moduleKey: text("module_key").notNull(),
     enabled: boolean("enabled").notNull().default(false),
     config: jsonb("config"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.moduleKey)]
 );
@@ -77,7 +81,7 @@ export const restaurantTables = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     number: integer("number").notNull(),
     token: text("token").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.number)]
 );
@@ -89,7 +93,7 @@ export const menuCategories = pgTable("menu_categories", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const menuProducts = pgTable("menu_products", {
@@ -114,7 +118,7 @@ export const menuProducts = pgTable("menu_products", {
   priceCents: integer("price_cents").notNull(),
   available: boolean("available").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Formati alternativi dello stesso prodotto: "Porzione"/"Shot" per i
@@ -134,7 +138,7 @@ export const menuProductVariants = pgTable(
     priceCents: integer("price_cents").notNull(),
     available: boolean("available").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.productId, table.name)]
 );
@@ -149,7 +153,7 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     role: text("role").notNull().default("staff"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.email)]
 );
@@ -160,8 +164,8 @@ export const sessions = pgTable("sessions", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const orders = pgTable("orders", {
@@ -171,8 +175,12 @@ export const orders = pgTable("orders", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   tableNumber: integer("table_number").notNull(),
   status: text("status").notNull().default("new"),
-  closedAt: timestamp("closed_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Quante persone sono sedute al tavolo. Serve per dividere le voci
+  // condivise e per contare i coperti; lo dichiara il cliente alla prima
+  // consumazione condivisa, lo staff puo' correggerlo dal conto.
+  partySize: integer("party_size"),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const orderItems = pgTable("order_items", {
@@ -193,15 +201,38 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull().default(1),
   alias: text("alias"),
   paid: boolean("paid").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Quota condivisa e coperto non sono righe d'ordine: si calcolano sul conto.
+// Qui si registra chi li ha gia' saldati, altrimenti incassare una persona
+// lascerebbe la sua parte di condiviso senza traccia. Le righe spariscono
+// alla chiusura del tavolo.
+export const billSettlements = pgTable(
+  "bill_settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    tableNumber: integer("table_number").notNull(),
+    alias: text("alias").notNull(),
+    // Quanto ha effettivamente pagato. Congelarlo evita che, cambiando dopo
+    // il numero di persone, cambi anche quello che uno ha gia' versato.
+    amountCents: integer("amount_cents").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [unique().on(table.tenantId, table.tableNumber, table.alias)]
+);
 
 // Gestore del servizio (super-admin), separato dagli utenti dei locali.
 export const platformAdmins = pgTable("platform_admins", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const adminSessions = pgTable("admin_sessions", {
@@ -210,8 +241,8 @@ export const adminSessions = pgTable("admin_sessions", {
     .notNull()
     .references(() => platformAdmins.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Sessione aperta scansionando il QR del tavolo. Ha una scadenza: quando
@@ -229,10 +260,10 @@ export const tableSessions = pgTable(
       .references(() => restaurantTables.id, { onDelete: "cascade" }),
     tableNumber: integer("table_number").notNull(),
     token: text("token").notNull().unique(),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     // Valorizzato quando lo staff chiude il conto: invalida i telefoni al tavolo.
-    revokedAt: timestamp("revoked_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index("table_sessions_tenant_table_idx").on(table.tenantId, table.tableNumber)]
 );
@@ -244,6 +275,6 @@ export const waiterCalls = pgTable("waiter_calls", {
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" }),
   tableNumber: integer("table_number").notNull(),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

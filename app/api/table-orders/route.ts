@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { requireTableSession } from "@/lib/table-session";
+import { loadOpenTables } from "@/lib/bill-query";
 
 // Usato dalla pagina cliente per lo stato del proprio tavolo: richiede la
 // sessione aperta col QR, altrimenti si leggerebbero gli ordini altrui.
@@ -48,5 +49,9 @@ export async function GET(req: Request) {
       .map((i) => ({ name: i.name, quantity: i.quantity, alias: i.alias })),
   }));
 
-  return NextResponse.json({ orders: result });
+  // Stesso calcolo che vede il cassiere, non un conteggio parallelo: se lo
+  // staff corregge le persone al tavolo, qui cambia di conseguenza.
+  const conto = (await loadOpenTables(tenant.id, table))[0] ?? null;
+
+  return NextResponse.json({ orders: result, conto });
 }

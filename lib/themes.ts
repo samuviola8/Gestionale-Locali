@@ -82,7 +82,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     key: "minimal",
     label: "Minimal monocromatico (nero/bianco)",
     description:
-      "Identita' senza colore: nero puro, bianco puro, titoli spaziati. Per locali con branding essenziale.",
+      "Identità senza colore: nero puro, bianco puro, titoli spaziati. Per locali con branding essenziale.",
     fontHeading: GEOMETRIC,
     fontBody: GEOMETRIC,
     headingTracking: "0.14em",

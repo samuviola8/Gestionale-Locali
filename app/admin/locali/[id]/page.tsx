@@ -21,15 +21,16 @@ import {
   deleteLocale,
   saveModules,
   saveBranding,
+  saveService,
 } from "./actions";
 
-const input = "rounded-lg border border-neutral-200 px-3 py-2 text-sm";
+const input = "input";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-      <div className="text-sm text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
+    <div className="stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
     </div>
   );
 }
@@ -112,12 +113,7 @@ export default async function LocaleDetail({
           <div className="mt-2 flex items-center gap-3">
             <h1 className="text-2xl font-semibold">{t.name}</h1>
             {t.suspended && (
-              <span
-                className="rounded-full px-2.5 py-0.5 text-xs"
-                style={{ background: "#FAEEDA", color: "#854F0B" }}
-              >
-                Sospeso
-              </span>
+              <span className="badge badge-warn">Sospeso</span>
             )}
           </div>
           <a
@@ -140,8 +136,8 @@ export default async function LocaleDetail({
         </div>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Anagrafica</h2>
-          <dl className="grid gap-x-6 gap-y-2 rounded-xl border border-neutral-200 p-4 text-sm sm:grid-cols-2">
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Anagrafica</h2>
+          <dl className="card grid gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
             {[
               ["Ragione sociale", t.legalName],
               ["Telefono", t.phone],
@@ -164,8 +160,8 @@ export default async function LocaleDetail({
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Account</h2>
-          <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Account</h2>
+          <ul className="card divide-y">
             {staff.length === 0 && (
               <li className="px-4 py-3 text-sm text-neutral-400">Nessun account.</li>
             )}
@@ -181,10 +177,10 @@ export default async function LocaleDetail({
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Moduli</h2>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Moduli</h2>
           <form
             action={saveModules}
-            className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4"
+            className="card space-y-2 p-4"
           >
             <input type="hidden" name="id" value={t.id} />
             {MODULES.map((m) => (
@@ -227,10 +223,55 @@ export default async function LocaleDetail({
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Aspetto</h2>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Servizio
+          </h2>
+          <form action={saveService} className="card grid gap-3 p-4 sm:grid-cols-2">
+            <input type="hidden" name="id" value={t.id} />
+            <div>
+              <div className="mb-1 text-xs" style={{ color: "var(--muted)" }}>
+                Coperto a persona
+              </div>
+              <input
+                name="coverCharge"
+                defaultValue={
+                  t.coverChargeCents ? (t.coverChargeCents / 100).toFixed(2).replace(".", ",") : ""
+                }
+                placeholder="2,00"
+                className={input + " w-full"}
+              />
+              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                In euro. Lascia vuoto se il locale non lo applica. Viene
+                addebitato a ogni persona seduta al tavolo.
+              </p>
+            </div>
+            <div>
+              <div className="mb-1 text-xs" style={{ color: "var(--muted)" }}>
+                Durata sessione tavolo (minuti)
+              </div>
+              <input
+                name="tableSessionMinutes"
+                type="number"
+                min="15"
+                max="1440"
+                defaultValue={t.tableSessionMinutes}
+                className={input + " w-full"}
+              />
+              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                Scaduta, il cliente deve riscansionare il QR.
+              </p>
+            </div>
+            <button className="btn btn-sm sm:col-span-2 sm:justify-self-start">
+              Salva servizio
+            </button>
+          </form>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Aspetto</h2>
           <form
             action={saveBranding}
-            className="grid gap-3 rounded-xl border border-neutral-200 bg-white p-4 sm:grid-cols-2"
+            className="card grid gap-3 p-4 sm:grid-cols-2"
           >
             <input type="hidden" name="id" value={t.id} />
             <div>
@@ -296,26 +337,13 @@ export default async function LocaleDetail({
             </div>
             <div>
               <div className="mb-1 text-xs text-neutral-500">
-                Logo {t.logoUrl && "(ne e' gia' presente uno)"}
+                Logo {t.logoUrl && "(ne è già presente uno)"}
               </div>
               <input
                 name="logo"
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 className="w-full text-xs"
-              />
-            </div>
-            <div>
-              <div className="mb-1 text-xs text-neutral-500">
-                Durata sessione tavolo (minuti)
-              </div>
-              <input
-                name="tableSessionMinutes"
-                type="number"
-                min="15"
-                max="1440"
-                defaultValue={t.tableSessionMinutes}
-                className={input + " w-full"}
               />
             </div>
             <button className="rounded-lg border border-neutral-200 px-3 py-2 text-sm hover:bg-neutral-50 sm:col-span-2 sm:justify-self-start">
@@ -325,18 +353,18 @@ export default async function LocaleDetail({
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Gestione</h2>
-          <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Gestione</h2>
+          <div className="card space-y-3 p-4">
             <form action={renameLocale} className="flex gap-2">
               <input type="hidden" name="id" value={t.id} />
               <input name="name" defaultValue={t.name} className={input + " flex-1"} />
-              <button className="rounded-lg border border-neutral-200 px-3 py-2 text-sm hover:bg-neutral-50">
+              <button className="btn btn-sm">
                 Salva nome
               </button>
             </form>
             <form action={toggleSuspend}>
               <input type="hidden" name="id" value={t.id} />
-              <button className="rounded-lg border border-neutral-200 px-3 py-2 text-sm hover:bg-neutral-50">
+              <button className="btn btn-sm">
                 {t.suspended ? "Riattiva locale" : "Sospendi locale"}
               </button>
             </form>
@@ -345,7 +373,7 @@ export default async function LocaleDetail({
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-red-600">Zona pericolosa</h2>
-          <div className="rounded-xl border border-neutral-200 p-4">
+          <div className="card p-4">
             <p className="text-sm text-neutral-500">
               Elimina definitivamente questo locale e tutti i suoi dati.
             </p>

@@ -33,6 +33,7 @@ export type NewLocaleInput = {
   logoUrl?: string;
   defaultTheme?: string;
   tableSessionMinutes?: number;
+  coverChargeCents?: number;
   tableCount?: number;
   modules?: Partial<Record<ModuleKey, boolean>>;
   ownerEmail: string;
@@ -130,6 +131,10 @@ export async function createLocaleWithSetup(
         Number.isInteger(minutes) && minutes! >= 15 && minutes! <= 1440
           ? minutes!
           : 120,
+      coverChargeCents:
+        Number.isInteger(input.coverChargeCents) && input.coverChargeCents! >= 0
+          ? input.coverChargeCents!
+          : 0,
     })
     .onConflictDoNothing()
     .returning({ id: tenants.id });

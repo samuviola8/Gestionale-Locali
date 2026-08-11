@@ -9,9 +9,9 @@ import { adminLogout } from "./actions";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-      <div className="text-sm text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
+    <div className="stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export default async function AdminPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-      <header className="border-b border-neutral-200">
+      <header style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2.5">
             <div
@@ -93,83 +93,89 @@ export default async function AdminPage() {
         </div>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-500">Locali</h2>
-          <div className="overflow-hidden rounded-xl border border-neutral-200">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="px-4 py-2.5 font-medium">Locale</th>
-                  <th className="px-4 py-2.5 font-medium">Indirizzo</th>
-                  <th className="px-4 py-2.5 font-medium">Ordini oggi</th>
-                  <th className="px-4 py-2.5 font-medium">Incasso oggi</th>
-                  <th className="px-4 py-2.5 font-medium">Utenti</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allTenants.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-3 text-neutral-500" colSpan={5}>
-                      Nessun locale. Creane uno qui sotto.
-                    </td>
-                  </tr>
-                )}
-                {allTenants.map((t) => (
-                  <tr key={t.id} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-4 py-3 font-medium">
-                      <a
-                        href={`/admin/locali/${t.id}`}
-                        className="hover:underline"
-                      >
-                        {t.name}
-                      </a>
-                      {t.suspended && (
-                        <span
-                          className="ml-2 rounded-full px-2 py-0.5 text-xs"
-                          style={{ background: "#FAEEDA", color: "#854F0B" }}
-                        >
-                          Sospeso
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={`${proto}://${t.slug}.${root}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[var(--brand-text)]"
-                      >
-                        {t.slug}.{root}
-                      </a>
-                    </td>
-                    <td className="px-4 py-3">{ordersByTenant.get(t.id) ?? 0}</td>
-                    <td className="px-4 py-3">
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Locali
+          </h2>
+          <div className="card overflow-hidden">
+            {allTenants.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm" style={{ color: "var(--muted)" }}>
+                Nessun locale. Creane uno qui sotto.
+              </p>
+            )}
+
+            {allTenants.map((t, i) => (
+              <div
+                key={t.id}
+                className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3"
+                style={
+                  i > 0 ? { borderTop: "1px solid var(--border)" } : undefined
+                }
+              >
+                <div className="min-w-[180px] flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={`/admin/locali/${t.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {t.name}
+                    </a>
+                    {t.suspended && <span className="badge badge-warn">Sospeso</span>}
+                  </div>
+                  <a
+                    href={`${proto}://${t.slug}.${root}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs hover:underline"
+                    style={{ color: "var(--brand-text)" }}
+                  >
+                    {t.slug}.{root}
+                  </a>
+                </div>
+
+                <div className="flex gap-6 text-sm">
+                  <div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>
+                      Ordini oggi
+                    </div>
+                    <div className="tnum font-medium">
+                      {ordersByTenant.get(t.id) ?? 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>
+                      Incasso oggi
+                    </div>
+                    <div className="tnum font-medium">
                       {formatPrice(incassoByTenant.get(t.id) ?? 0)}
-                    </td>
-                    <td className="px-4 py-3">{usersByTenant.get(t.id) ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>
+                      Utenti
+                    </div>
+                    <div className="tnum font-medium">
+                      {usersByTenant.get(t.id) ?? 0}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
         <section>
           <a
             href="/admin/locali/nuovo"
-            className="flex items-center justify-between rounded-xl border border-dashed border-neutral-300 px-5 py-4 transition hover:border-[var(--brand)]"
+            className="flex items-center justify-between gap-4 rounded-xl px-5 py-4 transition hover:border-[var(--brand)]"
+            style={{ border: "1px dashed var(--border)" }}
           >
             <span>
               <span className="block text-sm font-medium">Aggiungi un locale</span>
-              <span className="mt-0.5 block text-xs text-neutral-500">
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
                 Anagrafica, tema, moduli, tavoli e QR in un unico passaggio.
               </span>
             </span>
-            <span
-              className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--brand-on)]"
-              style={{ background: "var(--brand)" }}
-            >
-              Inizia
-            </span>
+            <span className="btn btn-primary btn-sm">Inizia</span>
           </a>
         </section>
       </main>

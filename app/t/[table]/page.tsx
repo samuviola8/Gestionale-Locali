@@ -47,7 +47,7 @@ export default async function TablePage({
       <Avviso
         nome={t.name}
         titolo="Ordinazioni non disponibili"
-        testo="Il servizio e' momentaneamente sospeso."
+        testo="Il servizio è momentaneamente sospeso."
       />
     );
   }
@@ -100,7 +100,7 @@ export default async function TablePage({
         submitOrder={createOrder}
         callWaiter={callWaiter}
       />
-      <TableStatus tableNumber={tableNumber} />
+      <TableStatus tableNumber={tableNumber} splitBill={modules.split_bill} />
     </main>
   );
 }

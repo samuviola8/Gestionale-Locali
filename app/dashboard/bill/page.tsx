@@ -1,22 +1,27 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { requireModule } from "@/lib/module-guard";
 import BillBoard from "@/components/BillBoard";
-import { markAliasPaid, closeTable } from "./actions";
+import { markAliasPaid, closeTable, setPartySize } from "./actions";
 
 export default async function BillPage() {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await requireModule("split_bill");
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-medium">Conti aperti</h1>
-        <span className="inline-flex items-center gap-1.5 text-sm text-neutral-500">
-          <span className="inline-block h-2 w-2 rounded-full bg-[var(--brand)]" />
-          in tempo reale
-        </span>
+      <div>
+        <h1 className="text-2xl font-semibold">Conti aperti</h1>
+        <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
+          Incassa per singola persona, poi chiudi il tavolo.
+        </p>
       </div>
-      <BillBoard markAliasPaid={markAliasPaid} closeTable={closeTable} />
+      <BillBoard
+        markAliasPaid={markAliasPaid}
+        closeTable={closeTable}
+        setPartySize={setPartySize}
+      />
     </div>
   );
 }

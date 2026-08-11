@@ -22,7 +22,8 @@ type IncomingItem = {
 
 export async function createOrder(
   tableNumber: number,
-  items: IncomingItem[]
+  items: IncomingItem[],
+  partySize?: number
 ): Promise<{ ok: boolean }> {
   const tenant = await getTenantFromHost();
   if (!tenant || tenant.suspended) return { ok: false };
@@ -107,9 +108,16 @@ export async function createOrder(
 
   if (!rows.length) return { ok: false };
 
+  // Il numero di persone arriva dal client ma non ci si fida: serve a dividere
+  // il conto, quindi un valore assurdo va scartato, non salvato.
+  const persone =
+    Number.isInteger(partySize) && partySize! >= 1 && partySize! <= 50
+      ? partySize!
+      : null;
+
   const inserted = await db
     .insert(orders)
-    .values({ tenantId: tenant.id, tableNumber, status: "new" })
+    .values({ tenantId: tenant.id, tableNumber, status: "new", partySize: persone })
     .returning({ id: orders.id });
   const orderId = inserted[0].id;
 

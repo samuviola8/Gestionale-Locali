@@ -58,7 +58,8 @@ export default function OrderClient({
       variantId?: string | null;
       alias: string;
       quantity: number;
-    }[]
+    }[],
+    partySize?: number
   ) => Promise<{ ok: boolean }>;
   callWaiter: (tableNumber: number) => Promise<{ ok: boolean }>;
 }) {
@@ -78,6 +79,15 @@ export default function OrderClient({
   const [waiterPending, setWaiterPending] = useState(false);
   // Prodotto per cui e' aperta la scelta del formato.
   const [variantFor, setVariantFor] = useState<Product | null>(null);
+  // Campo in linea per aggiungere una persona al conto.
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [newPerson, setNewPerson] = useState("");
+  // Quante persone sono sedute: si chiede alla prima consumazione condivisa,
+  // perche' e' li' che serve per dividerla. Prodotto in attesa nel frattempo.
+  const [partySize, setPartySize] = useState<number | null>(null);
+  const [askingParty, setAskingParty] = useState<
+    { p: Product; v?: Variant } | null
+  >(null);
   // Categoria sotto l'occhio dell'utente, per evidenziarla nella navigazione.
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   // Quando si salta a una categoria, lo scroll-spy tace finche' non si arriva.
@@ -94,23 +104,42 @@ export default function OrderClient({
     setNameStep(false);
   }
 
+  // Niente window.prompt: e' bloccato in diversi browser (e nel pannello di
+  // anteprima) e su un telefono al tavolo e' comunque un dialogo di sistema
+  // fuori posto. Il nome si scrive in linea, tra le persone gia' presenti.
   function addPerson() {
-    const name = window.prompt("Nome della persona (per dividere il conto)");
-    const n = (name ?? "").trim();
+    const n = newPerson.trim();
     if (n && !people.includes(n)) {
+      // "Condiviso" resta sempre l'ultima voce.
       setPeople([...people.slice(0, -1), n, "Condiviso"]);
       setActive(n);
     }
+    setNewPerson("");
+    setAddingPerson(false);
   }
 
   // Un prodotto con piu' formati apre prima la scelta del formato.
-  function add(p: Product, v?: Variant) {
+  // `personeGiaChieste` evita un ciclo: setPartySize non e' immediato, quindi
+  // rientrando qui subito dopo la scelta si rivedrebbe ancora null.
+  function add(p: Product, v?: Variant, personeGiaChieste = false) {
     const usable = p.variants.filter((x) => x.available);
     if (!v && usable.length) {
       setVariantFor(p);
       return;
     }
     setVariantFor(null);
+
+    // Prima consumazione condivisa: senza sapere in quanti siete non si puo'
+    // dividere. Si chiede una volta sola, poi il prodotto entra nel carrello.
+    if (
+      splitBill &&
+      active === "Condiviso" &&
+      partySize === null &&
+      !personeGiaChieste
+    ) {
+      setAskingParty({ p, v });
+      return;
+    }
     setCart((prev) => {
       const i = prev.findIndex(
         (c) =>
@@ -161,6 +190,38 @@ export default function OrderClient({
   const count = cart.reduce((s, c) => s + c.qty, 0);
   const total = cart.reduce((s, c) => s + c.priceCents * c.qty, 0);
 
+  // Carrello raggruppato per persona: senza, chi ordina non vede chi paga cosa
+  // finche' non arriva il conto. Ogni riga tiene l'indice originale, perche' e'
+  // quello che usano i pulsanti quantita' e lo spostamento tra persone.
+  const righeCarrello: {
+    c: CartItem;
+    idx: number;
+    intestazione: { alias: string; subtotale: number; primo: boolean } | null;
+  }[] = [];
+
+  if (splitBill) {
+    // Si segue l'ordine delle pillole, cosi' "Condiviso" resta in fondo.
+    const ordine = people.filter((p) => cart.some((c) => c.alias === p));
+    const altri = [...new Set(cart.map((c) => c.alias))].filter(
+      (a) => !ordine.includes(a)
+    );
+    [...ordine, ...altri].forEach((alias, i) => {
+      const voci = cart
+        .map((c, idx) => ({ c, idx }))
+        .filter(({ c }) => c.alias === alias);
+      const subtotale = voci.reduce((s, { c }) => s + c.priceCents * c.qty, 0);
+      voci.forEach(({ c, idx }, j) => {
+        righeCarrello.push({
+          c,
+          idx,
+          intestazione: j === 0 ? { alias, subtotale, primo: i === 0 } : null,
+        });
+      });
+    });
+  } else {
+    cart.forEach((c, idx) => righeCarrello.push({ c, idx, intestazione: null }));
+  }
+
   const q = query.trim().toLowerCase();
   const filtered = q
     ? menu
@@ -192,7 +253,8 @@ export default function OrderClient({
         variantId: c.variantId,
         alias: c.alias,
         quantity: c.qty,
-      }))
+      })),
+      partySize ?? undefined
     );
     setSending(false);
     if (res.ok) {
@@ -387,12 +449,39 @@ export default function OrderClient({
                 {p}
               </button>
             ))}
-            <button
-              onClick={addPerson}
-              className="min-h-11 rounded-full border border-dashed border-neutral-300 px-4 py-2.5 text-sm text-neutral-500"
-            >
-              + persona
-            </button>
+            {addingPerson ? (
+              <span className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={newPerson}
+                  onChange={(e) => setNewPerson(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addPerson();
+                    if (e.key === "Escape") {
+                      setNewPerson("");
+                      setAddingPerson(false);
+                    }
+                  }}
+                  placeholder="Nome"
+                  aria-label="Nome della persona da aggiungere al conto"
+                  maxLength={24}
+                  className="min-h-11 w-28 rounded-full border border-neutral-200 bg-white px-4 text-sm"
+                />
+                <button
+                  onClick={addPerson}
+                  className="min-h-11 rounded-full bg-[var(--brand)] px-4 text-sm font-medium text-[var(--brand-on)]"
+                >
+                  Aggiungi
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setAddingPerson(true)}
+                className="min-h-11 rounded-full border border-dashed border-neutral-300 px-4 py-2.5 text-sm text-neutral-500"
+              >
+                + persona
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -460,6 +549,43 @@ export default function OrderClient({
         ))}
       </div>
 
+      {askingParty && (
+        <div
+          className="fixed inset-0 z-40 flex items-end"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onClick={() => setAskingParty(null)}
+        >
+          <div
+            className="mx-auto w-full max-w-md rounded-t-3xl bg-white p-4 pb-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200" />
+            <div className="text-lg font-semibold">In quanti siete al tavolo?</div>
+            <p className="mt-1 text-sm text-neutral-500">
+              Serve per dividere le consumazioni condivise. Puoi cambiarlo
+              chiedendo al personale.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[2, 3, 4, 5, 6, 7, 8, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => {
+                    setPartySize(n);
+                    const richiesta = askingParty;
+                    setAskingParty(null);
+                    // Il prodotto che ha fatto scattare la domanda entra ora.
+                    if (richiesta) add(richiesta.p, richiesta.v, true);
+                  }}
+                  className="flex h-14 w-14 items-center justify-center rounded-2xl border bd text-lg font-semibold"
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {variantFor && (
         <div
           className="fixed inset-0 z-40 flex items-end"
@@ -520,12 +646,32 @@ export default function OrderClient({
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200" />
             <div className="mb-2 text-lg font-semibold">Il tuo ordine</div>
+            {splitBill && (
+              <p className="mb-3 text-sm text-neutral-500">
+                Ognuno paga la sua parte. Sposta una voce col menu a tendina.
+              </p>
+            )}
             <ul className="space-y-2">
-              {cart.map((c, idx) => (
+              {righeCarrello.map(({ intestazione, c, idx }) => (
                 <li
                   key={idx}
                   className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm"
                 >
+                  {intestazione && (
+                    <div
+                      className={
+                        "flex w-full items-baseline justify-between " +
+                        (intestazione.primo
+                          ? ""
+                          : "mt-2 border-t border-neutral-100 pt-2.5")
+                      }
+                    >
+                      <span className="font-semibold">{intestazione.alias}</span>
+                      <span className="tabular-nums font-medium">
+                        {fmt(intestazione.subtotale)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <div className="flex shrink-0 items-center rounded-lg border border-neutral-200">
                       <button

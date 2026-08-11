@@ -28,6 +28,10 @@ export async function submitNewLocale(
 
   const logoUrl = await saveImage(formData.get("logo"));
   const minutes = parseInt(text(formData, "tableSessionMinutes"), 10);
+  // Il coperto si scrive in euro ("2,00"), si conserva in centesimi.
+  const coperto = parseFloat(
+    text(formData, "coverCharge").replace(",", ".").replace(/[^0-9.]/g, "")
+  );
   const tableCount = parseInt(text(formData, "tableCount"), 10);
 
   const result = await createLocaleWithSetup({
@@ -50,6 +54,7 @@ export async function submitNewLocale(
     logoUrl: logoUrl ?? undefined,
     defaultTheme: text(formData, "defaultTheme"),
     tableSessionMinutes: Number.isInteger(minutes) ? minutes : undefined,
+    coverChargeCents: Number.isNaN(coperto) ? 0 : Math.round(coperto * 100),
     tableCount: Number.isInteger(tableCount) ? tableCount : 0,
     modules,
     ownerEmail: text(formData, "ownerEmail"),

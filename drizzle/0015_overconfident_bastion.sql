@@ -1,0 +1,1 @@
+ALTER TABLE "bill_settlements" ADD COLUMN "amount_cents" integer DEFAULT 0 NOT NULL;

@@ -4,9 +4,9 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import Select from "@/components/Select";
+import Field from "@/components/Field";
+import ConfirmSubmit from "@/components/ConfirmSubmit";
 import { addUser, deleteUser, resetPassword } from "./actions";
-
-const input = "rounded-lg border border-neutral-200 px-3 py-2 text-sm";
 
 export default async function StaffPage() {
   const session = await getSessionUser();
@@ -20,91 +20,115 @@ export default async function StaffPage() {
     .orderBy(asc(users.email));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Staff</h1>
-        <p className="mt-0.5 text-sm text-neutral-500">
+        <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
           Gli account che possono accedere alla gestione del locale.
         </p>
       </div>
 
       {isOwner ? (
-        <form
-          action={addUser}
-          className="grid gap-2 rounded-xl border border-neutral-200 bg-white p-4 sm:grid-cols-2"
-        >
-          <div className="font-medium sm:col-span-2">Aggiungi membro</div>
-          <input name="email" type="email" placeholder="Email" required className={input} />
-          <input
-            name="password"
-            type="password"
-            placeholder="Password (min 6 caratteri)"
-            required
-            minLength={6}
-            className={input}
-          />
-          <Select
-            name="role"
-            options={[
-              { value: "staff", label: "Staff" },
-              { value: "owner", label: "Titolare" },
-            ]}
-          />
-          <button className="rounded-lg bg-[var(--brand)] px-3 py-2 text-sm text-[var(--brand-on)]">
-            Aggiungi
-          </button>
-        </form>
+        <details className="disclosure">
+          <summary>Aggiungi un membro</summary>
+          <div className="disclosure-body">
+            <form action={addUser} className="grid gap-3 sm:grid-cols-2">
+              <Field label="Email *">
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="nome@locale.it"
+                  className="input"
+                />
+              </Field>
+              <Field label="Password *" hint="Almeno 6 caratteri">
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  minLength={6}
+                  className="input"
+                />
+              </Field>
+              <Field
+                label="Ruolo"
+                hint="Il titolare può gestire gli account, lo staff no."
+              >
+                <Select
+                  name="role"
+                  options={[
+                    { value: "staff", label: "Staff" },
+                    { value: "owner", label: "Titolare" },
+                  ]}
+                />
+              </Field>
+              <div className="flex items-end">
+                <button className="btn btn-primary">Aggiungi</button>
+              </div>
+            </form>
+          </div>
+        </details>
       ) : (
-        <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-500">
+        <p className="card p-4 text-sm" style={{ color: "var(--muted)" }}>
           Solo il titolare può aggiungere o rimuovere account.
         </p>
       )}
 
-      <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+      <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
         {list.map((u) => (
-          <li
+          <div
             key={u.id}
             className="flex flex-wrap items-center justify-between gap-3 p-4"
+            style={{ borderColor: "var(--border)" }}
           >
-            <div>
-              <div className="font-medium">
-                {u.email}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{u.email}</span>
                 {u.id === session.userId && (
-                  <span className="ml-2 rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-xs text-[var(--brand-text)]">
-                    tu
-                  </span>
+                  <span className="badge badge-brand">tu</span>
                 )}
               </div>
-              <div className="text-sm text-neutral-500">
+              <div className="text-sm" style={{ color: "var(--muted)" }}>
                 {u.role === "owner" ? "Titolare" : "Staff"}
               </div>
             </div>
 
             {isOwner && u.id !== session.userId && (
-              <div className="flex items-center gap-2">
-                <form action={resetPassword} className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={resetPassword} className="flex items-end gap-1.5">
                   <input type="hidden" name="id" value={u.id} />
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="Nuova password"
-                    className="w-36 rounded-lg border border-neutral-200 px-2 py-1.5 text-xs"
-                  />
-                  <button className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs hover:bg-neutral-50">
-                    Reimposta
-                  </button>
+                  <Field label="Nuova password">
+                    <input
+                      name="password"
+                      type="password"
+                      minLength={6}
+                      aria-label={`Nuova password per ${u.email}`}
+                      className="input w-40"
+                    />
+                  </Field>
+                  <button className="btn btn-sm">Reimposta</button>
                 </form>
-                <form action={deleteUser}>
+                <form action={deleteUser} className="self-end">
                   <input type="hidden" name="id" value={u.id} />
-                  <button className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50">
-                    Elimina
-                  </button>
+                  <ConfirmSubmit
+                    label="Elimina"
+                    ariaLabel={`Elimina l'account ${u.email}`}
+                  />
                 </form>
               </div>
             )}
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
+
+      {/* Ha senso solo quando c'e' davvero un account da reimpostare. */}
+      {isOwner && list.length > 1 && (
+        <p className="text-xs" style={{ color: "var(--muted)" }}>
+          Reimpostare la password disconnette subito quell&apos;account da tutti
+          i dispositivi.
+        </p>
+      )}
     </div>
   );
 }
