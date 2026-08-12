@@ -3,9 +3,13 @@ import { getSessionUser } from "@/lib/auth";
 import { getAnalytics, type VoceClassifica } from "@/lib/analytics";
 import { formatPrice as fmt } from "@/lib/format";
 import PeriodoFiltro from "@/components/PeriodoFiltro";
+import GraficoLinee from "@/components/GraficoLinee";
+import Affluenza from "@/components/Affluenza";
 
 // Estremi del periodo. Si lavora a mezzanotte locale: un intervallo che parte
 // a meta' giornata darebbe confronti tra giorni non confrontabili.
+const GIORNI_SETTIMANA = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+
 function mezzanotte(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -34,21 +38,56 @@ function leggiPeriodo(p?: string, da?: string, a?: string) {
   return { da: inizio, a: domani, preset: p ?? "7" };
 }
 
+// Variazione sullo stesso intervallo appena passato. Senza un riferimento una
+// cifra da sola non dice se la serata e' andata bene.
+function Delta({ ora, prima }: { ora: number; prima: number }) {
+  if (prima === 0) {
+    return ora > 0 ? (
+      <span className="badge badge-muted">nuovo</span>
+    ) : null;
+  }
+  const p = Math.round(((ora - prima) / prima) * 100);
+  if (p === 0) {
+    return (
+      <span className="text-xs" style={{ color: "var(--muted)" }}>
+        = periodo prima
+      </span>
+    );
+  }
+  return (
+    <span
+      className="tnum text-xs font-medium"
+      style={{ color: p > 0 ? "var(--ok)" : "var(--danger)" }}
+    >
+      {p > 0 ? "▲" : "▼"} {Math.abs(p)}%
+    </span>
+  );
+}
+
 function Kpi({
   etichetta,
   valore,
   sotto,
+  ora,
+  prima,
 }: {
   etichetta: string;
   valore: string;
   sotto?: string;
+  ora?: number;
+  prima?: number;
 }) {
   return (
     <div className="card p-4">
       <div className="text-xs" style={{ color: "var(--muted)" }}>
         {etichetta}
       </div>
-      <div className="tnum mt-1 text-2xl font-semibold">{valore}</div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="tnum text-2xl font-semibold">{valore}</span>
+        {ora !== undefined && prima !== undefined && (
+          <Delta ora={ora} prima={prima} />
+        )}
+      </div>
       {sotto && (
         <div className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
           {sotto}
@@ -215,6 +254,8 @@ export default async function AnalyticsPage({
         <Kpi
           etichetta="Incasso"
           valore={fmt(dati.incassoCents)}
+          ora={dati.incassoCents}
+          prima={dati.precedente.incassoCents}
           sotto={
             inSospeso > 0
               ? `${fmt(inSospeso)} ancora su tavoli aperti`
@@ -224,6 +265,8 @@ export default async function AnalyticsPage({
         <Kpi
           etichetta="Scontrino medio"
           valore={dati.coperti > 0 ? fmt(dati.scontrinoMedioCents) : "—"}
+          ora={dati.scontrinoMedioCents}
+          prima={dati.precedente.scontrinoMedioCents}
           sotto={
             dati.coperti > 0
               ? "a persona seduta, sui tavoli chiusi"
@@ -233,11 +276,15 @@ export default async function AnalyticsPage({
         <Kpi
           etichetta="Ordini"
           valore={String(dati.ordini)}
+          ora={dati.ordini}
+          prima={dati.precedente.ordini}
           sotto={`${dati.pezzi} ${dati.pezzi === 1 ? "pezzo" : "pezzi"} in tutto`}
         />
         <Kpi
-          etichetta="Coperti"
+          etichetta="Persone servite"
           valore={String(dati.coperti)}
+          ora={dati.coperti}
+          prima={dati.precedente.coperti}
           sotto={
             dati.tavoliChiusi > 0
               ? `${dati.tavoliChiusi} ${dati.tavoliChiusi === 1 ? "tavolo chiuso" : "tavoli chiusi"}${dati.copertoCents > 0 ? `, ${fmt(dati.copertoCents)} di coperto` : ""}`
@@ -246,12 +293,53 @@ export default async function AnalyticsPage({
         />
       </div>
 
+      <div className="card p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <div className="text-sm font-medium">Andamento</div>
+            <div className="text-xs" style={{ color: "var(--muted)" }}>
+              Incasso e persone servite, giorno per giorno
+            </div>
+          </div>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>
+            Periodo prima:{" "}
+            <span className="tnum">{fmt(dati.precedente.incassoCents)}</span>
+          </div>
+        </div>
+        <div className="mt-3">
+          <GraficoLinee
+            punti={dati.perGiorno.map((g) => ({
+              etichetta: nomeGiorno(g.giorno),
+              incassoCents: g.incassoCents,
+              coperti: g.coperti,
+              ordini: g.ordini,
+            }))}
+            mostraCoperti={dati.coperti > 0}
+          />
+        </div>
+        {dati.copertoCents > 0 && (
+          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+            Dell&apos;incasso, {fmt(dati.consumazioniCents)} sono consumazioni e{" "}
+            {fmt(dati.copertoCents)} coperto.
+          </p>
+        )}
+      </div>
+
+      <div className="card p-4">
+        <div className="text-sm font-medium">Quando è pieno</div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>
+          Ordini per giorno della settimana e fascia oraria: è da qui che si
+          decidono i turni
+        </div>
+        <Affluenza dati={dati.affluenza} />
+      </div>
+
       <div className="grid gap-3 lg:grid-cols-2">
         <Barre
-          titolo="Andamento"
-          sottotitolo={`Incasso per giorno, ${giorniPeriodo} ${giorniPeriodo === 1 ? "giorno" : "giorni"}`}
-          dati={dati.perGiorno.map((g) => ({
-            etichetta: nomeGiorno(g.giorno),
+          titolo="Giorni della settimana"
+          sottotitolo={`Su ${giorniPeriodo} ${giorniPeriodo === 1 ? "giorno" : "giorni"} di periodo`}
+          dati={dati.perGiornoSettimana.map((g) => ({
+            etichetta: GIORNI_SETTIMANA[g.giorno],
             valore: g.incassoCents,
             nota: g.incassoCents > 0 ? fmt(g.incassoCents) : "—",
           }))}
@@ -260,7 +348,7 @@ export default async function AnalyticsPage({
 
         <Barre
           titolo="Fasce orarie"
-          sottotitolo="Quando si ordina davvero: serve per i turni"
+          sottotitolo="Incasso per ora, su tutto il periodo"
           dati={dati.perOra.map((o) => ({
             etichetta: `${String(o.ora).padStart(2, "0")}:00`,
             valore: o.incassoCents,
@@ -318,6 +406,53 @@ export default async function AnalyticsPage({
             </ul>
           )}
         </div>
+      </div>
+
+      {/* Su un menu lungo e' il dato che nessuno guarda mai: quanto listino sta
+          fermo. Non e' una condanna del prodotto, ma la domanda giusta. */}
+      <div className="card p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <div className="text-sm font-medium">Fermi a menu</div>
+            <div className="text-xs" style={{ color: "var(--muted)" }}>
+              Prodotti disponibili che nel periodo non ha ordinato nessuno
+            </div>
+          </div>
+          <div className="tnum text-sm font-medium">
+            {dati.maiOrdinati.length} su {dati.prodottiAListino}
+          </div>
+        </div>
+
+        {dati.maiOrdinati.length === 0 ? (
+          <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
+            {dati.prodottiAListino === 0
+              ? "Non c'è ancora niente a menu."
+              : "Nel periodo è stato ordinato almeno una volta tutto il menu."}
+          </p>
+        ) : (
+          <>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {dati.maiOrdinati.slice(0, 40).map((p) => (
+                <span
+                  key={p.nome}
+                  title={`${p.categoria} · ${fmt(p.priceCents)}`}
+                  className="rounded-full px-2.5 py-1 text-xs"
+                  style={{
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  {p.nome}
+                </span>
+              ))}
+            </div>
+            {dati.maiOrdinati.length > 40 && (
+              <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+                e altri {dati.maiOrdinati.length - 40}.
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
