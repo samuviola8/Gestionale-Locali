@@ -88,6 +88,8 @@ export async function loadOpenTables(
       quantity: it.quantity,
       priceCents: it.priceCents,
       paid: it.paid,
+      note: it.note,
+      priceAdjusted: it.priceAdjusted,
     });
   }
 

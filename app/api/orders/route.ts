@@ -33,7 +33,17 @@ export async function GET() {
     createdAt: o.createdAt.toISOString(),
     items: its
       .filter((i) => i.orderId === o.id)
-      .map((i) => ({ name: i.name, quantity: i.quantity, alias: i.alias })),
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        quantity: i.quantity,
+        alias: i.alias,
+        // Richiesta scritta dal cliente e prezzo, che il barman puo' correggere
+        // proprio da qui: e' dove la legge.
+        note: i.note,
+        priceCents: i.priceCents,
+        priceAdjusted: i.priceAdjusted,
+      })),
   }));
 
   return NextResponse.json({ orders: result });

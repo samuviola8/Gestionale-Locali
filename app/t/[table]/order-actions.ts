@@ -18,6 +18,7 @@ type IncomingItem = {
   variantId?: string | null;
   alias: string;
   quantity: number;
+  note?: string;
 };
 
 export async function createOrder(
@@ -46,6 +47,7 @@ export async function createOrder(
       name: menuProducts.name,
       priceCents: menuProducts.priceCents,
       available: menuProducts.available,
+      acceptsNote: menuProducts.acceptsNote,
     })
     .from(menuProducts)
     .where(and(eq(menuProducts.tenantId, tenant.id), inArray(menuProducts.id, ids)));
@@ -80,6 +82,14 @@ export async function createOrder(
       const p = byId.get(i.productId);
       if (!p || !p.available) return null;
 
+      // La richiesta scritta si accetta solo dove il locale l'ha prevista,
+      // e con un tetto: e' testo libero che finisce sotto gli occhi del barman.
+      const nota = p.acceptsNote
+        ? (i.note ?? "").trim().slice(0, 200) || null
+        : null;
+      // Un prodotto su richiesta senza richiesta non ha senso.
+      if (p.acceptsNote && !nota) return null;
+
       if (i.variantId) {
         const v = variantById.get(i.variantId);
         if (!v || v.productId !== p.id || !v.available) return null;
@@ -89,6 +99,7 @@ export async function createOrder(
           name: `${p.name} — ${v.name}`,
           priceCents: v.priceCents,
           quantity: Math.min(i.quantity, 99),
+          note: nota,
           alias: modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo",
         };
       }
@@ -99,6 +110,7 @@ export async function createOrder(
         name: p.name,
         priceCents: p.priceCents,
         quantity: Math.min(i.quantity, 99),
+        note: nota,
         // Senza il modulo sotto-conti tutto finisce sul conto del tavolo,
         // qualunque cosa mandi il client.
         alias: modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo",
@@ -126,6 +138,7 @@ export async function createOrder(
       orderId,
       productId: r.productId,
       variantId: r.variantId,
+      note: r.note,
       name: r.name,
       priceCents: r.priceCents,
       quantity: r.quantity,

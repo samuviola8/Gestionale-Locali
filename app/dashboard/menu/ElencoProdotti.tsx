@@ -70,6 +70,9 @@ export default async function ElencoProdotti({
               {!p.available && (
                 <span className="badge badge-warn ml-2">Esaurito</span>
               )}
+              {p.acceptsNote && (
+                <span className="badge badge-brand ml-2">su richiesta</span>
+              )}
               {p.description && (
                 <div className="text-sm" style={{ color: "var(--muted)" }}>
                   {p.description}

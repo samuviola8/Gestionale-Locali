@@ -1,8 +1,8 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { orders } from "@/lib/db/schema";
+import { orders, orderItems } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 
 const VALID = ["new", "preparing", "served"];
@@ -19,4 +19,47 @@ export async function advanceOrderStatus(
     .update(orders)
     .set({ status })
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
+}
+
+// Il barman corregge il prezzo di una richiesta fuori standard. Si tocca la
+// singola riga, non il prodotto a listino: la prossima richiesta riparte dal
+// prezzo di partenza.
+// Risponde sempre com'e' andata: un prezzo che non passa in silenzio e' peggio
+// di un errore, perche' il barman chiude l'editor convinto di averlo cambiato.
+export async function setItemPrice(
+  itemId: string,
+  priceCents: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+  if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > 100000)
+    return { ok: false, error: "Prezzo non valido." };
+
+  // La riga dev'essere di un ordine di questo locale, e non ancora saldata:
+  // cambiare il prezzo di qualcosa di gia' incassato falserebbe la cassa.
+  const miei = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.tenantId, session.tenantId));
+
+  const cambiate = miei.length
+    ? await db
+        .update(orderItems)
+        .set({ priceCents, priceAdjusted: true })
+        .where(
+          and(
+            eq(orderItems.id, itemId),
+            inArray(
+              orderItems.orderId,
+              miei.map((o) => o.id)
+            ),
+            eq(orderItems.paid, false)
+          )
+        )
+        .returning({ id: orderItems.id })
+    : [];
+
+  if (!cambiate.length)
+    return { ok: false, error: "Riga già pagata: il prezzo non si tocca più." };
+  return { ok: true };
 }

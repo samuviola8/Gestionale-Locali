@@ -191,6 +191,20 @@ export default async function MenuAdmin({
                 <Field label="Foto">
                   <PhotoUpload label="Scegli una foto" />
                 </Field>
+                <label className="flex items-start gap-2.5 text-sm sm:col-span-2">
+                  <input type="checkbox" name="acceptsNote" className="mt-1" />
+                  <span>
+                    <span className="font-medium">Su richiesta</span>
+                    <span
+                      className="mt-0.5 block text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      Il cliente scrive cosa desidera invece di scegliere. Il
+                      prezzo qui sopra è quello di partenza: il barman può
+                      correggerlo sul singolo ordine.
+                    </span>
+                  </span>
+                </label>
                 <button className="btn btn-primary sm:col-span-2">
                   Aggiungi prodotto
                 </button>

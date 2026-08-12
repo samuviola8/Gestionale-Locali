@@ -24,6 +24,8 @@ export type MenuProduct = {
   available: boolean;
   // Vuoto = prodotto a prezzo unico, si ordina con un tocco.
   variants: MenuVariant[];
+  // Il cliente scrive cosa desidera invece di scegliere una variante.
+  acceptsNote: boolean;
 };
 
 export type MenuCategory = {
@@ -79,6 +81,7 @@ export async function getMenu(tenantId: string): Promise<MenuCategory[]> {
         priceCents: p.priceCents,
         available: p.available,
         variants: byProduct.get(p.id) ?? [],
+        acceptsNote: p.acceptsNote,
       })),
   }));
 }
@@ -181,6 +184,7 @@ export async function getCategoryProducts(
     priceCents: p.priceCents,
     available: p.available,
     variants: byProduct.get(p.id) ?? [],
+    acceptsNote: p.acceptsNote,
   }));
 }
 

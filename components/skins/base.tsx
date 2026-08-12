@@ -116,7 +116,17 @@ function ProductCard({ product: p, priceLabel, onAdd }: ProductCardProps) {
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="font-semibold leading-tight">{p.name}</div>
+        <div className="font-semibold leading-tight">
+          {p.name}
+          {p.acceptsNote && (
+            <span
+              className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ background: "var(--brand-50)", color: "var(--brand-text)" }}
+            >
+              su richiesta
+            </span>
+          )}
+        </div>
         {p.description && (
           <div className="mt-0.5 line-clamp-2 text-sm text-neutral-500">
             {p.description}

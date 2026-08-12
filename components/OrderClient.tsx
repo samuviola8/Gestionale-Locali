@@ -22,6 +22,8 @@ type CartItem = {
   priceCents: number;
   qty: number;
   alias: string;
+  // Cosa ha chiesto il cliente, per i prodotti su richiesta.
+  note?: string;
 };
 
 // "da €3,00" quando il prodotto ha piu' formati.
@@ -58,6 +60,7 @@ export default function OrderClient({
       variantId?: string | null;
       alias: string;
       quantity: number;
+      note?: string;
     }[],
     partySize?: number
   ) => Promise<{ ok: boolean }>;
@@ -79,6 +82,9 @@ export default function OrderClient({
   const [waiterPending, setWaiterPending] = useState(false);
   // Prodotto per cui e' aperta la scelta del formato.
   const [variantFor, setVariantFor] = useState<Product | null>(null);
+  // Prodotto su richiesta in attesa che il cliente scriva cosa desidera.
+  const [noteFor, setNoteFor] = useState<Product | null>(null);
+  const [noteText, setNoteText] = useState("");
   // Campo in linea per aggiungere una persona al conto.
   const [addingPerson, setAddingPerson] = useState(false);
   const [newPerson, setNewPerson] = useState("");
@@ -121,13 +127,25 @@ export default function OrderClient({
   // Un prodotto con piu' formati apre prima la scelta del formato.
   // `personeGiaChieste` evita un ciclo: setPartySize non e' immediato, quindi
   // rientrando qui subito dopo la scelta si rivedrebbe ancora null.
-  function add(p: Product, v?: Variant, personeGiaChieste = false) {
+  function add(
+    p: Product,
+    v?: Variant,
+    personeGiaChieste = false,
+    nota?: string
+  ) {
     const usable = p.variants.filter((x) => x.available);
     if (!v && usable.length) {
       setVariantFor(p);
       return;
     }
     setVariantFor(null);
+
+    // Prodotto su richiesta: prima si scrive cosa si desidera.
+    if (p.acceptsNote && nota === undefined) {
+      setNoteText("");
+      setNoteFor(p);
+      return;
+    }
 
     // Prima consumazione condivisa: senza sapere in quanti siete non si puo'
     // dividere. Si chiede una volta sola, poi il prodotto entra nel carrello.
@@ -141,12 +159,16 @@ export default function OrderClient({
       return;
     }
     setCart((prev) => {
-      const i = prev.findIndex(
-        (c) =>
-          c.productId === p.id &&
-          c.variantId === (v?.id ?? null) &&
-          c.alias === active
-      );
+      // Due richieste diverse non si sommano mai: sono due drink diversi.
+      const i = nota
+        ? -1
+        : prev.findIndex(
+            (c) =>
+              c.productId === p.id &&
+              c.variantId === (v?.id ?? null) &&
+              c.alias === active &&
+              !c.note
+          );
       if (i >= 0) {
         const next = [...prev];
         next[i] = { ...next[i], qty: next[i].qty + 1 };
@@ -161,6 +183,7 @@ export default function OrderClient({
           priceCents: v ? v.priceCents : p.priceCents,
           qty: 1,
           alias: active,
+          note: nota?.trim() || undefined,
         },
       ];
     });
@@ -253,6 +276,7 @@ export default function OrderClient({
         variantId: c.variantId,
         alias: c.alias,
         quantity: c.qty,
+        note: c.note,
       })),
       partySize ?? undefined
     );
@@ -549,6 +573,62 @@ export default function OrderClient({
         ))}
       </div>
 
+      {noteFor && (
+        <div
+          className="fixed inset-0 z-40 flex items-end"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onClick={() => setNoteFor(null)}
+        >
+          <div
+            className="mx-auto w-full max-w-md rounded-t-3xl bg-white p-4 pb-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200" />
+            <div className="text-lg font-semibold">{noteFor.name}</div>
+            <p className="mt-1 text-sm text-neutral-500">
+              Scrivi cosa ti va: un cocktail fuori menu, oppure com&apos;è che
+              lo vorresti. Ci pensa il barman.
+            </p>
+
+            <textarea
+              autoFocus
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              rows={3}
+              maxLength={200}
+              placeholder="Qualcosa di amaro col vermut, non troppo dolce"
+              aria-label={`Cosa desideri per ${noteFor.name}`}
+              className="mt-3 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm"
+            />
+
+            <div className="mt-1 flex items-center justify-between text-xs text-neutral-500">
+              <span>
+                {noteFor.priceCents > 0 && (
+                  <>Prezzo di partenza {fmt(noteFor.priceCents)}</>
+                )}
+              </span>
+              <span className="tabular-nums">{noteText.length}/200</span>
+            </div>
+
+            <button
+              onClick={() => {
+                const p = noteFor;
+                setNoteFor(null);
+                add(p, undefined, false, noteText);
+              }}
+              disabled={!noteText.trim()}
+              className="mt-3 w-full rounded-xl bg-[var(--brand)] px-4 py-3 font-medium text-[var(--brand-on)] disabled:opacity-40"
+            >
+              Aggiungi al carrello
+            </button>
+            <p className="mt-2 text-center text-xs text-neutral-500">
+              Se serve qualcosa di diverso dal solito, il barman può
+              correggere il prezzo: te lo vedi aggiornato qui.
+            </p>
+          </div>
+        </div>
+      )}
+
       {askingParty && (
         <div
           className="fixed inset-0 z-40 flex items-end"
@@ -706,6 +786,14 @@ export default function OrderClient({
                       {fmt(c.priceCents * c.qty)}
                     </span>
                   </div>
+
+                  {/* La richiesta va per intero su una riga sua: stretta nella
+                      colonna del nome diventava una colonna di parole. */}
+                  {c.note && (
+                    <div className="w-full pl-2 text-xs italic text-neutral-500">
+                      «{c.note}»
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

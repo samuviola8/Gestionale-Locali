@@ -25,6 +25,8 @@ export type SkinProduct = {
   priceCents: number;
   available: boolean;
   variants: SkinVariant[];
+  // Prodotto "su richiesta": il cliente scrive cosa desidera.
+  acceptsNote: boolean;
 };
 
 export type SkinCategory = {

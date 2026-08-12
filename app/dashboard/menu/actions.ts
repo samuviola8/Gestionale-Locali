@@ -85,6 +85,7 @@ export async function addProduct(formData: FormData): Promise<void> {
     ingredients,
     allergens,
     priceCents,
+    acceptsNote: formData.get("acceptsNote") === "on",
   });
   revalidatePath("/dashboard/menu");
 }

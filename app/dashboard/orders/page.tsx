@@ -1,6 +1,6 @@
 import OrderQueue from "@/components/OrderQueue";
 import { requireModule } from "@/lib/module-guard";
-import { advanceOrderStatus } from "./actions";
+import { advanceOrderStatus, setItemPrice } from "./actions";
 
 export default async function OrdersPage() {
   await requireModule("qr_ordering");
@@ -13,7 +13,7 @@ export default async function OrdersPage() {
           I più attesi in cima. Il colore segnala chi sta aspettando troppo.
         </p>
       </div>
-      <OrderQueue advance={advanceOrderStatus} />
+      <OrderQueue advance={advanceOrderStatus} setItemPrice={setItemPrice} />
     </div>
   );
 }

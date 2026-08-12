@@ -117,6 +117,10 @@ export const menuProducts = pgTable("menu_products", {
     .default(sql`'{}'`),
   priceCents: integer("price_cents").notNull(),
   available: boolean("available").notNull().default(true),
+  // Il cliente scrive cosa vuole invece di scegliere: e' il "cocktail su
+  // richiesta". Il prezzo qui e' quello di partenza, il barman puo' correggerlo
+  // sulla singola riga d'ordine.
+  acceptsNote: boolean("accepts_note").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -199,6 +203,11 @@ export const orderItems = pgTable("order_items", {
   name: text("name").notNull(),
   priceCents: integer("price_cents").notNull(),
   quantity: integer("quantity").notNull().default(1),
+  // Cosa ha chiesto il cliente a parole, per i prodotti su richiesta.
+  note: text("note"),
+  // Segnato quando il barman corregge il prezzo di questa riga: serve a
+  // dirlo al cliente invece di cambiargli il conto in silenzio.
+  priceAdjusted: boolean("price_adjusted").notNull().default(false),
   alias: text("alias"),
   paid: boolean("paid").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

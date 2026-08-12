@@ -128,6 +128,13 @@ export default function TableStatus({
                       <span className="tabular-nums">{fmt(p.itemsTotal)}</span>
                     </div>
                   )}
+                  {/* Se il barman ha ritoccato il prezzo di una richiesta, il
+                      cliente deve saperlo qui e non alla cassa. */}
+                  {p.items.some((i) => i.priceAdjusted) && (
+                    <div style={{ color: "var(--warn)" }}>
+                      Prezzo aggiornato dal barman su una richiesta
+                    </div>
+                  )}
                   {p.sharedQuota > 0 && (
                     <div className="flex justify-between gap-3">
                       <span>Parte del condiviso</span>

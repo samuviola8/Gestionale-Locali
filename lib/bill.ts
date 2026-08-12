@@ -13,6 +13,9 @@ export type BillLine = {
   quantity: number;
   priceCents: number;
   paid: boolean;
+  // Cosa aveva chiesto il cliente, e se il barman ne ha corretto il prezzo.
+  note?: string | null;
+  priceAdjusted?: boolean;
 };
 
 export type BillPerson = {

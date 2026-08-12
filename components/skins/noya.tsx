@@ -212,7 +212,10 @@ function ProductCard({
       </div>
 
       <div className="noya-body">
-        <h3 className="noya-name">{p.name}</h3>
+        <h3 className="noya-name">
+          {p.name}
+          {p.acceptsNote && <span className="noya-surichiesta">su richiesta</span>}
+        </h3>
         {p.description && <p className="noya-desc">{p.description}</p>}
         {p.allergens.length > 0 && (
           <div className="noya-allergens">
@@ -514,6 +517,19 @@ const css = `
   font-weight: 600;
   line-height: 1.25;
   color: var(--noya-ink);
+}
+
+.noya-surichiesta {
+  margin-left: 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 75%, #ffffff);
+  white-space: nowrap;
 }
 
 .noya-desc {

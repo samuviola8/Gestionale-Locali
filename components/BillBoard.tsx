@@ -206,6 +206,11 @@ export default function BillBoard({
                       >
                         <span className="min-w-0">
                           <span className="tnum">{i.quantity}×</span> {i.name}
+                          {i.note && (
+                            <span className="block text-xs italic">
+                              «{i.note}»
+                            </span>
+                          )}
                         </span>
                         <span className="tnum shrink-0">
                           {fmt(i.priceCents * i.quantity)}

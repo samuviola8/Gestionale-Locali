@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatPrice as fmt } from "@/lib/format";
 
-type Item = { name: string; quantity: number; alias: string | null };
+type Item = {
+  id: string;
+  name: string;
+  quantity: number;
+  alias: string | null;
+  note: string | null;
+  priceCents: number;
+  priceAdjusted: boolean;
+};
 type Order = {
   id: string;
   tableNumber: number;
@@ -39,10 +48,113 @@ function waitLabel(min: number): string {
   return `${h} h ${min % 60} min`;
 }
 
+// Prezzo di una richiesta: si vede quello di partenza e lo si corregge solo
+// se serve, senza aprire altre schermate.
+function PrezzoRichiesta({
+  item,
+  onSave,
+}: {
+  item: Item;
+  onSave: (priceCents: number) => Promise<string | null>;
+}) {
+  const [aperto, setAperto] = useState(false);
+  const [euro, setEuro] = useState(
+    (item.priceCents / 100).toFixed(2).replace(".", ",")
+  );
+  const [salvo, setSalvo] = useState(false);
+  const [errore, setErrore] = useState<string | null>(null);
+
+  async function salva() {
+    const n = parseFloat(euro.replace(",", ".").replace(/[^0-9.]/g, ""));
+    if (Number.isNaN(n) || n < 0) {
+      setErrore("Scrivi una cifra, per esempio 14,50.");
+      return;
+    }
+    setSalvo(true);
+    setErrore(null);
+    try {
+      // Dietro al banco nessuno apre la console: se il prezzo non passa
+      // bisogna dirlo qui, o il barman chiude convinto di averlo cambiato.
+      const problema = await onSave(Math.round(n * 100));
+      if (problema) setErrore(problema);
+      else setAperto(false);
+    } catch {
+      setErrore("Non sono riuscito a salvare. Riprova.");
+    } finally {
+      setSalvo(false);
+    }
+  }
+
+  if (!aperto) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 text-xs">
+        <span className="tnum font-semibold">{fmt(item.priceCents)}</span>
+        {item.priceAdjusted && (
+          <span style={{ color: "var(--muted)" }}>prezzo corretto</span>
+        )}
+        <button
+          onClick={() => setAperto(true)}
+          className="underline"
+          style={{ color: "var(--brand-text)" }}
+        >
+          cambia prezzo
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={euro}
+          onChange={(e) => {
+            setEuro(e.target.value);
+            setErrore(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") salva();
+            if (e.key === "Escape") setAperto(false);
+          }}
+          inputMode="decimal"
+          aria-label={`Prezzo di ${item.name}, in euro`}
+          className="h-9 w-20 rounded-lg px-2 text-sm"
+          style={{
+            border: `1px solid ${errore ? "var(--danger)" : "var(--border)"}`,
+            background: "var(--surface)",
+            color: "var(--text)",
+          }}
+        />
+        <button onClick={salva} disabled={salvo} className="btn btn-sm">
+          {salvo ? "..." : "Salva"}
+        </button>
+        <button onClick={() => setAperto(false)} className="btn btn-sm">
+          Annulla
+        </button>
+      </div>
+      {errore && (
+        <div
+          role="status"
+          className="mt-1 text-xs"
+          style={{ color: "var(--danger)" }}
+        >
+          {errore}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderQueue({
   advance,
+  setItemPrice,
 }: {
   advance: (id: string, status: string) => Promise<void>;
+  setItemPrice: (
+    itemId: string,
+    priceCents: number
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -147,13 +259,38 @@ export default function OrderQueue({
 
             <ul className="mt-2.5 space-y-1 px-4 text-sm">
               {o.items.map((it, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="tnum font-semibold">{it.quantity}×</span>
-                  <span className="flex-1">{it.name}</span>
-                  {it.alias && (
-                    <span className="text-xs" style={{ color: "var(--muted)" }}>
-                      {it.alias}
-                    </span>
+                <li key={it.id ?? i}>
+                  <div className="flex gap-2">
+                    <span className="tnum font-semibold">{it.quantity}×</span>
+                    <span className="flex-1">{it.name}</span>
+                    {it.alias && (
+                      <span className="text-xs" style={{ color: "var(--muted)" }}>
+                        {it.alias}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Richiesta scritta dal cliente: e' la riga che il barman
+                      deve leggere davvero, quindi non si confonde col resto. */}
+                  {it.note && (
+                    <div
+                      className="mt-1 rounded-lg px-3 py-2"
+                      style={{
+                        background: "var(--warn-bg)",
+                        borderLeft: "2px solid var(--warn)",
+                      }}
+                    >
+                      <div className="text-[13px] italic">«{it.note}»</div>
+                      <PrezzoRichiesta
+                        item={it}
+                        onSave={async (cents) => {
+                          const esito = await setItemPrice(it.id, cents);
+                          if (!esito.ok) return esito.error;
+                          await load();
+                          return null;
+                        }}
+                      />
+                    </div>
                   )}
                 </li>
               ))}
