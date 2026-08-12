@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import Calendario from "@/components/Calendario";
 
 // Il periodo sta nell'URL e non nello stato: cosi' una serata interessante si
 // puo' mandare a qualcuno con un link, e il tasto indietro funziona.
@@ -23,27 +23,25 @@ export default function PeriodoFiltro({
   a: string;
 }) {
   const router = useRouter();
-  const [dal, setDal] = useState(da);
-  const [al, setAl] = useState(a);
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="scroll-x flex gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div
+        className="flex gap-1 rounded-xl p-1"
+        style={{ background: "var(--surface-2)" }}
+      >
         {PRESET.map((p) => (
           <Link
             key={p.key}
             href={`/dashboard/analytics?p=${p.key}`}
             className={
-              "min-h-10 whitespace-nowrap rounded-full px-4 py-2 text-sm transition " +
-              (attivo === p.key ? "font-medium" : "")
+              "min-h-8 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm transition " +
+              (attivo === p.key ? "font-medium shadow-sm" : "")
             }
             style={
               attivo === p.key
-                ? { background: "var(--brand)", color: "var(--brand-on)" }
-                : {
-                    background: "var(--surface-2)",
-                    color: "var(--muted)",
-                  }
+                ? { background: "var(--surface)", color: "var(--text)" }
+                : { color: "var(--muted)" }
             }
           >
             {p.label}
@@ -51,35 +49,13 @@ export default function PeriodoFiltro({
         ))}
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          router.push(`/dashboard/analytics?da=${dal}&a=${al}`);
-        }}
-        className="flex flex-wrap items-end gap-2"
-      >
-        <label className="text-xs" style={{ color: "var(--muted)" }}>
-          Dal
-          <input
-            type="date"
-            value={dal}
-            max={al}
-            onChange={(e) => setDal(e.target.value)}
-            className="input mt-1 h-10 w-40"
-          />
-        </label>
-        <label className="text-xs" style={{ color: "var(--muted)" }}>
-          Al
-          <input
-            type="date"
-            value={al}
-            min={dal}
-            onChange={(e) => setAl(e.target.value)}
-            className="input mt-1 h-10 w-40"
-          />
-        </label>
-        <button className="btn btn-sm h-10">Applica</button>
-      </form>
+      <Calendario
+        da={da}
+        a={a}
+        onApplica={(d, f) =>
+          router.push(`/dashboard/analytics?da=${d}&a=${f}`)
+        }
+      />
     </div>
   );
 }

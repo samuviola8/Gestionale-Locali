@@ -233,6 +233,24 @@ export default async function AnalyticsPage({
     return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
   };
 
+  // Su una giornata sola l'asse dei giorni sarebbe un punto solo: dentro a un
+  // giorno l'informazione utile e' l'ora, che e' quello che uno sta cercando
+  // quando chiede "com'e' andata oggi".
+  const aOre = giorniPeriodo === 1;
+  const punti = aOre
+    ? dati.perOra.map((o) => ({
+        etichetta: `${String(o.ora).padStart(2, "0")}:00`,
+        incassoCents: o.incassoCents,
+        coperti: o.coperti,
+        ordini: o.ordini,
+      }))
+    : dati.perGiorno.map((g) => ({
+        etichetta: nomeGiorno(g.giorno),
+        incassoCents: g.incassoCents,
+        coperti: g.coperti,
+        ordini: g.ordini,
+      }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -298,24 +316,24 @@ export default async function AnalyticsPage({
           <div>
             <div className="text-sm font-medium">Andamento</div>
             <div className="text-xs" style={{ color: "var(--muted)" }}>
-              Incasso e persone servite, giorno per giorno
+              {aOre
+                ? "Incasso e persone servite, ora per ora"
+                : "Incasso e persone servite, giorno per giorno"}
             </div>
           </div>
           <div className="text-xs" style={{ color: "var(--muted)" }}>
-            Periodo prima:{" "}
+            {aOre ? "Giorno prima" : "Periodo prima"}:{" "}
             <span className="tnum">{fmt(dati.precedente.incassoCents)}</span>
           </div>
         </div>
         <div className="mt-3">
-          <GraficoLinee
-            punti={dati.perGiorno.map((g) => ({
-              etichetta: nomeGiorno(g.giorno),
-              incassoCents: g.incassoCents,
-              coperti: g.coperti,
-              ordini: g.ordini,
-            }))}
-            mostraCoperti={dati.coperti > 0}
-          />
+          {punti.length === 0 ? (
+            <p className="py-8 text-center text-sm" style={{ color: "var(--muted)" }}>
+              Nessun ordine in questa giornata.
+            </p>
+          ) : (
+            <GraficoLinee punti={punti} mostraCoperti={dati.coperti > 0} />
+          )}
         </div>
         {dati.copertoCents > 0 && (
           <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
@@ -325,38 +343,46 @@ export default async function AnalyticsPage({
         )}
       </div>
 
-      <div className="card p-4">
-        <div className="text-sm font-medium">Quando è pieno</div>
-        <div className="text-xs" style={{ color: "var(--muted)" }}>
-          Ordini per giorno della settimana e fascia oraria: è da qui che si
-          decidono i turni
+      {/* Su un giorno solo sarebbe una riga sola, e la stessa cosa che dice
+          gia' il grafico qui sopra. */}
+      {!aOre && (
+        <div className="card p-4">
+          <div className="text-sm font-medium">Quando è pieno</div>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>
+            Ordini per giorno della settimana e fascia oraria: è da qui che si
+            decidono i turni
+          </div>
+          <Affluenza dati={dati.affluenza} />
         </div>
-        <Affluenza dati={dati.affluenza} />
-      </div>
+      )}
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Barre
-          titolo="Giorni della settimana"
-          sottotitolo={`Su ${giorniPeriodo} ${giorniPeriodo === 1 ? "giorno" : "giorni"} di periodo`}
-          dati={dati.perGiornoSettimana.map((g) => ({
-            etichetta: GIORNI_SETTIMANA[g.giorno],
-            valore: g.incassoCents,
-            nota: g.incassoCents > 0 ? fmt(g.incassoCents) : "—",
-          }))}
-          vuoto="Nessun ordine in questo periodo."
-        />
+      {/* Su una giornata sola le fasce orarie sono gia' il grafico qui sopra,
+          e i giorni della settimana sarebbero una barra sola. */}
+      {!aOre && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Barre
+            titolo="Giorni della settimana"
+            sottotitolo={`Su ${giorniPeriodo} giorni di periodo`}
+            dati={dati.perGiornoSettimana.map((g) => ({
+              etichetta: GIORNI_SETTIMANA[g.giorno],
+              valore: g.incassoCents,
+              nota: g.incassoCents > 0 ? fmt(g.incassoCents) : "—",
+            }))}
+            vuoto="Nessun ordine in questo periodo."
+          />
 
-        <Barre
-          titolo="Fasce orarie"
-          sottotitolo="Incasso per ora, su tutto il periodo"
-          dati={dati.perOra.map((o) => ({
-            etichetta: `${String(o.ora).padStart(2, "0")}:00`,
-            valore: o.incassoCents,
-            nota: `${o.ordini} ${o.ordini === 1 ? "ordine" : "ordini"}`,
-          }))}
-          vuoto="Nessun ordine in questo periodo."
-        />
-      </div>
+          <Barre
+            titolo="Fasce orarie"
+            sottotitolo="Incasso per ora, su tutto il periodo"
+            dati={dati.perOra.map((o) => ({
+              etichetta: `${String(o.ora).padStart(2, "0")}:00`,
+              valore: o.incassoCents,
+              nota: `${o.ordini} ${o.ordini === 1 ? "ordine" : "ordini"}`,
+            }))}
+            vuoto="Nessun ordine in questo periodo."
+          />
+        </div>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Classifica

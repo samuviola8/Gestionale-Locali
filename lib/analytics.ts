@@ -43,7 +43,12 @@ export type Analytics = {
     coperti: number;
     tavoli: number;
   }[];
-  perOra: { ora: number; incassoCents: number; ordini: number }[];
+  perOra: {
+    ora: number;
+    incassoCents: number;
+    ordini: number;
+    coperti: number;
+  }[];
   // Lunedi'=0. Un bar vive di giorni della settimana, non di date.
   perGiornoSettimana: { giorno: number; incassoCents: number; ordini: number }[];
   // Ordini per giorno della settimana e fascia oraria: dice quando serve gente
@@ -246,7 +251,11 @@ export async function getAnalytics(
     { incassoCents: number; ordini: number; coperti: number; tavoli: number }
   >();
   const vuotoGiorno = { incassoCents: 0, ordini: 0, coperti: 0, tavoli: 0 };
-  const perOra = new Map<number, { incassoCents: number; ordini: number }>();
+  const perOra = new Map<
+    number,
+    { incassoCents: number; ordini: number; coperti: number }
+  >();
+  const vuotoOra = { incassoCents: 0, ordini: 0, coperti: 0 };
   const perSettimana = new Map<
     number,
     { incassoCents: number; ordini: number }
@@ -287,7 +296,7 @@ export async function getAnalytics(
     perGiorno.set(g, { ...pg, incassoCents: pg.incassoCents + valore });
 
     const h = quando.getHours();
-    const po = perOra.get(h) ?? { incassoCents: 0, ordini: 0 };
+    const po = perOra.get(h) ?? vuotoOra;
     perOra.set(h, { ...po, incassoCents: po.incassoCents + valore });
 
     const gs = giornoSettimana(quando);
@@ -315,7 +324,7 @@ export async function getAnalytics(
     perGiorno.set(g, { ...pg, ordini: pg.ordini + 1 });
 
     const h = o.createdAt.getHours();
-    const po = perOra.get(h) ?? { incassoCents: 0, ordini: 0 };
+    const po = perOra.get(h) ?? vuotoOra;
     perOra.set(h, { ...po, ordini: po.ordini + 1 });
 
     const gs = giornoSettimana(o.createdAt);
@@ -329,12 +338,33 @@ export async function getAnalytics(
   // Le persone servite si sanno alla chiusura del tavolo, quindi si appoggiano
   // al giorno in cui il tavolo e' stato archiviato.
   for (const c of chiusure) {
+    // Anche il coperto entra nelle barre, non solo nel totale in cima:
+    // altrimenti il grafico somma meno del numero che gli sta sopra e chi
+    // guarda pensa a un errore.
+    const incassoCoperto = c.partySize * c.coverChargeCents;
+
     const g = giornoISO(c.closedAt);
     const pg = perGiorno.get(g) ?? vuotoGiorno;
     perGiorno.set(g, {
       ...pg,
+      incassoCents: pg.incassoCents + incassoCoperto,
       coperti: pg.coperti + c.partySize,
       tavoli: pg.tavoli + 1,
+    });
+
+    const h = c.closedAt.getHours();
+    const po = perOra.get(h) ?? vuotoOra;
+    perOra.set(h, {
+      ...po,
+      incassoCents: po.incassoCents + incassoCoperto,
+      coperti: po.coperti + c.partySize,
+    });
+
+    const gs = giornoSettimana(c.closedAt);
+    const ps = perSettimana.get(gs) ?? { incassoCents: 0, ordini: 0 };
+    perSettimana.set(gs, {
+      ...ps,
+      incassoCents: ps.incassoCents + incassoCoperto,
     });
   }
 
@@ -396,9 +426,17 @@ export async function getAnalytics(
       coperti > 0 ? Math.round(incassoChiusiCents / coperti) : 0,
     consumazioniCents: incassoCents - copertoCents,
     perGiorno: giorni,
-    perOra: [...perOra.entries()]
-      .map(([ora, v]) => ({ ora, ...v }))
-      .sort((a, b) => a.ora - b.ora),
+    // Ore continue dalla prima all'ultima attiva: nel grafico un buco in mezzo
+    // dev'essere una valle, non una colonna che sparisce.
+    perOra: (() => {
+      const attive = [...perOra.keys()].sort((a, b) => a - b);
+      if (!attive.length) return [];
+      const range = [];
+      for (let h = attive[0]; h <= attive[attive.length - 1]; h++) {
+        range.push({ ora: h, ...(perOra.get(h) ?? vuotoOra) });
+      }
+      return range;
+    })(),
     perGiornoSettimana: Array.from({ length: 7 }, (_, g) => ({
       giorno: g,
       ...(perSettimana.get(g) ?? { incassoCents: 0, ordini: 0 }),
