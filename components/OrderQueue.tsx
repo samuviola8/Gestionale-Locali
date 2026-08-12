@@ -11,6 +11,7 @@ type Item = {
   note: string | null;
   priceCents: number;
   priceAdjusted: boolean;
+  voided: boolean;
 };
 type Order = {
   id: string;
@@ -149,16 +150,32 @@ function PrezzoRichiesta({
 export default function OrderQueue({
   advance,
   setItemPrice,
+  voidItem,
 }: {
   advance: (id: string, status: string) => Promise<void>;
   setItemPrice: (
     itemId: string,
     priceCents: number
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  voidItem: (
+    itemId: string,
+    annulla: boolean
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // La modifica si accende per un ordine alla volta: durante il servizio le
+  // crocette sempre a schermo si toccano per sbaglio.
+  const [modifica, setModifica] = useState<string | null>(null);
+  const [erroreVoce, setErroreVoce] = useState<string | null>(null);
+
+  async function annulla(itemId: string, annullare: boolean) {
+    setErroreVoce(null);
+    const esito = await voidItem(itemId, annullare);
+    if (!esito.ok) setErroreVoce(esito.error);
+    await load();
+  }
   // I minuti di attesa devono salire anche quando non arrivano ordini nuovi.
   const [now, setNow] = useState(() => Date.now());
 
@@ -216,7 +233,11 @@ export default function OrderQueue({
         const min = waitedMinutes(o.createdAt, now);
         const level = urgency(min);
         const isNew = o.status === "new";
-        const pieces = o.items.reduce((s, i) => s + i.quantity, 0);
+        // I pezzi annullati non si preparano: non vanno contati.
+        const pieces = o.items
+          .filter((i) => !i.voided)
+          .reduce((s, i) => s + i.quantity, 0);
+        const inModifica = modifica === o.id;
 
         return (
           <article
@@ -254,19 +275,79 @@ export default function OrderQueue({
                 <span className="tnum text-xs" style={{ color: "var(--muted)" }}>
                   {time(o.createdAt)}
                 </span>
+                <button
+                  onClick={() => {
+                    setErroreVoce(null);
+                    setModifica(inModifica ? null : o.id);
+                  }}
+                  className="text-xs underline"
+                  style={{
+                    color: inModifica ? "var(--text)" : "var(--muted)",
+                  }}
+                >
+                  {inModifica ? "fine" : "modifica"}
+                </button>
               </div>
             </div>
+
+            {inModifica && (
+              <p className="mt-2 px-4 text-xs" style={{ color: "var(--muted)" }}>
+                Se un prodotto è finito, annullalo: esce dal conto e il cliente
+                lo vede barrato sul telefono.
+              </p>
+            )}
+            {inModifica && erroreVoce && (
+              <p
+                role="status"
+                className="mt-1 px-4 text-xs"
+                style={{ color: "var(--danger)" }}
+              >
+                {erroreVoce}
+              </p>
+            )}
 
             <ul className="mt-2.5 space-y-1 px-4 text-sm">
               {o.items.map((it, i) => (
                 <li key={it.id ?? i}>
-                  <div className="flex gap-2">
-                    <span className="tnum font-semibold">{it.quantity}×</span>
-                    <span className="flex-1">{it.name}</span>
+                  {/* La barratura sta sul solo nome: messa sulla riga intera
+                      si trascinerebbe anche sul pulsante e sulle etichette,
+                      perche' il tratto passa ai figli e loro non lo tolgono. */}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="tnum font-semibold"
+                      style={it.voided ? { color: "var(--muted)" } : undefined}
+                    >
+                      {it.quantity}×
+                    </span>
+                    <span
+                      className="flex-1"
+                      style={
+                        it.voided
+                          ? {
+                              textDecoration: "line-through",
+                              color: "var(--muted)",
+                            }
+                          : undefined
+                      }
+                    >
+                      {it.name}
+                    </span>
+                    {it.voided && <span className="badge badge-muted">annullato</span>}
                     {it.alias && (
                       <span className="text-xs" style={{ color: "var(--muted)" }}>
                         {it.alias}
                       </span>
+                    )}
+                    {inModifica && (
+                      <button
+                        onClick={() => annulla(it.id, !it.voided)}
+                        className="shrink-0 text-xs underline"
+                        style={{
+                          color: it.voided ? "var(--brand-text)" : "var(--danger)",
+                        }}
+                      >
+                        {it.voided ? "ripristina" : "annulla"}
+                      </button>
                     )}
                   </div>
 

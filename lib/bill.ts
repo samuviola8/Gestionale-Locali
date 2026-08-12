@@ -9,6 +9,8 @@
 export const ALIAS_CONDIVISO = "Condiviso";
 
 export type BillLine = {
+  // Id della riga d'ordine: serve al cassiere per annullarla dal conto.
+  id?: string;
   name: string;
   quantity: number;
   priceCents: number;
@@ -16,7 +18,19 @@ export type BillLine = {
   // Cosa aveva chiesto il cliente, e se il barman ne ha corretto il prezzo.
   note?: string | null;
   priceAdjusted?: boolean;
+  // Voce annullata dal locale: resta in elenco barrata, ma non si paga.
+  voided?: boolean;
 };
+
+// Le voci annullate restano visibili ma fuori da ogni somma: e' l'unica cosa
+// che le distingue da una cancellazione.
+function daPagare(items: BillLine[]): BillLine[] {
+  return items.filter((i) => !i.voided);
+}
+
+export function totaleVoci(items: BillLine[]): number {
+  return daPagare(items).reduce((s, i) => s + i.priceCents * i.quantity, 0);
+}
 
 export type BillPerson = {
   alias: string;
@@ -68,10 +82,7 @@ export function buildTable(input: {
   const { tableNumber, byAlias, coverChargeCents, settled, hasPending } = input;
 
   const sharedItems = byAlias.get(ALIAS_CONDIVISO) ?? [];
-  const sharedTotal = sharedItems.reduce(
-    (s, i) => s + i.priceCents * i.quantity,
-    0
-  );
+  const sharedTotal = totaleVoci(sharedItems);
 
   const names = [...byAlias.keys()].filter((a) => a !== ALIAS_CONDIVISO);
 
@@ -102,14 +113,16 @@ export function buildTable(input: {
 
   const people: BillPerson[] = posti.map((posto, i) => {
     const items = posto.items;
-    const itemsTotal = items.reduce((s, x) => s + x.priceCents * x.quantity, 0);
+    const daSaldare = daPagare(items);
+    const itemsTotal = totaleVoci(items);
     const sharedQuota = quote[i] ?? 0;
     const extras = sharedQuota + coverChargeCents;
+    // Una voce annullata non tiene aperto il conto di nessuno, ma nemmeno lo
+    // chiude: chi resta con tutto annullato e zero da pagare non ha "pagato".
     const paid =
-      items.every((x) => x.paid) &&
+      daSaldare.every((x) => x.paid) &&
       (extras === 0 || settled.has(posto.alias)) &&
-      // Un posto vuoto senza nulla da pagare non e' "pagato", non esiste.
-      (items.length > 0 || extras > 0);
+      (daSaldare.length > 0 || extras > 0);
 
     // Chi ha gia' pagato vale l'importo che ha versato: se dopo si corregge il
     // numero di persone, la sua quota non cambia retroattivamente.
@@ -131,7 +144,8 @@ export function buildTable(input: {
     };
   })
     // Un posto che non deve nulla non si mostra: non c'e' niente da incassare.
-    .filter((p) => p.total > 0 || p.items.length > 0);
+    // Nemmeno se ha righe, se sono tutte annullate.
+    .filter((p) => p.total > 0 || daPagare(p.items).length > 0);
 
   const total = people.reduce((s, p) => s + p.total, 0);
 

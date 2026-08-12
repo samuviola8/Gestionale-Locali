@@ -43,8 +43,13 @@ export async function GET() {
         note: i.note,
         priceCents: i.priceCents,
         priceAdjusted: i.priceAdjusted,
+        voided: i.voidedAt !== null,
       })),
   }));
 
-  return NextResponse.json({ orders: result });
+  // Un ordine annullato per intero non ha piu' niente da preparare: sparisce
+  // dalla coda, ma le righe restano sul conto per la traccia.
+  const daPreparare = result.filter((o) => o.items.some((i) => !i.voided));
+
+  return NextResponse.json({ orders: daPreparare });
 }

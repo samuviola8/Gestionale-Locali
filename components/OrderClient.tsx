@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Select from "@/components/Select";
 import { getSkin } from "@/components/skins";
 import { formatPrice as fmt } from "@/lib/format";
@@ -22,9 +22,17 @@ type CartItem = {
   priceCents: number;
   qty: number;
   alias: string;
-  // Cosa ha chiesto il cliente, per i prodotti su richiesta.
+  // Cosa ha chiesto il cliente: la richiesta scritta sui prodotti su richiesta,
+  // oppure una preferenza su un prodotto normale ("senza menta").
   note?: string;
 };
+
+// Il foglio della nota serve due casi diversi: la richiesta obbligatoria prima
+// di aggiungere un prodotto su richiesta, e la nota facoltativa su una riga che
+// e' gia' nel carrello.
+type NoteTarget =
+  | { kind: "richiesta"; p: Product }
+  | { kind: "nota"; p: Product; idx: number; qty: number };
 
 // "da €3,00" quando il prodotto ha piu' formati.
 function priceLabel(p: Product): string {
@@ -43,6 +51,7 @@ export default function OrderClient({
   splitBill,
   waiterCall,
   skinKey,
+  staffMode = false,
   submitOrder,
   callWaiter,
 }: {
@@ -53,6 +62,9 @@ export default function OrderClient({
   skinKey: string;
   splitBill: boolean;
   waiterCall: boolean;
+  // Aperta dal cameriere invece che dal cliente: cambiano solo le parole, il
+  // resto e' identico apposta.
+  staffMode?: boolean;
   submitOrder: (
     tableNumber: number,
     items: {
@@ -69,10 +81,12 @@ export default function OrderClient({
   // Senza sotto-conti non ha senso chiedere il nome: tutto va sul tavolo.
   const [nameStep, setNameStep] = useState(splitBill);
   const [nameInput, setNameInput] = useState("");
+  // Il cameriere non sta ordinando per se': la prima tasca e' il tavolo.
+  const primaPersona = staffMode ? "Tavolo" : "Io";
   const [people, setPeople] = useState<string[]>(
-    splitBill ? ["Io", "Condiviso"] : ["Tavolo"]
+    splitBill ? [primaPersona, "Condiviso"] : ["Tavolo"]
   );
-  const [active, setActive] = useState(splitBill ? "Io" : "Tavolo");
+  const [active, setActive] = useState(splitBill ? primaPersona : "Tavolo");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -82,9 +96,12 @@ export default function OrderClient({
   const [waiterPending, setWaiterPending] = useState(false);
   // Prodotto per cui e' aperta la scelta del formato.
   const [variantFor, setVariantFor] = useState<Product | null>(null);
-  // Prodotto su richiesta in attesa che il cliente scriva cosa desidera.
-  const [noteFor, setNoteFor] = useState<Product | null>(null);
+  // Foglio della nota aperto, e su cosa.
+  const [noteFor, setNoteFor] = useState<NoteTarget | null>(null);
   const [noteText, setNoteText] = useState("");
+  // Con piu' pezzi sulla stessa riga la nota puo' valere per tutti o per uno
+  // solo ("tre mojito, uno senza menta").
+  const [notaSoloUno, setNotaSoloUno] = useState(false);
   // Campo in linea per aggiungere una persona al conto.
   const [addingPerson, setAddingPerson] = useState(false);
   const [newPerson, setNewPerson] = useState("");
@@ -100,6 +117,14 @@ export default function OrderClient({
   const jumpingTo = useRef<string | null>(null);
 
   const Skin = getSkin(skinKey);
+
+  // Serve al carrello per risalire agli ingredienti di una riga e proporre le
+  // scorciatoie "senza ...".
+  const productById = useMemo(() => {
+    const m = new Map<string, Product>();
+    menu.forEach((c) => c.products.forEach((p) => m.set(p.id, p)));
+    return m;
+  }, [menu]);
 
   function confirmName() {
     const n = nameInput.trim();
@@ -143,7 +168,8 @@ export default function OrderClient({
     // Prodotto su richiesta: prima si scrive cosa si desidera.
     if (p.acceptsNote && nota === undefined) {
       setNoteText("");
-      setNoteFor(p);
+      setNotaSoloUno(false);
+      setNoteFor({ kind: "richiesta", p });
       return;
     }
 
@@ -199,6 +225,61 @@ export default function OrderClient({
 
   function reassign(idx: number, alias: string) {
     setCart((prev) => prev.map((c, i) => (i === idx ? { ...c, alias } : c)));
+  }
+
+  // Apre il foglio su una riga gia' nel carrello, con dentro la nota che ha
+  // adesso: si corregge invece di riscriverla da capo.
+  function apriNota(idx: number) {
+    const c = cart[idx];
+    const p = productById.get(c.productId);
+    if (!p) return;
+    setNoteText(c.note ?? "");
+    setNotaSoloUno(false);
+    setNoteFor({ kind: "nota", p, idx, qty: c.qty });
+  }
+
+  // Le scorciatoie sono interruttori dentro al testo, non uno stato a parte:
+  // cosi' la nota resta una frase sola, modificabile a mano senza sorprese.
+  function toggleSenza(ingrediente: string) {
+    const frase = `senza ${ingrediente.toLowerCase()}`;
+    setNoteText((t) => {
+      const parti = t
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const i = parti.findIndex((p) => p.toLowerCase() === frase);
+      if (i >= 0) parti.splice(i, 1);
+      else parti.push(frase);
+      return parti.join(", ");
+    });
+  }
+
+  function haSenza(ingrediente: string): boolean {
+    const frase = `senza ${ingrediente.toLowerCase()}`;
+    return noteText
+      .split(",")
+      .some((p) => p.trim().toLowerCase() === frase);
+  }
+
+  function salvaNota() {
+    if (!noteFor || noteFor.kind !== "nota") return;
+    const { idx } = noteFor;
+    const nota = noteText.trim() || undefined;
+    setCart((prev) =>
+      prev.flatMap((c, i) => {
+        if (i !== idx) return [c];
+        // "Uno senza menta": si stacca un pezzo dalla riga e gli si mette la
+        // nota, gli altri restano come sono.
+        if (notaSoloUno && c.qty > 1) {
+          return [
+            { ...c, qty: c.qty - 1 },
+            { ...c, qty: 1, note: nota },
+          ];
+        }
+        return [{ ...c, note: nota }];
+      })
+    );
+    setNoteFor(null);
   }
 
   function goTo(id: string) {
@@ -364,15 +445,19 @@ export default function OrderClient({
       <>
         <Skin.Hero tenantName={tenantName} logoUrl={logoUrl} tableNumber={tableNumber} />
         <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="text-lg font-semibold">Come ti chiami?</div>
+          <div className="text-lg font-semibold">
+            {staffMode ? "A nome di chi?" : "Come ti chiami?"}
+          </div>
           <p className="mt-1 text-sm text-neutral-500">
-            Serve solo per dividere il conto. Puoi saltare.
+            {staffMode
+              ? "Serve solo per dividere il conto. Se paga il tavolo, salta."
+              : "Serve solo per dividere il conto. Puoi saltare."}
           </p>
           <input
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && confirmName()}
-            placeholder="Il tuo nome"
+            placeholder={staffMode ? "Nome del cliente" : "Il tuo nome"}
             className="mt-3 w-full rounded-xl border border-neutral-200 px-4 py-3"
           />
           <div className="mt-3 flex gap-2">
@@ -403,15 +488,19 @@ export default function OrderClient({
           >
             ✓
           </div>
-          <div className="mt-3 text-lg font-semibold">Ordine inviato!</div>
+          <div className="mt-3 text-lg font-semibold">
+            {staffMode ? "Ordine registrato" : "Ordine inviato!"}
+          </div>
           <p className="mt-1 text-sm text-neutral-500">
-            Arriva subito allo staff. Pagherai alla cassa (tavolo {tableNumber}).
+            {staffMode
+              ? `È in coda sul tavolo ${tableNumber}, come quelli dal QR.`
+              : `Arriva subito allo staff. Pagherai alla cassa (tavolo ${tableNumber}).`}
           </p>
           <button
             onClick={() => setSent(false)}
             className="mt-4 rounded-xl bg-[var(--brand)] px-5 py-2.5 font-medium text-[var(--brand-on)]"
           >
-            Ordina ancora
+            {staffMode ? "Aggiungi altro" : "Ordina ancora"}
           </button>
         </div>
       </>
@@ -573,58 +662,130 @@ export default function OrderClient({
         ))}
       </div>
 
+      {/* z-50 e non z-40 come gli altri fogli: questo si apre anche da dentro
+          al carrello, e a parita' di livello il carrello gli finirebbe sopra. */}
       {noteFor && (
         <div
-          className="fixed inset-0 z-40 flex items-end"
+          className="fixed inset-0 z-50 flex items-end"
           style={{ background: "rgba(0,0,0,0.55)" }}
           onClick={() => setNoteFor(null)}
         >
           <div
-            className="mx-auto w-full max-w-md rounded-t-3xl bg-white p-4 pb-6"
+            className="mx-auto max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-4 pb-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200" />
-            <div className="text-lg font-semibold">{noteFor.name}</div>
+            <div className="text-lg font-semibold">{noteFor.p.name}</div>
             <p className="mt-1 text-sm text-neutral-500">
-              Scrivi cosa ti va: un cocktail fuori menu, oppure com&apos;è che
-              lo vorresti. Ci pensa il barman.
+              {noteFor.kind === "richiesta"
+                ? "Scrivi cosa ti va: un cocktail fuori menu, oppure com'è che lo vorresti. Ci pensa il barman."
+                : "Come lo vuoi? Tocca una scorciatoia o scrivilo tu."}
             </p>
 
+            {/* Le scorciatoie escono dagli ingredienti gia' a menu: togliere
+                qualcosa e' la richiesta piu' comune, e cosi' non si digita. */}
+            {noteFor.kind === "nota" && noteFor.p.ingredients.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {noteFor.p.ingredients.map((ing) => {
+                  const attivo = haSenza(ing);
+                  return (
+                    <button
+                      key={ing}
+                      onClick={() => toggleSenza(ing)}
+                      aria-pressed={attivo}
+                      className={
+                        "min-h-11 rounded-full px-3.5 py-2 text-sm transition " +
+                        (attivo
+                          ? "bg-[var(--brand)] font-medium text-[var(--brand-on)]"
+                          : "border border-neutral-200 bg-white text-neutral-600")
+                      }
+                    >
+                      senza {ing.toLowerCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <textarea
-              autoFocus
+              autoFocus={noteFor.kind === "richiesta"}
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              rows={3}
+              rows={noteFor.kind === "richiesta" ? 3 : 2}
               maxLength={200}
-              placeholder="Qualcosa di amaro col vermut, non troppo dolce"
-              aria-label={`Cosa desideri per ${noteFor.name}`}
+              placeholder={
+                noteFor.kind === "richiesta"
+                  ? "Qualcosa di amaro col vermut, non troppo dolce"
+                  : "Poco ghiaccio, ben cotta…"
+              }
+              aria-label={`Nota per ${noteFor.p.name}`}
               className="mt-3 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm"
             />
 
             <div className="mt-1 flex items-center justify-between text-xs text-neutral-500">
               <span>
-                {noteFor.priceCents > 0 && (
-                  <>Prezzo di partenza {fmt(noteFor.priceCents)}</>
+                {noteFor.kind === "richiesta" && noteFor.p.priceCents > 0 && (
+                  <>Prezzo di partenza {fmt(noteFor.p.priceCents)}</>
                 )}
               </span>
               <span className="tabular-nums">{noteText.length}/200</span>
             </div>
 
-            <button
-              onClick={() => {
-                const p = noteFor;
-                setNoteFor(null);
-                add(p, undefined, false, noteText);
-              }}
-              disabled={!noteText.trim()}
-              className="mt-3 w-full rounded-xl bg-[var(--brand)] px-4 py-3 font-medium text-[var(--brand-on)] disabled:opacity-40"
-            >
-              Aggiungi al carrello
-            </button>
-            <p className="mt-2 text-center text-xs text-neutral-500">
-              Se serve qualcosa di diverso dal solito, il barman può
-              correggere il prezzo: te lo vedi aggiornato qui.
-            </p>
+            {/* Con piu' pezzi uguali bisogna sapere se la nota vale per tutti:
+                "tre mojito, uno senza menta" e' la richiesta normale al banco. */}
+            {noteFor.kind === "nota" && noteFor.qty > 1 && (
+              <div className="mt-3 flex gap-2">
+                {[
+                  { v: false, l: `Tutti e ${noteFor.qty}` },
+                  { v: true, l: "Solo uno" },
+                ].map(({ v, l }) => (
+                  <button
+                    key={l}
+                    onClick={() => setNotaSoloUno(v)}
+                    aria-pressed={notaSoloUno === v}
+                    className={
+                      "min-h-11 flex-1 rounded-xl px-3 py-2 text-sm transition " +
+                      (notaSoloUno === v
+                        ? "bg-[var(--brand)] font-medium text-[var(--brand-on)]"
+                        : "border border-neutral-200 bg-white text-neutral-600")
+                    }
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {noteFor.kind === "richiesta" ? (
+              <>
+                <button
+                  onClick={() => {
+                    const p = noteFor.p;
+                    setNoteFor(null);
+                    add(p, undefined, false, noteText);
+                  }}
+                  disabled={!noteText.trim()}
+                  className="mt-3 w-full rounded-xl bg-[var(--brand)] px-4 py-3 font-medium text-[var(--brand-on)] disabled:opacity-40"
+                >
+                  Aggiungi al carrello
+                </button>
+                <p className="mt-2 text-center text-xs text-neutral-500">
+                  Se serve qualcosa di diverso dal solito, il barman può
+                  correggere il prezzo: te lo vedi aggiornato qui.
+                </p>
+              </>
+            ) : (
+              <button
+                onClick={salvaNota}
+                className="mt-3 w-full rounded-xl bg-[var(--brand)] px-4 py-3 font-medium text-[var(--brand-on)]"
+              >
+                {noteText.trim()
+                  ? "Salva la nota"
+                  : cart[noteFor.idx]?.note
+                    ? "Togli la nota"
+                    : "Chiudi"}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -787,13 +948,22 @@ export default function OrderClient({
                     </span>
                   </div>
 
-                  {/* La richiesta va per intero su una riga sua: stretta nella
+                  {/* La nota va per intero su una riga sua: stretta nella
                       colonna del nome diventava una colonna di parole. */}
-                  {c.note && (
-                    <div className="w-full pl-2 text-xs italic text-neutral-500">
-                      «{c.note}»
-                    </div>
-                  )}
+                  <div className="flex w-full items-baseline gap-2 pl-2">
+                    {c.note && (
+                      <span className="min-w-0 flex-1 text-xs italic text-neutral-500">
+                        «{c.note}»
+                      </span>
+                    )}
+                    <button
+                      onClick={() => apriNota(idx)}
+                      className="shrink-0 text-xs underline"
+                      style={{ color: "var(--brand-text)" }}
+                    >
+                      {c.note ? "modifica" : "+ nota"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

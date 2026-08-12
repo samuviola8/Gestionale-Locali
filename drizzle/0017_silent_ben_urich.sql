@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN "voided_at" timestamp with time zone;

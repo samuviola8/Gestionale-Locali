@@ -120,6 +120,13 @@
       "when": 1786556767041,
       "tag": "0016_ordinary_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786559233033,
+      "tag": "0017_silent_ben_urich",
+      "breakpoints": true
     }
   ]
 }

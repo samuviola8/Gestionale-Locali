@@ -46,7 +46,12 @@ export async function GET(req: Request) {
     createdAt: o.createdAt.toISOString(),
     items: its
       .filter((i) => i.orderId === o.id)
-      .map((i) => ({ name: i.name, quantity: i.quantity, alias: i.alias })),
+      .map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        alias: i.alias,
+        voided: i.voidedAt !== null,
+      })),
   }));
 
   // Stesso calcolo che vede il cassiere, non un conteggio parallelo: se lo

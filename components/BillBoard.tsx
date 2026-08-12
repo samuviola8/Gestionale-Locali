@@ -8,15 +8,31 @@ export default function BillBoard({
   markAliasPaid,
   closeTable,
   setPartySize,
+  voidItem,
 }: {
   markAliasPaid: (tableNumber: number, alias: string) => Promise<void>;
   closeTable: (tableNumber: number) => Promise<void>;
   setPartySize: (tableNumber: number, partySize: number) => Promise<void>;
+  voidItem: (
+    itemId: string,
+    annulla: boolean
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [tables, setTables] = useState<BillTable[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [confirmTable, setConfirmTable] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Un tavolo alla volta in modifica: le crocette sempre accese si toccano
+  // per sbaglio proprio mentre si incassa.
+  const [modifica, setModifica] = useState<number | null>(null);
+  const [erroreVoce, setErroreVoce] = useState<string | null>(null);
+
+  async function annulla(itemId: string, annullare: boolean) {
+    setErroreVoce(null);
+    const esito = await voidItem(itemId, annullare);
+    if (!esito.ok) setErroreVoce(esito.error);
+    await load();
+  }
 
   async function load() {
     try {
@@ -89,6 +105,23 @@ export default function BillBoard({
                   {t.hasPending && (
                     <span className="badge badge-warn">Ordine in corso</span>
                   )}
+                  <button
+                    onClick={() => {
+                      setErroreVoce(null);
+                      setModifica(
+                        modifica === t.tableNumber ? null : t.tableNumber
+                      );
+                    }}
+                    className="text-xs underline"
+                    style={{
+                      color:
+                        modifica === t.tableNumber
+                          ? "var(--text)"
+                          : "var(--muted)",
+                    }}
+                  >
+                    {modifica === t.tableNumber ? "fine" : "modifica"}
+                  </button>
                 </div>
                 <div className="text-right">
                   <div className="tnum text-lg font-semibold">
@@ -152,6 +185,22 @@ export default function BillBoard({
               <div className="mt-1.5 tnum text-xs" style={{ color: "var(--muted)" }}>
                 {fmt(t.incassato)} di {fmt(t.total)}
               </div>
+
+              {modifica === t.tableNumber && (
+                <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+                  Annulla quello che non è stato servito: esce dal totale e
+                  resta barrato, così si sa sempre perché il conto è questo.
+                </p>
+              )}
+              {modifica === t.tableNumber && erroreVoce && (
+                <p
+                  role="status"
+                  className="mt-1 text-xs"
+                  style={{ color: "var(--danger)" }}
+                >
+                  {erroreVoce}
+                </p>
+              )}
             </div>
 
             <div className="mt-4 space-y-2 px-4">
@@ -195,16 +244,18 @@ export default function BillBoard({
 
                   <ul className="mt-2 space-y-0.5 text-sm">
                     {p.items.map((i, idx) => (
-                      <li
-                        key={idx}
-                        className="flex justify-between gap-3"
-                        style={
-                          i.paid
-                            ? { color: "var(--muted)", textDecoration: "line-through" }
-                            : undefined
-                        }
-                      >
-                        <span className="min-w-0">
+                      <li key={i.id ?? idx} className="flex justify-between gap-3">
+                        <span
+                          className="min-w-0"
+                          style={
+                            i.paid || i.voided
+                              ? {
+                                  color: "var(--muted)",
+                                  textDecoration: "line-through",
+                                }
+                              : undefined
+                          }
+                        >
                           <span className="tnum">{i.quantity}×</span> {i.name}
                           {i.note && (
                             <span className="block text-xs italic">
@@ -212,8 +263,36 @@ export default function BillBoard({
                             </span>
                           )}
                         </span>
-                        <span className="tnum shrink-0">
-                          {fmt(i.priceCents * i.quantity)}
+                        <span className="flex shrink-0 items-center gap-2">
+                          {i.voided && (
+                            <span className="badge badge-muted">annullato</span>
+                          )}
+                          {modifica === t.tableNumber && i.id && !i.paid && (
+                            <button
+                              onClick={() => annulla(i.id!, !i.voided)}
+                              className="text-xs underline"
+                              style={{
+                                color: i.voided
+                                  ? "var(--brand-text)"
+                                  : "var(--danger)",
+                              }}
+                            >
+                              {i.voided ? "ripristina" : "annulla"}
+                            </button>
+                          )}
+                          <span
+                            className="tnum"
+                            style={
+                              i.paid || i.voided
+                                ? {
+                                    color: "var(--muted)",
+                                    textDecoration: "line-through",
+                                  }
+                                : undefined
+                            }
+                          >
+                            {fmt(i.priceCents * i.quantity)}
+                          </span>
                         </span>
                       </li>
                     ))}
@@ -274,12 +353,43 @@ export default function BillBoard({
                   </div>
                   <ul className="mt-1 space-y-0.5 text-sm" style={{ color: "var(--muted)" }}>
                     {t.sharedItems.map((i, idx) => (
-                      <li key={idx} className="flex justify-between gap-3">
-                        <span>
+                      <li key={i.id ?? idx} className="flex justify-between gap-3">
+                        <span
+                          style={
+                            i.voided
+                              ? { textDecoration: "line-through" }
+                              : undefined
+                          }
+                        >
                           <span className="tnum">{i.quantity}×</span> {i.name}
                         </span>
-                        <span className="tnum">
-                          {fmt(i.priceCents * i.quantity)}
+                        <span className="flex items-center gap-2">
+                          {i.voided && (
+                            <span className="badge badge-muted">annullato</span>
+                          )}
+                          {modifica === t.tableNumber && i.id && !i.paid && (
+                            <button
+                              onClick={() => annulla(i.id!, !i.voided)}
+                              className="text-xs underline"
+                              style={{
+                                color: i.voided
+                                  ? "var(--brand-text)"
+                                  : "var(--danger)",
+                              }}
+                            >
+                              {i.voided ? "ripristina" : "annulla"}
+                            </button>
+                          )}
+                          <span
+                            className="tnum"
+                            style={
+                              i.voided
+                                ? { textDecoration: "line-through" }
+                                : undefined
+                            }
+                          >
+                            {fmt(i.priceCents * i.quantity)}
+                          </span>
                         </span>
                       </li>
                     ))}

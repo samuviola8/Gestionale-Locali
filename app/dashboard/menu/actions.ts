@@ -151,6 +151,53 @@ export async function deleteVariant(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/menu");
 }
 
+// Gli ingredienti non servono solo a far bello il menu: da questi nascono le
+// scorciatoie "senza gin" che il cliente tocca invece di scrivere. Un prodotto
+// senza ingredienti resta ordinabile, ma con la sola nota a mano libera.
+export async function addIngredient(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const productId = String(formData.get("productId") ?? "");
+  const nome = String(formData.get("ingredient") ?? "").trim().slice(0, 40);
+  if (!productId || !nome) return;
+
+  const rows = await db
+    .select({ ingredients: menuProducts.ingredients })
+    .from(menuProducts)
+    .where(and(eq(menuProducts.id, productId), eq(menuProducts.tenantId, tenantId)))
+    .limit(1);
+  if (!rows[0]) return;
+
+  // Niente doppioni: darebbero due chip identiche nel foglio della nota.
+  const attuali = rows[0].ingredients;
+  if (attuali.some((i) => i.toLowerCase() === nome.toLowerCase())) return;
+
+  await db
+    .update(menuProducts)
+    .set({ ingredients: [...attuali, nome] })
+    .where(and(eq(menuProducts.id, productId), eq(menuProducts.tenantId, tenantId)));
+  revalidatePath("/dashboard/menu");
+}
+
+export async function deleteIngredient(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const productId = String(formData.get("productId") ?? "");
+  const nome = String(formData.get("ingredient") ?? "");
+  if (!productId || !nome) return;
+
+  const rows = await db
+    .select({ ingredients: menuProducts.ingredients })
+    .from(menuProducts)
+    .where(and(eq(menuProducts.id, productId), eq(menuProducts.tenantId, tenantId)))
+    .limit(1);
+  if (!rows[0]) return;
+
+  await db
+    .update(menuProducts)
+    .set({ ingredients: rows[0].ingredients.filter((i) => i !== nome) })
+    .where(and(eq(menuProducts.id, productId), eq(menuProducts.tenantId, tenantId)));
+  revalidatePath("/dashboard/menu");
+}
+
 export async function deleteProduct(formData: FormData): Promise<void> {
   const tenantId = await requireTenantId();
   const id = String(formData.get("id") ?? "");

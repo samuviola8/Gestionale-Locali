@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
 import BillBoard from "@/components/BillBoard";
 import { markAliasPaid, closeTable, setPartySize } from "./actions";
+import { voidOrderItem } from "../orders/actions";
 
 export default async function BillPage() {
   const session = await getSessionUser();
@@ -21,6 +22,7 @@ export default async function BillPage() {
         markAliasPaid={markAliasPaid}
         closeTable={closeTable}
         setPartySize={setPartySize}
+        voidItem={voidOrderItem}
       />
     </div>
   );

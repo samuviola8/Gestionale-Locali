@@ -208,6 +208,11 @@ export const orderItems = pgTable("order_items", {
   // Segnato quando il barman corregge il prezzo di questa riga: serve a
   // dirlo al cliente invece di cambiargli il conto in silenzio.
   priceAdjusted: boolean("price_adjusted").notNull().default(false),
+  // Voce tolta dal conto perche' il prodotto e' finito o l'ordine era sbagliato.
+  // Si annulla, non si cancella: la riga resta barrata sotto gli occhi di tutti,
+  // altrimenti al cliente il totale cambierebbe senza spiegazione e in cassa
+  // resterebbe un buco che nessuno sa ricostruire.
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
   alias: text("alias"),
   paid: boolean("paid").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

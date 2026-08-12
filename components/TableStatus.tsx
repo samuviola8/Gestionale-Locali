@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { formatPrice as fmt } from "@/lib/format";
 import type { BillTable } from "@/lib/bill";
 
-type Item = { name: string; quantity: number; alias: string | null };
+type Item = {
+  name: string;
+  quantity: number;
+  alias: string | null;
+  voided: boolean;
+};
 type Order = { id: string; status: string; createdAt: string; items: Item[] };
 
 const LABEL: Record<string, string> = {
@@ -69,7 +74,20 @@ export default function TableStatus({
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span className="text-neutral-700">
-                  {o.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
+                  {o.items.map((i, k) => (
+                    <span key={k}>
+                      {k > 0 && ", "}
+                      <span
+                        style={
+                          i.voided
+                            ? { textDecoration: "line-through", opacity: 0.55 }
+                            : undefined
+                        }
+                      >
+                        {i.quantity}× {i.name}
+                      </span>
+                    </span>
+                  ))}
                 </span>
                 <span
                   className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs"
@@ -130,11 +148,20 @@ export default function TableStatus({
                   )}
                   {/* Se il barman ha ritoccato il prezzo di una richiesta, il
                       cliente deve saperlo qui e non alla cassa. */}
-                  {p.items.some((i) => i.priceAdjusted) && (
+                  {p.items.some((i) => i.priceAdjusted && !i.voided) && (
                     <div style={{ color: "var(--warn)" }}>
                       Prezzo aggiornato dal barman su una richiesta
                     </div>
                   )}
+                  {/* Una voce tolta cambia il totale: dirlo qui, con il nome
+                      di cosa e' saltato, evita la discussione alla cassa. */}
+                  {p.items
+                    .filter((i) => i.voided)
+                    .map((i, k) => (
+                      <div key={k} style={{ color: "var(--warn)" }}>
+                        {i.name} annullato dal locale
+                      </div>
+                    ))}
                   {p.sharedQuota > 0 && (
                     <div className="flex justify-between gap-3">
                       <span>Parte del condiviso</span>
@@ -152,6 +179,15 @@ export default function TableStatus({
             ))}
           </ul>
 
+          {conto.sharedItems.some((i) => i.voided) && (
+            <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
+              {conto.sharedItems
+                .filter((i) => i.voided)
+                .map((i) => i.name)
+                .join(", ")}{" "}
+              annullato dal locale: non è nel condiviso.
+            </p>
+          )}
           {conto.sharedTotal > 0 && (
             <p className="mt-3 text-xs text-neutral-500">
               Il condiviso ({fmt(conto.sharedTotal)}) è diviso tra{" "}

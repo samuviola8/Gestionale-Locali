@@ -7,6 +7,8 @@ import {
   setProductImage,
   addVariant,
   deleteVariant,
+  addIngredient,
+  deleteIngredient,
 } from "./actions";
 
 // I prodotti di una categoria. Carica i propri dati da solo: e' quello che
@@ -121,6 +123,53 @@ export default async function ElencoProdotti({
                   aria-label={`Prezzo del nuovo formato di ${p.name}`}
                   placeholder="€"
                   className="h-8 w-16 rounded-full px-2.5 text-xs"
+                  style={{
+                    border: "1px dashed var(--border)",
+                    background: "transparent",
+                    color: "var(--text)",
+                  }}
+                />
+                <button
+                  className="h-8 rounded-full px-2.5 text-xs"
+                  style={{ color: "var(--brand-text)" }}
+                >
+                  aggiungi
+                </button>
+              </form>
+            </div>
+
+            {/* Ingredienti: da qui nascono le scorciatoie "senza gin" che il
+                cliente tocca invece di scrivere la nota a mano. */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Ingredienti
+              </span>
+              {p.ingredients.map((ing) => (
+                <form
+                  key={ing}
+                  action={deleteIngredient}
+                  className="flex items-center gap-1 rounded-full pl-2.5 pr-1 text-xs"
+                  style={{ background: "var(--surface-2)" }}
+                >
+                  <input type="hidden" name="productId" value={p.id} />
+                  <input type="hidden" name="ingredient" value={ing} />
+                  <span>{ing}</span>
+                  <button
+                    aria-label={`Togli ${ing} da ${p.name}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-full"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    ✕
+                  </button>
+                </form>
+              ))}
+              <form action={addIngredient} className="flex items-center gap-1">
+                <input type="hidden" name="productId" value={p.id} />
+                <input
+                  name="ingredient"
+                  aria-label={`Nuovo ingrediente di ${p.name}`}
+                  placeholder="gin, menta…"
+                  className="h-8 w-28 rounded-full px-2.5 text-xs"
                   style={{
                     border: "1px dashed var(--border)",
                     background: "transparent",

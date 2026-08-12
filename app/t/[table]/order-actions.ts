@@ -1,25 +1,12 @@
 "use server";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  menuProducts,
-  menuProductVariants,
-  orders,
-  orderItems,
-  waiterCalls,
-} from "@/lib/db/schema";
+import { waiterCalls } from "@/lib/db/schema";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { requireTableSession } from "@/lib/table-session";
 import { getTenantModules } from "@/lib/modules";
-
-type IncomingItem = {
-  productId: string;
-  variantId?: string | null;
-  alias: string;
-  quantity: number;
-  note?: string;
-};
+import { createOrderRows, type IncomingItem } from "@/lib/order-create";
 
 export async function createOrder(
   tableNumber: number,
@@ -36,117 +23,7 @@ export async function createOrder(
   const modules = await getTenantModules(tenant.id);
   if (!modules.qr_ordering) return { ok: false };
 
-  const clean = items.filter((i) => i.productId && i.quantity > 0);
-  if (!clean.length) return { ok: false };
-
-  // Prezzi e nomi vengono presi dal DB, mai dal client.
-  const ids = [...new Set(clean.map((i) => i.productId))];
-  const prods = await db
-    .select({
-      id: menuProducts.id,
-      name: menuProducts.name,
-      priceCents: menuProducts.priceCents,
-      available: menuProducts.available,
-      acceptsNote: menuProducts.acceptsNote,
-    })
-    .from(menuProducts)
-    .where(and(eq(menuProducts.tenantId, tenant.id), inArray(menuProducts.id, ids)));
-  const byId = new Map(prods.map((p) => [p.id, p]));
-
-  // Anche le varianti vengono rilette dal DB: prezzo e nome non arrivano mai
-  // dal client, e la variante deve appartenere al prodotto richiesto.
-  const variantIds = clean
-    .map((i) => i.variantId)
-    .filter((v): v is string => !!v);
-  const variants = variantIds.length
-    ? await db
-        .select({
-          id: menuProductVariants.id,
-          productId: menuProductVariants.productId,
-          name: menuProductVariants.name,
-          priceCents: menuProductVariants.priceCents,
-          available: menuProductVariants.available,
-        })
-        .from(menuProductVariants)
-        .where(
-          and(
-            eq(menuProductVariants.tenantId, tenant.id),
-            inArray(menuProductVariants.id, [...new Set(variantIds)])
-          )
-        )
-    : [];
-  const variantById = new Map(variants.map((v) => [v.id, v]));
-
-  const rows = clean
-    .map((i) => {
-      const p = byId.get(i.productId);
-      if (!p || !p.available) return null;
-
-      // La richiesta scritta si accetta solo dove il locale l'ha prevista,
-      // e con un tetto: e' testo libero che finisce sotto gli occhi del barman.
-      const nota = p.acceptsNote
-        ? (i.note ?? "").trim().slice(0, 200) || null
-        : null;
-      // Un prodotto su richiesta senza richiesta non ha senso.
-      if (p.acceptsNote && !nota) return null;
-
-      if (i.variantId) {
-        const v = variantById.get(i.variantId);
-        if (!v || v.productId !== p.id || !v.available) return null;
-        return {
-          productId: p.id,
-          variantId: v.id,
-          name: `${p.name} — ${v.name}`,
-          priceCents: v.priceCents,
-          quantity: Math.min(i.quantity, 99),
-          note: nota,
-          alias: modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo",
-        };
-      }
-
-      return {
-        productId: p.id,
-        variantId: null,
-        name: p.name,
-        priceCents: p.priceCents,
-        quantity: Math.min(i.quantity, 99),
-        note: nota,
-        // Senza il modulo sotto-conti tutto finisce sul conto del tavolo,
-        // qualunque cosa mandi il client.
-        alias: modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo",
-      };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
-
-  if (!rows.length) return { ok: false };
-
-  // Il numero di persone arriva dal client ma non ci si fida: serve a dividere
-  // il conto, quindi un valore assurdo va scartato, non salvato.
-  const persone =
-    Number.isInteger(partySize) && partySize! >= 1 && partySize! <= 50
-      ? partySize!
-      : null;
-
-  const inserted = await db
-    .insert(orders)
-    .values({ tenantId: tenant.id, tableNumber, status: "new", partySize: persone })
-    .returning({ id: orders.id });
-  const orderId = inserted[0].id;
-
-  await db.insert(orderItems).values(
-    rows.map((r) => ({
-      orderId,
-      productId: r.productId,
-      variantId: r.variantId,
-      note: r.note,
-      name: r.name,
-      priceCents: r.priceCents,
-      quantity: r.quantity,
-      alias: r.alias,
-    }))
-  );
-
-  return { ok: true };
+  return createOrderRows(tenant.id, tableNumber, items, modules, partySize);
 }
 
 export async function callWaiter(

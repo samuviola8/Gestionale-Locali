@@ -21,6 +21,45 @@ export async function advanceOrderStatus(
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
 }
 
+// Il prodotto e' finito, o l'ordine era sbagliato: la voce esce dal conto.
+// Annullata, non cancellata — resta barrata in coda e sul conto, cosi' il
+// cliente vede cosa gli e' stato tolto e la cassa sa perche' il totale e' quello.
+export async function voidOrderItem(
+  itemId: string,
+  annulla: boolean
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+
+  const miei = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.tenantId, session.tenantId));
+
+  // Come per il prezzo: una riga gia' incassata non si tocca, o la cassa non
+  // torna piu' con quello che il cliente ha pagato.
+  const cambiate = miei.length
+    ? await db
+        .update(orderItems)
+        .set({ voidedAt: annulla ? new Date() : null })
+        .where(
+          and(
+            eq(orderItems.id, itemId),
+            inArray(
+              orderItems.orderId,
+              miei.map((o) => o.id)
+            ),
+            eq(orderItems.paid, false)
+          )
+        )
+        .returning({ id: orderItems.id })
+    : [];
+
+  if (!cambiate.length)
+    return { ok: false, error: "Riga già pagata: non si annulla più." };
+  return { ok: true };
+}
+
 // Il barman corregge il prezzo di una richiesta fuori standard. Si tocca la
 // singola riga, non il prodotto a listino: la prossima richiesta riparte dal
 // prezzo di partenza.

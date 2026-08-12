@@ -10,6 +10,7 @@ import {
   IconMenu,
   IconQr,
   IconUsers,
+  IconPlus,
 } from "@/components/icons";
 
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
@@ -25,6 +26,12 @@ const items: {
     href: "/dashboard/orders",
     label: "Coda ordini",
     Icon: IconOrders,
+    module: "qr_ordering",
+  },
+  {
+    href: "/dashboard/ordina",
+    label: "Ordine al banco",
+    Icon: IconPlus,
     module: "qr_ordering",
   },
   {
@@ -54,7 +61,10 @@ export default function DashboardNav({
   return (
     <nav className="space-y-1">
       {visible.map(({ href, label, Icon }) => {
-        const active = path === href;
+        // Anche le pagine figlie tengono accesa la voce: dentro "Ordine al
+        // banco" per un tavolo, la barra non deve sembrare altrove.
+        const active =
+          path === href || (href !== "/dashboard" && path.startsWith(href + "/"));
         return (
           // Link e non <a>: naviga lato client e precarica la pagina al
           // passaggio del mouse, invece di ricaricare tutto da capo.

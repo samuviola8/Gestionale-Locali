@@ -51,12 +51,21 @@ export async function loadOpenTables(
 
   const orderTable = new Map(wanted.map((o) => [o.id, o.tableNumber]));
 
+  // Un ordine annullato per intero non e' piu' "in corso": non arrivera' mai
+  // niente, e segnalarlo bloccherebbe la chiusura del tavolo per nulla.
+  const conRigheVive = new Set(
+    its.filter((i) => i.voidedAt === null).map((i) => i.orderId)
+  );
+
   const pending = new Map<number, boolean>();
   // Se due telefoni dichiarano numeri diversi si tiene il maggiore, cosi'
   // nessuno resta senza coperto.
   const partySizes = new Map<number, number>();
   for (const o of wanted) {
-    if (o.status === "new" || o.status === "preparing") {
+    if (
+      (o.status === "new" || o.status === "preparing") &&
+      conRigheVive.has(o.id)
+    ) {
       pending.set(o.tableNumber, true);
     }
     if (o.partySize) {
@@ -84,12 +93,14 @@ export async function loadOpenTables(
     const alias = it.alias ?? "Tavolo";
     if (!am.has(alias)) am.set(alias, []);
     am.get(alias)!.push({
+      id: it.id,
       name: it.name,
       quantity: it.quantity,
       priceCents: it.priceCents,
       paid: it.paid,
       note: it.note,
       priceAdjusted: it.priceAdjusted,
+      voided: it.voidedAt !== null,
     });
   }
 

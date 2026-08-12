@@ -49,6 +49,18 @@ export function IconOrders(p: Props) {
   );
 }
 
+// Ordine preso a voce: uno scontrino con il piu'.
+export function IconPlus(p: Props) {
+  return (
+    <Base {...p}>
+      <line x1="9" y1="7" x2="19" y2="7" />
+      <line x1="9" y1="12" x2="19" y2="12" />
+      <line x1="9" y1="17" x2="14" y2="17" />
+      <line x1="4.5" y1="17" x2="4.5" y2="7" />
+    </Base>
+  );
+}
+
 export function IconBill(p: Props) {
   return (
     <Base {...p}>
