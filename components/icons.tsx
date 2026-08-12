@@ -49,6 +49,17 @@ export function IconOrders(p: Props) {
   );
 }
 
+export function IconChart(p: Props) {
+  return (
+    <Base {...p}>
+      <line x1="4" y1="20" x2="20" y2="20" />
+      <rect x="6" y="12" width="3.5" height="6" rx="1" />
+      <rect x="12" y="7" width="3.5" height="11" rx="1" />
+      <rect x="17.5" y="14" width="3" height="4" rx="1" />
+    </Base>
+  );
+}
+
 // Ordine preso a voce: uno scontrino con il piu'.
 export function IconPlus(p: Props) {
   return (

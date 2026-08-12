@@ -11,6 +11,7 @@ import {
   IconQr,
   IconUsers,
   IconPlus,
+  IconChart,
 } from "@/components/icons";
 
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
@@ -40,6 +41,7 @@ const items: {
     Icon: IconBill,
     module: "split_bill",
   },
+  { href: "/dashboard/analytics", label: "Analytics", Icon: IconChart },
   { href: "/dashboard/menu", label: "Menu", Icon: IconMenu },
   {
     href: "/dashboard/tables",

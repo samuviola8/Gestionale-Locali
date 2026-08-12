@@ -2,7 +2,12 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { billSettlements, orders, orderItems } from "@/lib/db/schema";
+import {
+  billSettlements,
+  orders,
+  orderItems,
+  tableClosures,
+} from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { revokeTableSessions } from "@/lib/table-session";
 import { ALIAS_CONDIVISO } from "@/lib/bill";
@@ -75,6 +80,10 @@ export async function closeTable(tableNumber: number): Promise<void> {
   const ids = await tableOrderIds(session.tenantId, tableNumber);
   if (!ids.length) return;
 
+  // Si legge il tavolo com'e' adesso, prima di smontarlo: dopo la chiusura il
+  // numero di coperti e la tariffa non sarebbero piu' ricostruibili.
+  const tavolo = (await loadOpenTables(session.tenantId, tableNumber))[0];
+
   await db
     .update(orderItems)
     .set({ paid: true })
@@ -84,6 +93,15 @@ export async function closeTable(tableNumber: number): Promise<void> {
     .update(orders)
     .set({ status: "served", closedAt: new Date() })
     .where(inArray(orders.id, ids));
+
+  if (tavolo) {
+    await db.insert(tableClosures).values({
+      tenantId: session.tenantId,
+      tableNumber,
+      partySize: tavolo.partySize,
+      coverChargeCents: tavolo.coverChargeCents,
+    });
+  }
 
   // Il conto e' chiuso: le registrazioni degli extra non servono piu' e non
   // devono sporcare il prossimo tavolo con lo stesso numero.

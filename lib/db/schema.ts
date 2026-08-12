@@ -241,6 +241,24 @@ export const billSettlements = pgTable(
   (table) => [unique().on(table.tenantId, table.tableNumber, table.alias)]
 );
 
+// Tavolo archiviato. Serve perche' alla chiusura le righe di bill_settlements
+// spariscono, e con loro l'unica traccia del coperto incassato: le consumazioni
+// restano in order_items, il coperto no. Ricalcolarlo dopo dal partySize
+// darebbe numeri che cambiano ogni volta che il locale ritocca la tariffa, e un
+// incasso sbagliato e' peggio di un incasso assente. Qui la tariffa si congela.
+export const tableClosures = pgTable("table_closures", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  tableNumber: integer("table_number").notNull(),
+  // Quante persone erano sedute: e' anche il numero di coperti serviti, dato
+  // che dagli ordini non si ricava senza contare piu' volte lo stesso tavolo.
+  partySize: integer("party_size").notNull().default(0),
+  coverChargeCents: integer("cover_charge_cents").notNull().default(0),
+  closedAt: timestamp("closed_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Gestore del servizio (super-admin), separato dagli utenti dei locali.
 export const platformAdmins = pgTable("platform_admins", {
   id: uuid("id").primaryKey().defaultRandom(),
