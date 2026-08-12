@@ -154,6 +154,55 @@ label:has(input[type="radio"]) {
   color-scheme: dark;
 }
 
+/* ---- Barre di scorrimento ----
+   Quella di sistema, con le frecce agli estremi e il fondo grigio, e' la cosa
+   che piu' fa sembrare l'interfaccia non curata. Qui resta solo un filetto
+   arrotondato che compare sul contenuto, senza frecce e senza binario. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 40%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 38%, transparent);
+  border-radius: 999px;
+  /* Il bordo trasparente ritagliato lascia aria intorno al filetto: sembra
+     piu' sottile di quanto la barra sia davvero, e resta comodo da afferrare. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted) 65%, transparent);
+}
+
+/* Via le frecce agli estremi. */
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Fascia che scorre in orizzontale (pillole delle categorie e simili). */
+.scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Spazio sotto: la barra non finisce sopra le pillole. */
+  padding-bottom: 6px;
+  /* Trascinando di lato non si attiva il "torna indietro" del browser. */
+  overscroll-behavior-x: contain;
+}
+
 /* Campi input coerenti col tema */
 input,
 textarea {
@@ -272,6 +321,23 @@ textarea:focus-visible {
 }
 
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* Sagoma di caricamento: un riflesso che scorre, abbastanza lento da
+   leggersi come "sta arrivando" e non come un lampeggio. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    color-mix(in srgb, var(--muted) 18%, var(--surface-2)) 37%,
+    var(--surface-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-scorre 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-scorre {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
 
 /* Campi dei moduli dello staff: stessa altezza dei pulsanti, si toccano bene. */
 .input {

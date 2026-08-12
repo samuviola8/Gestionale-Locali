@@ -61,7 +61,7 @@ function Hero({ tenantName, logoUrl, tableNumber }: HeroProps) {
 function CategoryNav({ categories, activeId, onSelect }: CategoryNavProps) {
   return (
     <div className="sticky top-0 z-20 -mx-4 mt-4 border-b border-neutral-100 bg-white/85 px-4 py-2.5 backdrop-blur">
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="scroll-x flex gap-2">
         {categories.map((c) => (
           <button
             key={c.id}
