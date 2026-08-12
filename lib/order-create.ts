@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuProducts, menuProductVariants, orders, orderItems } from "@/lib/db/schema";
 import type { ModuleState } from "@/lib/modules";
+import { getChannel, type Channel } from "@/lib/channels";
 
 // Un ordine nasce uguale sia dal telefono del cliente sia dalla dashboard del
 // cameriere: cambia solo chi ha il diritto di crearlo. Qui sta la parte comune
@@ -15,15 +16,31 @@ export type IncomingItem = {
   note?: string;
 };
 
+// Chi ritira o a chi si consegna, quando l'ordine non ha un tavolo.
+export type DatiCliente = {
+  nome?: string;
+  telefono?: string;
+  indirizzo?: string;
+  consegnaCents?: number;
+};
+
 const MAX_NOTA = 200;
+const MAX_TESTO = 120;
+
+function pulisci(v: string | undefined, max = MAX_TESTO): string | null {
+  return (v ?? "").trim().slice(0, max) || null;
+}
 
 export async function createOrderRows(
   tenantId: string,
-  tableNumber: number,
+  tableNumber: number | null,
   items: IncomingItem[],
   modules: ModuleState,
-  partySize?: number
-): Promise<{ ok: boolean }> {
+  partySize?: number,
+  channel: Channel = "tavolo",
+  cliente?: DatiCliente
+): Promise<{ ok: false } | { ok: true; orderId: string }> {
+  const canale = getChannel(channel);
   const clean = items.filter((i) => i.productId && i.quantity > 0);
   if (!clean.length) return { ok: false };
 
@@ -76,9 +93,12 @@ export async function createOrderRows(
       if (p.acceptsNote && !nota) return null;
 
       const quantity = Math.min(i.quantity, 99);
-      // Senza il modulo sotto-conti tutto finisce sul conto del tavolo,
-      // qualunque cosa mandi il client.
-      const alias = modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo";
+      // Senza il modulo sotto-conti, e fuori dalla sala, tutto finisce su un
+      // conto solo: al banco o in consegna non c'e' niente da dividere.
+      const alias =
+        modules.split_bill && canale.seduti
+          ? i.alias?.trim() || "Tavolo"
+          : "Tavolo";
 
       if (i.variantId) {
         const v = variantById.get(i.variantId);
@@ -109,15 +129,40 @@ export async function createOrderRows(
   if (!rows.length) return { ok: false };
 
   // Il numero di persone arriva dal client ma non ci si fida: serve a dividere
-  // il conto, quindi un valore assurdo va scartato, non salvato.
+  // il conto, quindi un valore assurdo va scartato, non salvato. Fuori dalla
+  // sala non c'e' nessuno seduto, quindi non si conta nessun coperto.
   const persone =
-    Number.isInteger(partySize) && partySize! >= 1 && partySize! <= 50
+    canale.seduti &&
+    Number.isInteger(partySize) &&
+    partySize! >= 1 &&
+    partySize! <= 50
       ? partySize!
       : null;
 
+  // La consegna si paga solo dove si consegna, e non oltre il ragionevole.
+  const consegna =
+    channel === "domicilio" &&
+    Number.isInteger(cliente?.consegnaCents) &&
+    cliente!.consegnaCents! >= 0 &&
+    cliente!.consegnaCents! <= 5000
+      ? cliente!.consegnaCents!
+      : 0;
+
   const inserted = await db
     .insert(orders)
-    .values({ tenantId, tableNumber, status: "new", partySize: persone })
+    .values({
+      tenantId,
+      tableNumber: canale.seduti ? tableNumber : null,
+      channel,
+      status: "new",
+      partySize: persone,
+      customerName: canale.seduti ? null : pulisci(cliente?.nome),
+      customerPhone: canale.seduti ? null : pulisci(cliente?.telefono, 32),
+      customerAddress: canale.chiedeIndirizzo
+        ? pulisci(cliente?.indirizzo, 200)
+        : null,
+      deliveryFeeCents: consegna,
+    })
     .returning({ id: orders.id });
   const orderId = inserted[0].id;
 
@@ -134,5 +179,5 @@ export async function createOrderRows(
     }))
   );
 
-  return { ok: true };
+  return { ok: true, orderId };
 }

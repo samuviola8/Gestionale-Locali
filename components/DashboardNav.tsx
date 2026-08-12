@@ -12,6 +12,7 @@ import {
   IconUsers,
   IconPlus,
   IconChart,
+  IconCounter,
 } from "@/components/icons";
 
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
@@ -30,10 +31,16 @@ const items: {
     module: "qr_ordering",
   },
   {
-    href: "/dashboard/ordina",
-    label: "Ordine al banco",
+    href: "/dashboard/cameriere",
+    label: "Ordine dal cameriere",
     Icon: IconPlus,
     module: "qr_ordering",
+  },
+  {
+    href: "/dashboard/banco",
+    label: "Cassa al banco",
+    Icon: IconCounter,
+    module: "counter_orders",
   },
   {
     href: "/dashboard/bill",

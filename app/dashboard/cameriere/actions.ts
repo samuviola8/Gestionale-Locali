@@ -7,9 +7,9 @@ import { getSessionUser } from "@/lib/auth";
 import { getTenantModules } from "@/lib/modules";
 import { createOrderRows, type IncomingItem } from "@/lib/order-create";
 
-// Ordine preso a voce: al banco o dal cameriere in sala. Stessa interfaccia del
-// cliente, ma al posto della sessione del tavolo vale il login dello staff —
-// il cameriere non ha scansionato nessun QR, e non deve doverlo fare.
+// Ordine preso a voce dal cameriere, al tavolo. Stessa interfaccia del cliente,
+// ma al posto della sessione del tavolo vale il login dello staff — il cameriere
+// non ha scansionato nessun QR, e non deve doverlo fare.
 export async function createStaffOrder(
   tableNumber: number,
   items: IncomingItem[],

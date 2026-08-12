@@ -117,6 +117,9 @@ export const menuProducts = pgTable("menu_products", {
     .default(sql`'{}'`),
   priceCents: integer("price_cents").notNull(),
   available: boolean("available").notNull().default(true),
+  // In cima alla cassa al banco. Su un menu da centocinquanta voci l'operatore
+  // non puo' cercare: i dieci piu' richiesti devono stare sotto al dito.
+  pinned: boolean("pinned").notNull().default(false),
   // Il cliente scrive cosa vuole invece di scegliere: e' il "cocktail su
   // richiesta". Il prezzo qui e' quello di partenza, il barman puo' correggerlo
   // sulla singola riga d'ordine.
@@ -177,12 +180,26 @@ export const orders = pgTable("orders", {
   tenantId: uuid("tenant_id")
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" }),
-  tableNumber: integer("table_number").notNull(),
+  // Nullo fuori dalla sala: al banco, in asporto e a domicilio non c'e' nessun
+  // tavolo, e inventarne uno vorrebbe dire un posto per ogni ordine in
+  // contemporanea. Il canale dice sempre come leggere questa riga.
+  tableNumber: integer("table_number"),
+  channel: text("channel").notNull().default("tavolo"),
   status: text("status").notNull().default("new"),
   // Quante persone sono sedute al tavolo. Serve per dividere le voci
   // condivise e per contare i coperti; lo dichiara il cliente alla prima
   // consumazione condivisa, lo staff puo' correggerlo dal conto.
   partySize: integer("party_size"),
+  // Chi ritira o a chi si consegna. Fuori dalla sala il conto non ha un numero
+  // di tavolo per farsi riconoscere: ha un nome.
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  customerAddress: text("customer_address"),
+  // Consegna: e' un servizio, non una consumazione, quindi non e' una riga
+  // d'ordine e non deve finire nella comanda che arriva in cucina.
+  deliveryFeeCents: integer("delivery_fee_cents").notNull().default(0),
+  // Quando il cliente passa a ritirare, o quando va consegnato.
+  dueAt: timestamp("due_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

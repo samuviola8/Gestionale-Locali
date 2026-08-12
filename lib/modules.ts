@@ -10,6 +10,9 @@ export type ModuleKey =
   | "qr_ordering"
   | "split_bill"
   | "waiter_call"
+  | "counter_orders"
+  | "takeaway"
+  | "delivery"
   | "payments"
   | "ai_suggestions"
   | "loyalty";
@@ -50,6 +53,33 @@ export const MODULES: ModuleDef[] = [
     label: "Chiamata cameriere",
     description: "Pulsante per richiamare il personale al tavolo.",
     defaultEnabled: true,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "counter_orders",
+    label: "Ordine al banco",
+    description:
+      "Cassa veloce da PC o tablet per chi ordina al bancone, senza tavolo e senza coperto.",
+    defaultEnabled: false,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "takeaway",
+    label: "Asporto",
+    description:
+      "Ordini da ritirare: ogni ordine è un conto a sé, con il nome di chi passa a prenderlo.",
+    defaultEnabled: false,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "delivery",
+    label: "Consegna a domicilio",
+    description:
+      "Come l'asporto, più indirizzo, telefono e costo di consegna.",
+    defaultEnabled: false,
     addon: false,
     comingSoon: false,
   },

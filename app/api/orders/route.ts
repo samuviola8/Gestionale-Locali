@@ -29,6 +29,11 @@ export async function GET() {
   const result = os.map((o) => ({
     id: o.id,
     tableNumber: o.tableNumber,
+    // Da dove arriva l'ordine: cambia il titolo della card e le soglie di
+    // attesa, perche' un domicilio e un tavolo non aspettano allo stesso modo.
+    channel: o.channel,
+    customerName: o.customerName,
+    customerAddress: o.customerAddress,
     status: o.status,
     createdAt: o.createdAt.toISOString(),
     items: its

@@ -13,33 +13,58 @@ import { revokeTableSessions } from "@/lib/table-session";
 import { ALIAS_CONDIVISO } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
 
-async function tableOrderIds(
-  tenantId: string,
-  tableNumber: number
-): Promise<string[]> {
-  const os = await db
-    .select({ id: orders.id })
-    .from(orders)
-    .where(and(eq(orders.tenantId, tenantId), eq(orders.tableNumber, tableNumber)));
-  return os.map((o) => o.id);
+// I conti si indirizzano per chiave e non per numero di tavolo: in sala la
+// chiave e' il tavolo, fuori e' il singolo ordine, che un numero non ce l'ha.
+type Conto =
+  | { tipo: "tavolo"; tableNumber: number; ids: string[] }
+  | { tipo: "ordine"; orderId: string; ids: string[] };
+
+async function risolvi(tenantId: string, key: string): Promise<Conto | null> {
+  if (key.startsWith("t:")) {
+    const tableNumber = parseInt(key.slice(2), 10);
+    if (!Number.isInteger(tableNumber)) return null;
+    const os = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.channel, "tavolo"),
+          eq(orders.tableNumber, tableNumber)
+        )
+      );
+    if (!os.length) return null;
+    return { tipo: "tavolo", tableNumber, ids: os.map((o) => o.id) };
+  }
+
+  if (key.startsWith("o:")) {
+    const orderId = key.slice(2);
+    const os = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId)))
+      .limit(1);
+    if (!os.length) return null;
+    return { tipo: "ordine", orderId, ids: [orderId] };
+  }
+
+  return null;
 }
 
-export async function markAliasPaid(
-  tableNumber: number,
-  alias: string
-): Promise<void> {
+export async function markAliasPaid(key: string, alias: string): Promise<void> {
   const session = await getSessionUser();
-  if (!session) return;
-  if (!Number.isInteger(tableNumber) || !alias) return;
+  if (!session || !alias) return;
   // "Condiviso" non e' un pagante: la sua spesa e' gia' ripartita in quote.
   if (alias === ALIAS_CONDIVISO) return;
 
-  const ids = await tableOrderIds(session.tenantId, tableNumber);
-  if (!ids.length) return;
+  const conto = await risolvi(session.tenantId, key);
+  if (!conto) return;
 
   // Si calcola quanto deve PRIMA di segnare pagate le sue voci, altrimenti il
   // totale letto dopo sarebbe gia' alterato.
-  const tavolo = (await loadOpenTables(session.tenantId, tableNumber))[0];
+  const tavolo = (await loadOpenTables(session.tenantId)).find(
+    (t) => t.key === key
+  );
   const persona = tavolo?.people.find((p) => p.alias === alias);
   if (!persona) return;
 
@@ -48,89 +73,97 @@ export async function markAliasPaid(
     .set({ paid: true })
     .where(
       and(
-        inArray(orderItems.orderId, ids),
+        inArray(orderItems.orderId, conto.ids),
         eq(orderItems.alias, alias),
         eq(orderItems.paid, false)
       )
     );
 
   // Quota del condiviso e coperto non sono righe d'ordine: si registrano qui,
-  // insieme all'importo, che da questo momento non cambia piu'.
-  await db
-    .insert(billSettlements)
-    .values({
-      tenantId: session.tenantId,
-      tableNumber,
-      alias,
-      amountCents: persona.total,
-    })
-    .onConflictDoNothing();
+  // insieme all'importo, che da questo momento non cambia piu'. Fuori dalla
+  // sala non esistono, quindi non c'e' niente da registrare.
+  if (conto.tipo === "tavolo") {
+    await db
+      .insert(billSettlements)
+      .values({
+        tenantId: session.tenantId,
+        tableNumber: conto.tableNumber,
+        alias,
+        amountCents: persona.total,
+      })
+      .onConflictDoNothing();
+  }
 }
 
-// Archivia il tavolo: salda i residui, segna gli ordini come serviti
+// Archivia il conto: salda i residui, segna gli ordini come serviti
 // (li toglie dalla coda) e setta closedAt (li toglie dai conti aperti).
-export async function closeTable(tableNumber: number): Promise<void> {
+export async function closeTable(key: string): Promise<void> {
   const session = await getSessionUser();
   if (!session) return;
-  if (!Number.isInteger(tableNumber)) return;
 
-  // Il tavolo si libera: i telefoni ancora collegati devono riscansionare.
-  await revokeTableSessions(session.tenantId, tableNumber);
+  const conto = await risolvi(session.tenantId, key);
+  if (!conto) return;
 
-  const ids = await tableOrderIds(session.tenantId, tableNumber);
-  if (!ids.length) return;
-
-  // Si legge il tavolo com'e' adesso, prima di smontarlo: dopo la chiusura il
+  // Si legge il conto com'e' adesso, prima di smontarlo: dopo la chiusura il
   // numero di coperti e la tariffa non sarebbero piu' ricostruibili.
-  const tavolo = (await loadOpenTables(session.tenantId, tableNumber))[0];
+  const tavolo = (await loadOpenTables(session.tenantId)).find(
+    (t) => t.key === key
+  );
+
+  if (conto.tipo === "tavolo") {
+    // Il tavolo si libera: i telefoni ancora collegati devono riscansionare.
+    await revokeTableSessions(session.tenantId, conto.tableNumber);
+  }
 
   await db
     .update(orderItems)
     .set({ paid: true })
-    .where(and(inArray(orderItems.orderId, ids), eq(orderItems.paid, false)));
+    .where(and(inArray(orderItems.orderId, conto.ids), eq(orderItems.paid, false)));
 
   await db
     .update(orders)
     .set({ status: "served", closedAt: new Date() })
-    .where(inArray(orders.id, ids));
+    .where(inArray(orders.id, conto.ids));
 
-  if (tavolo) {
-    await db.insert(tableClosures).values({
-      tenantId: session.tenantId,
-      tableNumber,
-      partySize: tavolo.partySize,
-      coverChargeCents: tavolo.coverChargeCents,
-    });
+  if (conto.tipo === "tavolo") {
+    if (tavolo) {
+      await db.insert(tableClosures).values({
+        tenantId: session.tenantId,
+        tableNumber: conto.tableNumber,
+        partySize: tavolo.partySize,
+        coverChargeCents: tavolo.coverChargeCents,
+      });
+    }
+
+    // Il conto e' chiuso: le registrazioni degli extra non servono piu' e non
+    // devono sporcare il prossimo tavolo con lo stesso numero.
+    await db
+      .delete(billSettlements)
+      .where(
+        and(
+          eq(billSettlements.tenantId, session.tenantId),
+          eq(billSettlements.tableNumber, conto.tableNumber)
+        )
+      );
   }
-
-  // Il conto e' chiuso: le registrazioni degli extra non servono piu' e non
-  // devono sporcare il prossimo tavolo con lo stesso numero.
-  await db
-    .delete(billSettlements)
-    .where(
-      and(
-        eq(billSettlements.tenantId, session.tenantId),
-        eq(billSettlements.tableNumber, tableNumber)
-      )
-    );
 }
 
 // Lo staff corregge quante persone sono sedute: il cliente puo' aver
 // sbagliato, o si sono aggiunte persone dopo il primo ordine.
 export async function setPartySize(
-  tableNumber: number,
+  key: string,
   partySize: number
 ): Promise<void> {
   const session = await getSessionUser();
   if (!session) return;
-  if (!Number.isInteger(tableNumber)) return;
   if (!Number.isInteger(partySize) || partySize < 1 || partySize > 50) return;
 
-  const ids = await tableOrderIds(session.tenantId, tableNumber);
-  if (!ids.length) return;
+  const conto = await risolvi(session.tenantId, key);
+  // Solo in sala: fuori nessuno e' seduto e non c'e' niente da dividere.
+  if (!conto || conto.tipo !== "tavolo") return;
 
   await db
     .update(orders)
     .set({ partySize })
-    .where(inArray(orders.id, ids));
+    .where(inArray(orders.id, conto.ids));
 }

@@ -57,6 +57,14 @@ export type Analytics = {
   topProdotti: VoceClassifica[];
   topCategorie: VoceClassifica[];
   annullati: VoceClassifica[];
+  // Quanto vale ogni canale. E' la prima domanda di chi fa sala e asporto
+  // insieme, e senza questo taglio l'incasso e' un numero solo che non dice
+  // dove sta andando il locale.
+  perCanale: {
+    channel: string;
+    incassoCents: number;
+    ordini: number;
+  }[];
   // Prodotti a listino che nel periodo non ha ordinato nessuno: su un menu
   // lungo e' il dato che nessuno guarda mai e che conviene guardare.
   maiOrdinati: { nome: string; categoria: string; priceCents: number }[];
@@ -105,7 +113,12 @@ export async function getTotali(
   periodo: Periodo
 ): Promise<Confronto> {
   const os = await db
-    .select({ id: orders.id, closedAt: orders.closedAt })
+    .select({
+      id: orders.id,
+      closedAt: orders.closedAt,
+      channel: orders.channel,
+      deliveryFeeCents: orders.deliveryFeeCents,
+    })
     .from(orders)
     .where(
       and(
@@ -147,15 +160,19 @@ export async function getTotali(
     (s, c) => s + c.partySize * c.coverChargeCents,
     0
   );
-  const chiusi = new Set(os.filter((o) => o.closedAt).map((o) => o.id));
+  // Solo la sala: lo scontrino medio e' per persona seduta.
+  const chiusiInSala = new Set(
+    os.filter((o) => o.closedAt && o.channel === "tavolo").map((o) => o.id)
+  );
 
-  let incassoCents = copertoCents;
+  let incassoCents =
+    copertoCents + os.reduce((s, o) => s + o.deliveryFeeCents, 0);
   let incassoChiusi = copertoCents;
   for (const r of righe) {
     if (r.voidedAt !== null) continue;
     const v = r.priceCents * r.quantity;
     incassoCents += v;
-    if (chiusi.has(r.orderId)) incassoChiusi += v;
+    if (chiusiInSala.has(r.orderId)) incassoChiusi += v;
   }
 
   return {
@@ -176,6 +193,8 @@ export async function getAnalytics(
       createdAt: orders.createdAt,
       closedAt: orders.closedAt,
       tableNumber: orders.tableNumber,
+      channel: orders.channel,
+      deliveryFeeCents: orders.deliveryFeeCents,
     })
     .from(orders)
     .where(
@@ -264,7 +283,9 @@ export async function getAnalytics(
   const prodotti = new Map<string, { pezzi: number; incassoCents: number }>();
   const categorie = new Map<string, { pezzi: number; incassoCents: number }>();
   const annullati = new Map<string, { pezzi: number; incassoCents: number }>();
+  const perCanale = new Map<string, { incassoCents: number; ordini: number }>();
   const richieste: Analytics["richieste"] = [];
+  const canaleDiOrdine = new Map(os.map((o) => [o.id, o.channel]));
 
   for (const r of righe) {
     const quando = quandoOrdine.get(r.orderId);
@@ -288,7 +309,15 @@ export async function getAnalytics(
 
     incassoCents += valore;
     if (r.paid) incassatoCents += valore;
-    if (ordineChiuso.has(r.orderId)) incassoChiusiCents += valore;
+    // Lo scontrino medio si misura per persona seduta, quindi solo la sala:
+    // sommarci banco e domicilio, che coperti non ne hanno, gonfierebbe la
+    // media di tutto quello che e' uscito dalla porta.
+    if (
+      ordineChiuso.has(r.orderId) &&
+      canaleDiOrdine.get(r.orderId) === "tavolo"
+    ) {
+      incassoChiusiCents += valore;
+    }
     pezzi += r.quantity;
 
     const g = giornoISO(quando);
@@ -302,6 +331,10 @@ export async function getAnalytics(
     const gs = giornoSettimana(quando);
     const ps = perSettimana.get(gs) ?? { incassoCents: 0, ordini: 0 };
     perSettimana.set(gs, { ...ps, incassoCents: ps.incassoCents + valore });
+
+    const ch = canaleDiOrdine.get(r.orderId) ?? "tavolo";
+    const pc = perCanale.get(ch) ?? { incassoCents: 0, ordini: 0 };
+    perCanale.set(ch, { ...pc, incassoCents: pc.incassoCents + valore });
 
     const p = prodotti.get(r.name) ?? { pezzi: 0, incassoCents: 0 };
     prodotti.set(r.name, {
@@ -333,6 +366,16 @@ export async function getAnalytics(
 
     const cella = `${gs}:${h}`;
     affluenza.set(cella, (affluenza.get(cella) ?? 0) + 1);
+
+    // La consegna e' incasso a tutti gli effetti, ma non e' una riga d'ordine:
+    // va sommata qui, o il totale del canale domicilio sarebbe sottostimato.
+    const pc = perCanale.get(o.channel) ?? { incassoCents: 0, ordini: 0 };
+    perCanale.set(o.channel, {
+      incassoCents: pc.incassoCents + o.deliveryFeeCents,
+      ordini: pc.ordini + 1,
+    });
+    // La consegna non entra nello scontrino medio: non c'e' nessuno seduto.
+    incassoCents += o.deliveryFeeCents;
   }
 
   // Le persone servite si sanno alla chiusura del tavolo, quindi si appoggiano
@@ -350,6 +393,13 @@ export async function getAnalytics(
       incassoCents: pg.incassoCents + incassoCoperto,
       coperti: pg.coperti + c.partySize,
       tavoli: pg.tavoli + 1,
+    });
+
+    // Il coperto e' incasso della sala.
+    const pcSala = perCanale.get("tavolo") ?? { incassoCents: 0, ordini: 0 };
+    perCanale.set("tavolo", {
+      ...pcSala,
+      incassoCents: pcSala.incassoCents + incassoCoperto,
     });
 
     const h = c.closedAt.getHours();
@@ -448,6 +498,9 @@ export async function getAnalytics(
     topProdotti: classifica(prodotti, 10),
     topCategorie: classifica(categorie, 8),
     annullati: classifica(annullati, 5),
+    perCanale: [...perCanale.entries()]
+      .map(([channel, v]) => ({ channel, ...v }))
+      .sort((a, b) => b.incassoCents - a.incassoCents),
     maiOrdinati,
     prodottiAListino: aListino.length,
     richieste: richieste.sort((a, b) => +b.quando - +a.quando).slice(0, 20),

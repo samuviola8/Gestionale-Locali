@@ -151,6 +151,28 @@ export async function deleteVariant(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/menu");
 }
 
+// I preferiti stanno in cima alla cassa al banco. Su un menu da centocinquanta
+// voci l'operatore non puo' cercare: i dieci piu' richiesti devono stare sotto
+// al dito, e quali siano lo sa solo il locale.
+export async function togglePinned(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const rows = await db
+    .select({ pinned: menuProducts.pinned })
+    .from(menuProducts)
+    .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)))
+    .limit(1);
+  if (!rows[0]) return;
+
+  await db
+    .update(menuProducts)
+    .set({ pinned: !rows[0].pinned })
+    .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)));
+  revalidatePath("/dashboard/menu");
+}
+
 // Gli ingredienti non servono solo a far bello il menu: da questi nascono le
 // scorciatoie "senza gin" che il cliente tocca invece di scrivere. Un prodotto
 // senza ingredienti resta ordinabile, ma con la sola nota a mano libera.
