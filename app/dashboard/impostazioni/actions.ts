@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuCategories, reparti, tenants, users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { leggiOrari, type OrariApertura } from "@/lib/orari";
 
 async function requireOwner(): Promise<string> {
   const s = await getSessionUser();
@@ -82,6 +83,18 @@ export async function setUtenteReparto(formData: FormData): Promise<void> {
     .update(users)
     .set({ repartoId })
     .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)));
+  revalidatePath("/dashboard/impostazioni");
+}
+
+// Gli orari di apertura. Da qui si ricavano le fasce di ritiro, quindi si
+// ripuliscono prima di scrivere: una fascia storta a database vorrebbe dire
+// proporre consegne a serranda abbassata.
+export async function salvaOrari(orari: OrariApertura): Promise<void> {
+  const tenantId = await requireOwner();
+  await db
+    .update(tenants)
+    .set({ openingHours: leggiOrari(orari) })
+    .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");
 }
 

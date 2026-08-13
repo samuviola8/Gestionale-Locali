@@ -9,13 +9,25 @@
 // codice.
 
 export type Suggerimento = {
-  // Riga completa da salvare sull'ordine.
+  // Riga completa da mostrare e salvare.
   testo: string;
-  // Prima riga in grassetto nell'elenco: via e civico.
+  // Solo la via, senza numero: il civico viaggia a parte perche' e' la cosa
+  // che si perde piu' facilmente, ed e' quella senza cui il fattorino gira a
+  // vuoto. Tenerli separati rende impossibile smarrirlo.
   via: string;
-  // Seconda riga: citta', provincia, cap.
+  civico: string | null;
+  // Seconda riga: cap e comune.
   dettaglio: string;
 };
+
+export function componiIndirizzo(
+  via: string,
+  civico: string,
+  dettaglio: string
+): string {
+  const strada = [via.trim(), civico.trim()].filter(Boolean).join(" ");
+  return [strada, dettaglio.trim()].filter(Boolean).join(", ");
+}
 
 type Contesto = {
   // Dove sta il locale: i risultati vicini vengono prima, perche' una consegna
@@ -53,12 +65,14 @@ async function photon(q: string, ctx: Contesto): Promise<Suggerimento[]> {
     .map((f) => f.properties ?? {})
     .filter((p) => p.countrycode === "IT")
     .map((p) => {
-      const via = [p.street ?? p.name, p.housenumber].filter(Boolean).join(" ");
+      const via = p.street ?? p.name ?? "";
+      const civico = p.housenumber ?? null;
       const dettaglio = [p.postcode, p.city ?? p.county].filter(Boolean).join(" ");
       return {
-        via: via || (p.name ?? ""),
+        via,
+        civico,
         dettaglio,
-        testo: [via, dettaglio].filter(Boolean).join(", "),
+        testo: componiIndirizzo(via, civico ?? "", dettaglio),
       };
     })
     .filter((s) => s.via);
@@ -84,14 +98,14 @@ async function geoapify(q: string, ctx: Contesto): Promise<Suggerimento[]> {
   return (d.features ?? [])
     .map((f) => f.properties ?? {})
     .map((p) => {
-      const via = [p.street, p.housenumber].filter(Boolean).join(" ");
-      const dettaglio = [p.postcode, p.city, p.state_code ? `(${p.state_code})` : null]
-        .filter(Boolean)
-        .join(" ");
+      const via = p.street ?? p.address_line1 ?? "";
+      const civico = p.housenumber ?? null;
+      const dettaglio = [p.postcode, p.city].filter(Boolean).join(" ");
       return {
-        via: via || (p.address_line1 ?? ""),
+        via,
+        civico,
         dettaglio,
-        testo: p.formatted ?? [via, dettaglio].filter(Boolean).join(", "),
+        testo: componiIndirizzo(via, civico ?? "", dettaglio),
       };
     })
     .filter((s) => s.via);
@@ -141,11 +155,18 @@ async function google(q: string, ctx: Contesto): Promise<Suggerimento[]> {
   return (d.suggestions ?? [])
     .map((s) => s.placePrediction)
     .filter(Boolean)
-    .map((p) => ({
-      via: p!.structuredFormat?.mainText?.text ?? p!.text?.text ?? "",
-      dettaglio: p!.structuredFormat?.secondaryText?.text ?? "",
-      testo: p!.text?.text ?? p!.structuredFormat?.mainText?.text ?? "",
-    }))
+    .map((p) => {
+      // Google restituisce "Via Roma 12" tutto insieme: il civico si stacca
+      // dalla coda, perche' anche qui deve viaggiare in un campo suo.
+      const testa = p!.structuredFormat?.mainText?.text ?? p!.text?.text ?? "";
+      const m = testa.match(/^(.*?),?\s+(\d+\S*)$/);
+      return {
+        via: m ? m[1] : testa,
+        civico: m ? m[2] : null,
+        dettaglio: p!.structuredFormat?.secondaryText?.text ?? "",
+        testo: p!.text?.text ?? testa,
+      };
+    })
     .filter((s) => s.via);
 }
 
@@ -189,13 +210,13 @@ export async function cercaIndirizzi(
           ? await geoapify(q, ctx)
           : await photon(q, ctx);
 
-    // La stessa via torna piu' volte quando attraversa due CAP: per chi deve
-    // consegnare sono lo stesso indirizzo, e due righe identiche in elenco
-    // fanno solo esitare.
+    // Si scartano solo le righe davvero identiche. La chiave e' l'indirizzo
+    // intero e non la sola via: "Via Roma 12" esiste in dieci comuni qui
+    // intorno, e sono dieci posti diversi dove andare.
     const visti = new Set<string>();
     return grezzi
       .filter((s) => {
-        const k = s.via.toLowerCase();
+        const k = s.testo.toLowerCase();
         if (visti.has(k)) return false;
         visti.add(k);
         return true;

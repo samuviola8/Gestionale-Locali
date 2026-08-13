@@ -32,7 +32,7 @@ function Comanda({ p }: { p: Extract<Payload, { kind: "comanda" }> }) {
       <div className="foglio-intestazione">{p.intestazione}</div>
       <div className="foglio-riga-piccola">
         Ordine delle {p.quando}
-        {p.dueAt && ` · per le ${p.dueAt}`}
+        {p.dueAt && ` · per ${p.dueAt}`}
       </div>
       {p.indirizzo && <div className="foglio-riga-piccola">{p.indirizzo}</div>}
       {p.telefono && <div className="foglio-riga-piccola">{p.telefono}</div>}
@@ -52,7 +52,7 @@ function Comanda({ p }: { p: Extract<Payload, { kind: "comanda" }> }) {
 
       {/* L'orario di ritiro si ripete in fondo: e' l'unica cosa che chi
           prepara deve avere ancora davanti quando ha finito di leggere. */}
-      {p.dueAt && <div className="foglio-chiusa">Pronto per le {p.dueAt}</div>}
+      {p.dueAt && <div className="foglio-chiusa">Pronto per {p.dueAt}</div>}
     </div>
   );
 }

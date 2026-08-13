@@ -5,6 +5,7 @@ import { formatPrice as fmt } from "@/lib/format";
 import { CHANNELS, getChannel, type Channel } from "@/lib/channels";
 import OraRitiro from "@/components/OraRitiro";
 import IndirizzoAuto from "@/components/IndirizzoAuto";
+import type { OrariApertura } from "@/lib/orari";
 import type { DatiCliente, IncomingItem } from "@/lib/order-create";
 
 // Cassa del banco. Non e' il menu del cliente rimpicciolito: qui l'operatore ha
@@ -35,10 +36,12 @@ type Riga = {
 export default function CassaBanco({
   prodotti,
   canaliAttivi,
+  orari,
   invia,
 }: {
   prodotti: ProdottoCassa[];
   canaliAttivi: Channel[];
+  orari: OrariApertura;
   invia: (
     channel: Channel,
     items: IncomingItem[],
@@ -395,17 +398,16 @@ export default function CassaBanco({
               <OraRitiro
                 value={oraRitiro}
                 onChange={setOraRitiro}
+                orari={orari}
                 etichetta={
-                  channel === "domicilio" ? "Ora di consegna" : "Ora di ritiro"
+                  channel === "domicilio"
+                    ? "Quando consegnare"
+                    : "Quando ritira"
                 }
               />
               {canale.chiedeIndirizzo && (
                 <>
-                  <IndirizzoAuto
-                    value={indirizzo}
-                    onChange={setIndirizzo}
-                    placeholder="Indirizzo di consegna"
-                  />
+                  <IndirizzoAuto value={indirizzo} onChange={setIndirizzo} />
                   <input
                     value={consegna}
                     onChange={(e) => setConsegna(e.target.value)}

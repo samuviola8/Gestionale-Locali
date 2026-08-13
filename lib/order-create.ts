@@ -23,8 +23,10 @@ export type DatiCliente = {
   telefono?: string;
   indirizzo?: string;
   consegnaCents?: number;
-  // "HH:MM" dell'ora concordata. Chi chiama per le 20:30 va preparato per le
-  // 20:30: partire subito vuol dire consegnargli roba fredda.
+  // "AAAA-MM-GGTHH:MM" concordato. Con la data e non la sola ora, perche' al
+  // telefono si prenota spesso per domani e un orario nudo verrebbe letto
+  // come oggi. Chi chiama per le 20:30 va preparato per le 20:30: partire
+  // subito vuol dire consegnargli roba fredda.
   oraRitiro?: string;
 };
 
@@ -152,18 +154,20 @@ export async function createOrderRows(
       ? cliente!.consegnaCents!
       : 0;
 
-  // L'ora concordata si legge come "oggi alle HH:MM"; se e' gia' passata vale
-  // per domani, perche' nessuno ordina per un orario trascorso.
+  // Il momento concordato arriva con la data: si accetta solo se e' nelle due
+  // settimane a venire e non troppo indietro, perche' un ordine per il mese
+  // scorso e' un errore di battitura, non una prenotazione.
   let ritiro: Date | null = null;
-  const hhmm = (cliente?.oraRitiro ?? "").trim();
-  if (!canale.seduti && /^\d{1,2}:\d{2}$/.test(hhmm)) {
-    const [h, m] = hhmm.split(":").map(Number);
-    if (h < 24 && m < 60) {
-      const ora = new Date();
-      ritiro = new Date(ora.getFullYear(), ora.getMonth(), ora.getDate(), h, m);
-      if (ritiro.getTime() < ora.getTime() - 60 * 60 * 1000) {
-        ritiro = new Date(ritiro.getTime() + 24 * 60 * 60 * 1000);
-      }
+  const quando = (cliente?.oraRitiro ?? "").trim();
+  if (!canale.seduti && /^\d{4}-\d{2}-\d{2}T\d{1,2}:\d{2}$/.test(quando)) {
+    const d = new Date(quando);
+    const ora = Date.now();
+    if (
+      !Number.isNaN(d.getTime()) &&
+      d.getTime() > ora - 60 * 60 * 1000 &&
+      d.getTime() < ora + 14 * 24 * 60 * 60 * 1000
+    ) {
+      ritiro = d;
     }
   }
 

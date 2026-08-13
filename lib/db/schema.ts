@@ -72,6 +72,12 @@ export const tenants = pgTable("tenants", {
     .notNull()
     .default(false),
 
+  // Orari di apertura per giorno della settimana, a intervalli. Da qui si
+  // ricavano le fasce di ritiro: senza, l'unica alternativa e' una finestra
+  // inventata, che propone consegne a serranda abbassata.
+  // { "0": [{ "da": "12:00", "a": "15:00" }, { "da": "19:00", "a": "23:30" }] }
+  openingHours: jsonb("opening_hours").notNull().default(sql`'{}'::jsonb`),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

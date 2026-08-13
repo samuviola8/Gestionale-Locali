@@ -7,9 +7,12 @@ import { getTenantModules } from "@/lib/modules";
 import Select from "@/components/Select";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PostazioneStampa from "@/components/PostazioneStampa";
+import EditorOrari from "@/components/OrariApertura";
+import { leggiOrari } from "@/lib/orari";
 import {
   addReparto,
   deleteReparto,
+  salvaOrari,
   salvaStampa,
   setCategoriaReparto,
   setUtenteReparto,
@@ -253,6 +256,18 @@ export default async function ImpostazioniPage() {
               </form>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* --- Orari --- */}
+      {(modules.takeaway || modules.delivery) && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Orari di apertura</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Da qui si calcolano le fasce di ritiro e consegna proposte in cassa.
+            Due intervalli per giorno, se chiudete nel pomeriggio.
+          </p>
+          <EditorOrari iniziali={leggiOrari(locale.openingHours)} salva={salvaOrari} />
         </section>
       )}
 

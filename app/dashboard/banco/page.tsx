@@ -5,7 +5,9 @@ import {
   menuCategories,
   menuProducts,
   menuProductVariants,
+  tenants,
 } from "@/lib/db/schema";
+import { leggiOrari } from "@/lib/orari";
 import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
 import { getTenantModules } from "@/lib/modules";
@@ -19,6 +21,11 @@ export default async function BancoPage() {
   await requireModule("counter_orders");
 
   const modules = await getTenantModules(session.tenantId);
+  const [locale] = await db
+    .select({ openingHours: tenants.openingHours })
+    .from(tenants)
+    .where(eq(tenants.id, session.tenantId))
+    .limit(1);
   // Asporto e domicilio si battono dalla stessa cassa, ma solo se il locale
   // li ha: non ha senso mostrare linguette che non portano da nessuna parte.
   const canaliAttivi = CHANNELS.filter(
@@ -97,6 +104,7 @@ export default async function BancoPage() {
       <CassaBanco
         prodotti={prodotti}
         canaliAttivi={canaliAttivi}
+        orari={leggiOrari(locale?.openingHours)}
         invia={createCounterOrder}
       />
     </div>

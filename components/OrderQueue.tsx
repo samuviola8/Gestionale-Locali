@@ -33,6 +33,25 @@ function time(iso: string): string {
   });
 }
 
+// Un ordine per domani deve dirlo: "per le 20:30" da solo lo fa preparare
+// stasera.
+function quandoRitira(d: Date): string {
+  const oggi = new Date();
+  const stesso =
+    d.getFullYear() === oggi.getFullYear() &&
+    d.getMonth() === oggi.getMonth() &&
+    d.getDate() === oggi.getDate();
+  const ora = d.toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (stesso) return `le ${ora}`;
+  return `${d.toLocaleDateString("it-IT", {
+    weekday: "short",
+    day: "numeric",
+  })} alle ${ora}`;
+}
+
 // Da quanto aspetta questo tavolo. E' il dato che serve davvero durante il
 // servizio: l'orario in cui e' arrivato l'ordine non dice quanto si e' in
 // ritardo, i minuti trascorsi si'.
@@ -314,7 +333,7 @@ export default function OrderQueue({
                 </span>
                 {perLe && (
                   <span className="tnum text-xs font-medium">
-                    per le {time(o.dueAt!)}
+                    per {quandoRitira(perLe)}
                   </span>
                 )}
                 <span className="tnum text-xs" style={{ color: "var(--muted)" }}>

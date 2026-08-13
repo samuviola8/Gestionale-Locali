@@ -62,6 +62,23 @@ function orario(d: Date): string {
   return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Il momento concordato porta con se' il giorno quando non e' oggi: una
+// comanda che dice solo "per le 20:30" fa preparare stasera una cosa che il
+// cliente viene a prendere domani.
+function quandoRitira(d: Date): string {
+  const oggi = new Date();
+  const stesso =
+    d.getFullYear() === oggi.getFullYear() &&
+    d.getMonth() === oggi.getMonth() &&
+    d.getDate() === oggi.getDate();
+  if (stesso) return orario(d);
+  return `${d.toLocaleDateString("it-IT", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  })} alle ${orario(d)}`;
+}
+
 // Crea i lavori di stampa per un ordine appena inviato: uno per reparto, piu'
 // uno generico per le voci che non hanno un reparto assegnato. Separarli e'
 // il punto: la pizzeria non deve leggere i cocktail per trovare le sue pizze.
@@ -143,7 +160,7 @@ export async function creaComande(
       reparto: repartoId ? (nomi.get(repartoId) ?? null) : null,
       canale: o.channel as Channel,
       intestazione,
-      dueAt: o.dueAt ? orario(o.dueAt) : null,
+      dueAt: o.dueAt ? quandoRitira(o.dueAt) : null,
       indirizzo: o.customerAddress,
       telefono: o.customerPhone,
       quando: orario(o.createdAt),
