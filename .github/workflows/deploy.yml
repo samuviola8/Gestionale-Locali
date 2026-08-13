@@ -1,0 +1,28 @@
+name: Deploy
+
+# Ogni push su main aggiorna il server. Il runner gira sulla macchina di
+# produzione, quindi non serve nessuna credenziale SSH e nessun segreto:
+# e' la macchina stessa che va a prendersi il codice.
+on:
+  push:
+    branches: [main]
+  # Per rilanciare un aggiornamento senza dover fare un commit finto.
+  workflow_dispatch:
+
+# Un aggiornamento alla volta. Due deploy in parallelo vorrebbero dire due
+# `npm run build` sulla stessa cartella, e su Windows finisce con file bloccati.
+concurrency:
+  group: deploy-produzione
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows, comanda]
+    steps:
+      # Niente checkout: il clone servito vive fuori dalla cartella di lavoro
+      # del runner, perche' contiene .env.production.local e public\uploads,
+      # che un checkout pulito cancellerebbe a ogni aggiornamento.
+      - name: Aggiorna la produzione
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File "D:\comanda\app\scripts\deploy.ps1"

@@ -57,7 +57,18 @@ export function slugify(value: string): string {
 }
 
 // Slug riservati: sono sottodomini di servizio, non possono essere locali.
-const RESERVED = new Set(["www", "admin", "api", "app", "static", "assets", "mail"]);
+// "comanda" c'e' perche' la vetrina vive li': un locale con quello slug se la
+// mangerebbe, e nessuno capirebbe perche' il sito e' sparito.
+const RESERVED = new Set([
+  "www",
+  "admin",
+  "api",
+  "app",
+  "static",
+  "assets",
+  "mail",
+  "comanda",
+]);
 
 function clean(value: string | undefined): string | null {
   const trimmed = (value ?? "").trim();
