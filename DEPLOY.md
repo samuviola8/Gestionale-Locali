@@ -36,7 +36,7 @@ CREATE DATABASE comanda OWNER comanda;
 
 ```powershell
 mkdir D:\comanda
-git clone https://github.com/Samu1199s/Gestionale-Locali.git D:\comanda\app
+git clone https://github.com/samuviola8/Gestionale-Locali.git D:\comanda\app
 cd D:\comanda\app
 ```
 
