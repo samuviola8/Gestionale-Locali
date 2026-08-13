@@ -130,6 +130,12 @@ export const reparti = pgTable("reparti", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Nome della stampante di Windows su cui deve uscire questa comanda. Il
+  // browser NON puo' sceglierla — non esiste un'API, e' un confine di
+  // sicurezza — quindi qui e' documentazione: serve a generare il comando con
+  // cui si avvia Chrome su quella postazione, e a far sapere a chi configura
+  // il PC quale stampante gli tocca.
+  printerName: text("printer_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -32,6 +32,23 @@ export async function addReparto(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/impostazioni");
 }
 
+// Su quale stampante di Windows esce questa comanda. Il browser non la puo'
+// scegliere da solo: serve a generare il comando di avvio della postazione e a
+// scriverlo da qualche parte, invece di tenerlo nella testa di chi ha
+// installato le stampanti.
+export async function setStampanteReparto(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+  const nome = String(formData.get("printerName") ?? "").trim().slice(0, 80);
+  if (!id) return;
+
+  await db
+    .update(reparti)
+    .set({ printerName: nome || null })
+    .where(and(eq(reparti.id, id), eq(reparti.tenantId, tenantId)));
+  revalidatePath("/dashboard/impostazioni");
+}
+
 export async function deleteReparto(formData: FormData): Promise<void> {
   const tenantId = await requireOwner();
   const id = String(formData.get("id") ?? "");

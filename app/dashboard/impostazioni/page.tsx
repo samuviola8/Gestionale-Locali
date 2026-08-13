@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -21,6 +22,7 @@ import {
   salvaOrari,
   salvaStampa,
   setCategoriaReparto,
+  setStampanteReparto,
   setUtenteReparto,
 } from "./actions";
 
@@ -69,7 +71,11 @@ export default async function ImpostazioniPage() {
 
   const [elencoReparti, categorie, staff] = await Promise.all([
     db
-      .select({ id: reparti.id, name: reparti.name })
+      .select({
+        id: reparti.id,
+        name: reparti.name,
+        printerName: reparti.printerName,
+      })
       .from(reparti)
       .where(eq(reparti.tenantId, session.tenantId))
       .orderBy(asc(reparti.sortOrder), asc(reparti.name)),
@@ -108,6 +114,19 @@ export default async function ImpostazioniPage() {
         lt(printJobs.createdAt, dueMinutiFa)
       )
     );
+
+  // L'indirizzo del locale, per il comando di avvio della postazione: quello
+  // giusto e' il sottodominio da cui si sta guardando, non uno inventato.
+  const intestazioni = await headers();
+  const host = intestazioni.get("host") ?? "localhost:3000";
+  // Dietro a un proxy il protocollo vero e' quello dichiarato; in locale i
+  // sottodomini finiscono in .localhost e vanno in chiaro.
+  const protocollo =
+    intestazioni.get("x-forwarded-proto") ??
+    (/(^|\.)localhost(:|$)/.test(host) || host.startsWith("127.0.0.1")
+      ? "http"
+      : "https");
+  const origine = `${protocollo}://${host}`;
 
   const opzioniReparto = [
     { value: "", label: "Coda generale" },
@@ -164,21 +183,41 @@ export default async function ImpostazioniPage() {
           tutto resta in un&apos;unica coda, come adesso.
         </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="mt-3 space-y-2">
           {elencoReparti.map((r) => (
-            <form
+            <div
               key={r.id}
-              action={deleteReparto}
-              className="flex items-center gap-1 rounded-full pl-3 pr-1 text-sm"
+              className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2"
               style={{ background: "var(--surface-2)" }}
             >
-              <input type="hidden" name="id" value={r.id} />
-              <span>{r.name}</span>
-              <ConfirmSubmit
-                label="✕"
-                ariaLabel={`Elimina il reparto ${r.name}`}
-              />
-            </form>
+              <span className="w-28 shrink-0 text-sm font-medium">{r.name}</span>
+
+              {/* Il nome della stampante non lo usa il browser: non puo'.
+                  Serve a generare il comando qui sotto e a lasciare scritto
+                  quale stampante tocca a questa postazione. */}
+              <form
+                action={setStampanteReparto}
+                className="flex min-w-0 flex-1 items-center gap-2"
+              >
+                <input type="hidden" name="id" value={r.id} />
+                <input
+                  name="printerName"
+                  defaultValue={r.printerName ?? ""}
+                  placeholder="Nome stampante in Windows, es. stampa-bar"
+                  aria-label={`Stampante del reparto ${r.name}`}
+                  className="input h-9 min-w-0 flex-1 text-sm"
+                />
+                <button className="btn btn-sm">Salva</button>
+              </form>
+
+              <form action={deleteReparto}>
+                <input type="hidden" name="id" value={r.id} />
+                <ConfirmSubmit
+                  label="Elimina"
+                  ariaLabel={`Elimina il reparto ${r.name}`}
+                />
+              </form>
+            </div>
           ))}
           <form action={addReparto} className="flex items-center gap-1">
             <input
@@ -349,7 +388,7 @@ export default async function ImpostazioniPage() {
         </div>
       )}
 
-      <PostazioneStampa reparti={elencoReparti} />
+      <PostazioneStampa reparti={elencoReparti} origine={origine} />
     </div>
   );
 }
