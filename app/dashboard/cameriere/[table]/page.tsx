@@ -53,7 +53,7 @@ export default async function OrdinaPerTavolo({
             Ordine preso a voce. Finisce nella coda come quelli dal QR.
           </p>
         </div>
-        <Link href="/dashboard/ordina" className="btn btn-sm">
+        <Link href="/dashboard/cameriere" className="btn btn-sm">
           Cambia tavolo
         </Link>
       </div>

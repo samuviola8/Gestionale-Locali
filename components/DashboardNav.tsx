@@ -12,6 +12,8 @@ import {
   IconUsers,
   IconPlus,
   IconChart,
+  IconCounter,
+  IconSettings,
 } from "@/components/icons";
 
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
@@ -30,10 +32,16 @@ const items: {
     module: "qr_ordering",
   },
   {
-    href: "/dashboard/ordina",
-    label: "Ordine al banco",
+    href: "/dashboard/cameriere",
+    label: "Ordine dal cameriere",
     Icon: IconPlus,
     module: "qr_ordering",
+  },
+  {
+    href: "/dashboard/banco",
+    label: "Cassa al banco",
+    Icon: IconCounter,
+    module: "counter_orders",
   },
   {
     href: "/dashboard/bill",
@@ -50,15 +58,25 @@ const items: {
     module: "qr_ordering",
   },
   { href: "/dashboard/staff", label: "Staff", Icon: IconUsers },
+  { href: "/dashboard/impostazioni", label: "Impostazioni", Icon: IconSettings },
 ];
 
 export default function DashboardNav({
   modules,
+  soloCoda = false,
+  isOwner = true,
 }: {
   modules: Record<ModuleKey, boolean>;
+  // Chi sta a una postazione di preparazione: la sua giornata e' la coda, e
+  // conti e incassi non lo riguardano.
+  soloCoda?: boolean;
+  isOwner?: boolean;
 }) {
   const path = usePathname();
-  const visible = items.filter((i) => !i.module || modules[i.module]);
+  const visible = items
+    .filter((i) => !i.module || modules[i.module])
+    .filter((i) => !soloCoda || i.href === "/dashboard/orders")
+    .filter((i) => isOwner || i.href !== "/dashboard/impostazioni");
 
   return (
     <nav className="space-y-1">

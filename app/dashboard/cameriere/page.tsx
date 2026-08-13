@@ -30,6 +30,7 @@ export default async function ScegliTavolo() {
         .where(
           and(
             eq(orders.tenantId, session.tenantId),
+            eq(orders.channel, "tavolo"),
             eq(orderItems.paid, false)
           )
         )
@@ -39,9 +40,9 @@ export default async function ScegliTavolo() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Ordine al banco</h1>
+        <h1 className="text-2xl font-semibold">Ordine dal cameriere</h1>
         <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
-          Per chi ordina a voce, al bancone o al tavolo. Scegli dove va.
+          Per chi ordina a voce al tavolo. Scegli dove va.
         </p>
       </div>
 
@@ -62,7 +63,7 @@ export default async function ScegliTavolo() {
             return (
               <Link
                 key={t.number}
-                href={`/dashboard/ordina/${t.number}`}
+                href={`/dashboard/cameriere/${t.number}`}
                 className="flex h-20 w-20 flex-col items-center justify-center rounded-2xl text-xl font-semibold transition hover:opacity-80"
                 style={{
                   background: occupato ? "var(--brand-50)" : "var(--surface)",

@@ -13,6 +13,7 @@ export default function Select({
   size = "md",
   placeholder,
   className,
+  submitOnChange = false,
 }: {
   options: Option[];
   name?: string;
@@ -22,6 +23,9 @@ export default function Select({
   size?: "md" | "sm";
   placeholder?: string;
   className?: string;
+  // Manda il form appena si sceglie: su un elenco di assegnazioni un pulsante
+  // "salva" per riga sarebbe un clic in piu' per ognuna.
+  submitOnChange?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [internal, setInternal] = useState(
@@ -42,6 +46,11 @@ export default function Select({
     setInternal(v);
     onChange?.(v);
     setOpen(false);
+    if (submitOnChange) {
+      // Il campo nascosto si aggiorna al render successivo: si manda dopo,
+      // altrimenti partirebbe col valore vecchio.
+      requestAnimationFrame(() => ref.current?.closest("form")?.requestSubmit());
+    }
   }
 
   const current = options.find((o) => o.value === selected);

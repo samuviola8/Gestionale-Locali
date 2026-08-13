@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatPrice as fmt } from "@/lib/format";
+import { getChannel } from "@/lib/channels";
 
 type Item = {
   id: string;
@@ -15,7 +16,11 @@ type Item = {
 };
 type Order = {
   id: string;
-  tableNumber: number;
+  tableNumber: number | null;
+  channel: string;
+  customerName: string | null;
+  customerAddress: string | null;
+  dueAt: string | null;
   status: string;
   createdAt: string;
   items: Item[];
@@ -28,6 +33,25 @@ function time(iso: string): string {
   });
 }
 
+// Un ordine per domani deve dirlo: "per le 20:30" da solo lo fa preparare
+// stasera.
+function quandoRitira(d: Date): string {
+  const oggi = new Date();
+  const stesso =
+    d.getFullYear() === oggi.getFullYear() &&
+    d.getMonth() === oggi.getMonth() &&
+    d.getDate() === oggi.getDate();
+  const ora = d.toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (stesso) return `le ${ora}`;
+  return `${d.toLocaleDateString("it-IT", {
+    weekday: "short",
+    day: "numeric",
+  })} alle ${ora}`;
+}
+
 // Da quanto aspetta questo tavolo. E' il dato che serve davvero durante il
 // servizio: l'orario in cui e' arrivato l'ordine non dice quanto si e' in
 // ritardo, i minuti trascorsi si'.
@@ -35,10 +59,13 @@ function waitedMinutes(iso: string, now: number): number {
   return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
 }
 
-// Soglie di attesa: sotto i 5 minuti si e' in orario, oltre i 12 e' tardi.
-function urgency(min: number): "ok" | "warn" | "danger" {
-  if (min >= 12) return "danger";
-  if (min >= 5) return "warn";
+// Le soglie dipendono dal canale: un domicilio a venti minuti e' normale, un
+// tavolo a venti minuti e' un disastro. Con una soglia sola il colore mentirebbe
+// su uno dei due.
+function urgency(min: number, channel: string): "ok" | "warn" | "danger" {
+  const c = getChannel(channel);
+  if (min >= c.attesaDanger) return "danger";
+  if (min >= c.attesaWarn) return "warn";
   return "ok";
 }
 
@@ -230,8 +257,23 @@ export default function OrderQueue({
   return (
     <div className="space-y-3">
       {sorted.map((o) => {
+        // Con un orario concordato l'attesa non conta: conta quanto manca.
+        // Un asporto per le 20:30 ordinato alle 18 non e' in ritardo di due ore.
+        const perLe = o.dueAt ? new Date(o.dueAt) : null;
+        const mancano = perLe
+          ? Math.round((perLe.getTime() - now) / 60000)
+          : null;
         const min = waitedMinutes(o.createdAt, now);
-        const level = urgency(min);
+        const level =
+          mancano !== null
+            ? mancano <= 0
+              ? "danger"
+              : mancano <= 10
+                ? "warn"
+                : "ok"
+            : urgency(min, o.channel);
+        const canale = getChannel(o.channel);
+        const inSala = o.channel === "tavolo";
         const isNew = o.status === "new";
         // I pezzi annullati non si preparano: non vanno contati.
         const pieces = o.items
@@ -256,10 +298,17 @@ export default function OrderQueue({
             }
           >
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3.5">
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <span className="text-lg font-semibold">
-                  Tavolo {o.tableNumber}
+                  {inSala
+                    ? `Tavolo ${o.tableNumber}`
+                    : o.customerName
+                      ? `${canale.singolare} · ${o.customerName}`
+                      : canale.singolare}
                 </span>
+                {!inSala && (
+                  <span className="badge badge-brand">{canale.label}</span>
+                )}
                 <span
                   className={"badge " + (isNew ? "badge-brand" : "badge-muted")}
                 >
@@ -269,9 +318,24 @@ export default function OrderQueue({
 
               <div className="flex items-center gap-2">
                 <span className={"badge badge-" + level}>
-                  <span className="tnum">{waitLabel(min)}</span>
-                  {level === "danger" && " di attesa"}
+                  {mancano !== null ? (
+                    <span className="tnum">
+                      {mancano > 0
+                        ? `fra ${waitLabel(mancano)}`
+                        : `in ritardo di ${waitLabel(-mancano)}`}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="tnum">{waitLabel(min)}</span>
+                      {level === "danger" && " di attesa"}
+                    </>
+                  )}
                 </span>
+                {perLe && (
+                  <span className="tnum text-xs font-medium">
+                    per {quandoRitira(perLe)}
+                  </span>
+                )}
                 <span className="tnum text-xs" style={{ color: "var(--muted)" }}>
                   {time(o.createdAt)}
                 </span>
@@ -289,6 +353,14 @@ export default function OrderQueue({
                 </button>
               </div>
             </div>
+
+            {/* L'indirizzo sta accanto alla comanda: chi impacchetta e chi
+                consegna guardano la stessa card. */}
+            {o.customerAddress && (
+              <p className="mt-1.5 px-4 text-sm" style={{ color: "var(--muted)" }}>
+                {o.customerAddress}
+              </p>
+            )}
 
             {inModifica && (
               <p className="mt-2 px-4 text-xs" style={{ color: "var(--muted)" }}>
@@ -333,7 +405,10 @@ export default function OrderQueue({
                       {it.name}
                     </span>
                     {it.voided && <span className="badge badge-muted">annullato</span>}
-                    {it.alias && (
+                    {/* Il nome della persona ha senso solo dove il conto si
+                        divide: al banco "Tavolo" e' il valore interno, non
+                        un'informazione. */}
+                    {inSala && it.alias && (
                       <span className="text-xs" style={{ color: "var(--muted)" }}>
                         {it.alias}
                       </span>

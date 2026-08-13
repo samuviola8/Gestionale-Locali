@@ -9,6 +9,7 @@ import {
   deleteVariant,
   addIngredient,
   deleteIngredient,
+  togglePinned,
 } from "./actions";
 
 // I prodotti di una categoria. Carica i propri dati da solo: e' quello che
@@ -74,6 +75,9 @@ export default async function ElencoProdotti({
               )}
               {p.acceptsNote && (
                 <span className="badge badge-brand ml-2">su richiesta</span>
+              )}
+              {p.pinned && (
+                <span className="badge badge-brand ml-2">★ preferito</span>
               )}
               {p.description && (
                 <div className="text-sm" style={{ color: "var(--muted)" }}>
@@ -194,6 +198,20 @@ export default async function ElencoProdotti({
                 ariaLabel={`${p.imageUrl ? "Cambia" : "Aggiungi"} la foto di ${p.name}`}
                 autoSubmit
               />
+            </form>
+            <form action={togglePinned}>
+              <input type="hidden" name="id" value={p.id} />
+              <button
+                className="btn btn-sm"
+                aria-label={
+                  p.pinned
+                    ? `Togli ${p.name} dai preferiti del banco`
+                    : `Metti ${p.name} fra i preferiti del banco`
+                }
+                style={p.pinned ? { color: "var(--brand-text)" } : undefined}
+              >
+                {p.pinned ? "★ Preferito" : "☆ Preferito"}
+              </button>
             </form>
             <form action={toggleAvailable}>
               <input type="hidden" name="id" value={p.id} />

@@ -49,6 +49,27 @@ export function IconOrders(p: Props) {
   );
 }
 
+export function IconSettings(p: Props) {
+  return (
+    <Base {...p}>
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+      <circle cx="10" cy="7" r="2.5" fill="var(--surface)" />
+      <circle cx="16" cy="17" r="2.5" fill="var(--surface)" />
+    </Base>
+  );
+}
+
+// Cassa al banco: il bancone visto di lato.
+export function IconCounter(p: Props) {
+  return (
+    <Base {...p}>
+      <path d="M3 10h18l-1.5 10.5a1 1 0 0 1-1 .5H5.5a1 1 0 0 1-1-.5Z" />
+      <path d="M7 10V6a5 5 0 0 1 10 0v4" />
+    </Base>
+  );
+}
+
 export function IconChart(p: Props) {
   return (
     <Base {...p}>

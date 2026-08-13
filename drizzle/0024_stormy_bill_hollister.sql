@@ -1,0 +1,1 @@
+ALTER TABLE "reparti" ADD COLUMN "printer_name" text;

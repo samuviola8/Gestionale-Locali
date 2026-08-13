@@ -52,7 +52,15 @@ export type SessionUser = {
   tenantSlug: string;
   tenantName: string;
   role: string;
+  // Postazione di preparazione a cui e' assegnato, se ne ha una.
+  repartoId: string | null;
 };
+
+// Il reparto che restringe cosa vede. Il titolare non si restringe mai, anche
+// se gli e' stato assegnato uno: deve poter guardare tutto il locale.
+export function repartoAttivo(s: SessionUser): string | null {
+  return s.role === "owner" ? null : s.repartoId;
+}
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const store = await cookies();
@@ -67,6 +75,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       tenantSlug: tenants.slug,
       tenantName: tenants.name,
       role: users.role,
+      repartoId: users.repartoId,
       expiresAt: sessions.expiresAt,
     })
     .from(sessions)
@@ -86,6 +95,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     tenantSlug: row.tenantSlug,
     tenantName: row.tenantName,
     role: row.role,
+    repartoId: row.repartoId,
   };
 }
 

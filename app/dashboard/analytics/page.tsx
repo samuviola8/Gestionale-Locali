@@ -5,6 +5,7 @@ import { formatPrice as fmt } from "@/lib/format";
 import PeriodoFiltro from "@/components/PeriodoFiltro";
 import GraficoLinee from "@/components/GraficoLinee";
 import Affluenza from "@/components/Affluenza";
+import { getChannel } from "@/lib/channels";
 
 // Estremi del periodo. Si lavora a mezzanotte locale: un intervallo che parte
 // a meta' giornata darebbe confronti tra giorni non confrontabili.
@@ -382,6 +383,21 @@ export default async function AnalyticsPage({
             vuoto="Nessun ordine in questo periodo."
           />
         </div>
+      )}
+
+      {/* Con un canale solo il taglio non dice niente: e' l'incasso, gia'
+          scritto in cima. */}
+      {dati.perCanale.length > 1 && (
+        <Barre
+          titolo="Da dove arriva l'incasso"
+          sottotitolo="Sala, banco, asporto e domicilio a confronto"
+          dati={dati.perCanale.map((c) => ({
+            etichetta: getChannel(c.channel).label,
+            valore: c.incassoCents,
+            nota: fmt(c.incassoCents),
+          }))}
+          vuoto="Nessun ordine in questo periodo."
+        />
       )}
 
       <div className="grid gap-3 lg:grid-cols-2">

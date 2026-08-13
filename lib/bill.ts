@@ -49,7 +49,21 @@ export type BillPerson = {
 };
 
 export type BillTable = {
+  // Identificatore del conto. In sala e' il tavolo, che raccoglie piu' ordini;
+  // fuori dalla sala e' il singolo ordine, perche' non c'e' un posto a cui
+  // appoggiarsi e ogni asporto e' una cosa a se'.
+  key: string;
+  channel: string;
+  // Come si chiama questo conto a schermo: "Tavolo 3", "Asporto · Marco".
+  label: string;
   tableNumber: number;
+  orderId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  // La consegna e' un servizio, non una consumazione: entra nel totale ma non
+  // nella comanda, e non si divide fra nessuno.
+  deliveryFeeCents: number;
   partySize: number;
   // Una voce per ogni persona seduta, comprese quelle che hanno solo diviso.
   people: BillPerson[];
@@ -71,7 +85,15 @@ export function splitCents(amount: number, n: number): number[] {
 }
 
 export function buildTable(input: {
+  key: string;
+  channel: string;
+  label: string;
   tableNumber: number;
+  orderId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerAddress?: string | null;
+  deliveryFeeCents?: number;
   byAlias: Map<string, BillLine[]>;
   declaredPartySize: number | null;
   coverChargeCents: number;
@@ -80,6 +102,7 @@ export function buildTable(input: {
   hasPending: boolean;
 }): BillTable {
   const { tableNumber, byAlias, coverChargeCents, settled, hasPending } = input;
+  const deliveryFeeCents = input.deliveryFeeCents ?? 0;
 
   const sharedItems = byAlias.get(ALIAS_CONDIVISO) ?? [];
   const sharedTotal = totaleVoci(sharedItems);
@@ -116,12 +139,21 @@ export function buildTable(input: {
     const daSaldare = daPagare(items);
     const itemsTotal = totaleVoci(items);
     const sharedQuota = quote[i] ?? 0;
-    const extras = sharedQuota + coverChargeCents;
+    // La consegna la paga chi ritira, cioe' l'unico intestatario che un conto
+    // fuori dalla sala ha. Lasciarla fuori da ogni persona vorrebbe dire che
+    // incassando tutti resterebbe comunque un residuo che nessuno deve.
+    const consegnaSuDiLui = i === 0 ? deliveryFeeCents : 0;
+    // Quota e coperto vanno registrati a parte perche' si incassano da soli,
+    // persona per persona. La consegna no: si paga insieme all'ordine, in un
+    // gesto, quindi pretenderne una registrazione lascerebbe il conto aperto
+    // per sempre.
+    const daRegistrare = sharedQuota + coverChargeCents;
+    const extras = daRegistrare + consegnaSuDiLui;
     // Una voce annullata non tiene aperto il conto di nessuno, ma nemmeno lo
     // chiude: chi resta con tutto annullato e zero da pagare non ha "pagato".
     const paid =
       daSaldare.every((x) => x.paid) &&
-      (extras === 0 || settled.has(posto.alias)) &&
+      (daRegistrare === 0 || settled.has(posto.alias)) &&
       (daSaldare.length > 0 || extras > 0);
 
     // Chi ha gia' pagato vale l'importo che ha versato: se dopo si corregge il
@@ -130,7 +162,7 @@ export function buildTable(input: {
     const total =
       paid && incassatoDaLui !== undefined
         ? incassatoDaLui
-        : itemsTotal + sharedQuota + coverChargeCents;
+        : itemsTotal + extras;
 
     return {
       alias: posto.alias,
@@ -147,6 +179,8 @@ export function buildTable(input: {
     // Nemmeno se ha righe, se sono tutte annullate.
     .filter((p) => p.total > 0 || daPagare(p.items).length > 0);
 
+  // La consegna e' gia' dentro al totale di chi ritira: sommarla di nuovo qui
+  // la conterebbe due volte.
   const total = people.reduce((s, p) => s + p.total, 0);
 
   // Se il numero di persone cambia dopo un incasso, il posto pagato puo' non
@@ -161,7 +195,15 @@ export function buildTable(input: {
     incassatoOrfano;
 
   return {
+    key: input.key,
+    channel: input.channel,
+    label: input.label,
     tableNumber,
+    orderId: input.orderId ?? null,
+    customerName: input.customerName ?? null,
+    customerPhone: input.customerPhone ?? null,
+    customerAddress: input.customerAddress ?? null,
+    deliveryFeeCents,
     partySize,
     people,
     sharedItems,

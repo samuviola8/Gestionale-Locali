@@ -1,0 +1,1 @@
+ALTER TABLE "reparti" DROP COLUMN "printer_name";

@@ -26,6 +26,8 @@ export type MenuProduct = {
   variants: MenuVariant[];
   // Il cliente scrive cosa desidera invece di scegliere una variante.
   acceptsNote: boolean;
+  // In cima alla cassa al banco. Non cambia niente lato cliente.
+  pinned: boolean;
 };
 
 export type MenuCategory = {
@@ -82,6 +84,7 @@ export async function getMenu(tenantId: string): Promise<MenuCategory[]> {
         available: p.available,
         variants: byProduct.get(p.id) ?? [],
         acceptsNote: p.acceptsNote,
+        pinned: p.pinned,
       })),
   }));
 }
@@ -185,6 +188,7 @@ export async function getCategoryProducts(
     available: p.available,
     variants: byProduct.get(p.id) ?? [],
     acceptsNote: p.acceptsNote,
+    pinned: p.pinned,
   }));
 }
 

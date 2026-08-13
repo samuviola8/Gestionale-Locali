@@ -2,6 +2,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuProducts, menuProductVariants, orders, orderItems } from "@/lib/db/schema";
 import type { ModuleState } from "@/lib/modules";
+import { getChannel, type Channel } from "@/lib/channels";
+import { creaComande, repartoPerProdotto } from "@/lib/stampa";
 
 // Un ordine nasce uguale sia dal telefono del cliente sia dalla dashboard del
 // cameriere: cambia solo chi ha il diritto di crearlo. Qui sta la parte comune
@@ -15,15 +17,40 @@ export type IncomingItem = {
   note?: string;
 };
 
+// Chi ritira o a chi si consegna, quando l'ordine non ha un tavolo.
+export type DatiCliente = {
+  nome?: string;
+  telefono?: string;
+  indirizzo?: string;
+  consegnaCents?: number;
+  // "AAAA-MM-GGTHH:MM" concordato. Con la data e non la sola ora, perche' al
+  // telefono si prenota spesso per domani e un orario nudo verrebbe letto
+  // come oggi. Chi chiama per le 20:30 va preparato per le 20:30: partire
+  // subito vuol dire consegnargli roba fredda.
+  oraRitiro?: string;
+};
+
 const MAX_NOTA = 200;
+const MAX_TESTO = 120;
+
+function pulisci(v: string | undefined, max = MAX_TESTO): string | null {
+  return (v ?? "").trim().slice(0, max) || null;
+}
 
 export async function createOrderRows(
   tenantId: string,
-  tableNumber: number,
+  tableNumber: number | null,
   items: IncomingItem[],
   modules: ModuleState,
-  partySize?: number
-): Promise<{ ok: boolean }> {
+  partySize?: number,
+  channel: Channel = "tavolo",
+  cliente?: DatiCliente,
+  // Forzatura della stampa decisa dall'operatore per questo ordine.
+  stampaComanda?: boolean
+): Promise<
+  { ok: false } | { ok: true; orderId: string; comande: number }
+> {
+  const canale = getChannel(channel);
   const clean = items.filter((i) => i.productId && i.quantity > 0);
   if (!clean.length) return { ok: false };
 
@@ -76,9 +103,12 @@ export async function createOrderRows(
       if (p.acceptsNote && !nota) return null;
 
       const quantity = Math.min(i.quantity, 99);
-      // Senza il modulo sotto-conti tutto finisce sul conto del tavolo,
-      // qualunque cosa mandi il client.
-      const alias = modules.split_bill ? i.alias?.trim() || "Tavolo" : "Tavolo";
+      // Senza il modulo sotto-conti, e fuori dalla sala, tutto finisce su un
+      // conto solo: al banco o in consegna non c'e' niente da dividere.
+      const alias =
+        modules.split_bill && canale.seduti
+          ? i.alias?.trim() || "Tavolo"
+          : "Tavolo";
 
       if (i.variantId) {
         const v = variantById.get(i.variantId);
@@ -109,17 +139,68 @@ export async function createOrderRows(
   if (!rows.length) return { ok: false };
 
   // Il numero di persone arriva dal client ma non ci si fida: serve a dividere
-  // il conto, quindi un valore assurdo va scartato, non salvato.
+  // il conto, quindi un valore assurdo va scartato, non salvato. Fuori dalla
+  // sala non c'e' nessuno seduto, quindi non si conta nessun coperto.
   const persone =
-    Number.isInteger(partySize) && partySize! >= 1 && partySize! <= 50
+    canale.seduti &&
+    Number.isInteger(partySize) &&
+    partySize! >= 1 &&
+    partySize! <= 50
       ? partySize!
       : null;
 
+  // La consegna si paga solo dove si consegna, e non oltre il ragionevole.
+  const consegna =
+    channel === "domicilio" &&
+    Number.isInteger(cliente?.consegnaCents) &&
+    cliente!.consegnaCents! >= 0 &&
+    cliente!.consegnaCents! <= 5000
+      ? cliente!.consegnaCents!
+      : 0;
+
+  // Il momento concordato arriva con la data: si accetta solo se e' nelle due
+  // settimane a venire e non troppo indietro, perche' un ordine per il mese
+  // scorso e' un errore di battitura, non una prenotazione.
+  let ritiro: Date | null = null;
+  const quando = (cliente?.oraRitiro ?? "").trim();
+  if (!canale.seduti && /^\d{4}-\d{2}-\d{2}T\d{1,2}:\d{2}$/.test(quando)) {
+    const d = new Date(quando);
+    const ora = Date.now();
+    if (
+      !Number.isNaN(d.getTime()) &&
+      d.getTime() > ora - 60 * 60 * 1000 &&
+      d.getTime() < ora + 14 * 24 * 60 * 60 * 1000
+    ) {
+      ritiro = d;
+    }
+  }
+
   const inserted = await db
     .insert(orders)
-    .values({ tenantId, tableNumber, status: "new", partySize: persone })
+    .values({
+      tenantId,
+      tableNumber: canale.seduti ? tableNumber : null,
+      dueAt: ritiro,
+      channel,
+      status: "new",
+      partySize: persone,
+      customerName: canale.seduti ? null : pulisci(cliente?.nome),
+      customerPhone: canale.seduti ? null : pulisci(cliente?.telefono, 32),
+      customerAddress: canale.chiedeIndirizzo
+        ? pulisci(cliente?.indirizzo, 200)
+        : null,
+      deliveryFeeCents: consegna,
+    })
     .returning({ id: orders.id });
   const orderId = inserted[0].id;
+
+  // Chi prepara cosa si decide adesso e resta scritto sulla riga: se domani la
+  // categoria passa a un altro reparto, la comanda gia' partita non cambia
+  // padrone a meta' servizio.
+  const reparti = await repartoPerProdotto(
+    tenantId,
+    rows.map((r) => r.productId)
+  );
 
   await db.insert(orderItems).values(
     rows.map((r) => ({
@@ -131,8 +212,16 @@ export async function createOrderRows(
       priceCents: r.priceCents,
       quantity: r.quantity,
       alias: r.alias,
+      repartoId: reparti.get(r.productId) ?? null,
     }))
   );
 
-  return { ok: true };
+  // Le comande partono da sole se il locale ha acceso la stampa per questo
+  // canale: la cucina deve partire quando l'ordine arriva, non quando qualcuno
+  // si ricorda di stamparlo. Quante ne sono partite torna a chi ha inviato,
+  // perche' "non stampa niente" e' l'unico esito che l'operatore non deve
+  // scoprire da solo.
+  const comande = await creaComande(tenantId, orderId, stampaComanda);
+
+  return { ok: true, orderId, comande };
 }

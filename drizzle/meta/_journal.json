@@ -134,6 +134,55 @@
       "when": 1786560966107,
       "tag": "0018_warm_callisto",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786565551496,
+      "tag": "0019_mixed_captain_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786630888220,
+      "tag": "0020_perfect_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786632421444,
+      "tag": "0021_strong_lily_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786632821148,
+      "tag": "0022_goofy_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786634651807,
+      "tag": "0023_panoramic_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786636686438,
+      "tag": "0024_stormy_bill_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786644621448,
+      "tag": "0025_lucky_thing",
+      "breakpoints": true
     }
   ]
 }

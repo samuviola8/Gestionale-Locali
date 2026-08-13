@@ -9,10 +9,12 @@ export default function BillBoard({
   closeTable,
   setPartySize,
   voidItem,
+  stampaConto,
 }: {
-  markAliasPaid: (tableNumber: number, alias: string) => Promise<void>;
-  closeTable: (tableNumber: number) => Promise<void>;
-  setPartySize: (tableNumber: number, partySize: number) => Promise<void>;
+  markAliasPaid: (key: string, alias: string) => Promise<void>;
+  closeTable: (key: string) => Promise<void>;
+  setPartySize: (key: string, partySize: number) => Promise<void>;
+  stampaConto: (key: string) => Promise<void>;
   voidItem: (
     itemId: string,
     annulla: boolean
@@ -20,11 +22,13 @@ export default function BillBoard({
 }) {
   const [tables, setTables] = useState<BillTable[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [confirmTable, setConfirmTable] = useState<number | null>(null);
+  const [confermaChiusura, setConfermaChiusura] = useState<BillTable | null>(
+    null
+  );
   const [busy, setBusy] = useState<string | null>(null);
-  // Un tavolo alla volta in modifica: le crocette sempre accese si toccano
+  // Un conto alla volta in modifica: le crocette sempre accese si toccano
   // per sbaglio proprio mentre si incassa.
-  const [modifica, setModifica] = useState<number | null>(null);
+  const [modifica, setModifica] = useState<string | null>(null);
   const [erroreVoce, setErroreVoce] = useState<string | null>(null);
 
   async function annulla(itemId: string, annullare: boolean) {
@@ -52,30 +56,30 @@ export default function BillBoard({
     return () => clearInterval(t);
   }, []);
 
-  async function incassa(tableNumber: number, alias: string) {
-    setBusy(`${tableNumber}:${alias}`);
+  async function incassa(key: string, alias: string) {
+    setBusy(`${key}:${alias}`);
     try {
-      await markAliasPaid(tableNumber, alias);
+      await markAliasPaid(key, alias);
       await load();
     } finally {
       setBusy(null);
     }
   }
 
-  async function cambiaPersone(tableNumber: number, n: number) {
-    await setPartySize(tableNumber, n);
+  async function cambiaPersone(key: string, n: number) {
+    await setPartySize(key, n);
     await load();
   }
 
-  async function confirmClose(tableNumber: number) {
-    setConfirmTable(null);
-    await closeTable(tableNumber);
+  async function confirmClose(key: string) {
+    setConfermaChiusura(null);
+    await closeTable(key);
     load();
   }
 
   function onCloseClick(t: BillTable) {
-    if (t.hasPending) setConfirmTable(t.tableNumber);
-    else confirmClose(t.tableNumber);
+    if (t.hasPending) setConfermaChiusura(t);
+    else confirmClose(t.key);
   }
 
   if (loaded && tables.length === 0) {
@@ -96,31 +100,38 @@ export default function BillBoard({
         const quota = t.total > 0 ? Math.round((t.incassato / t.total) * 100) : 0;
         const residuo = Math.max(0, t.total - t.incassato);
 
+        const inSala = t.channel === "tavolo";
+
         return (
-          <section key={t.tableNumber} className="card overflow-hidden">
+          <section key={t.key} className="card overflow-hidden">
             <div className="px-4 pt-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h2 className="text-lg font-semibold">Tavolo {t.tableNumber}</h2>
+                  <h2 className="text-lg font-semibold">{t.label}</h2>
+                  {!inSala && (
+                    <span className="badge badge-brand">
+                      {t.channel === "banco"
+                        ? "Banco"
+                        : t.channel === "asporto"
+                          ? "Asporto"
+                          : "Domicilio"}
+                    </span>
+                  )}
                   {t.hasPending && (
                     <span className="badge badge-warn">Ordine in corso</span>
                   )}
                   <button
                     onClick={() => {
                       setErroreVoce(null);
-                      setModifica(
-                        modifica === t.tableNumber ? null : t.tableNumber
-                      );
+                      setModifica(modifica === t.key ? null : t.key);
                     }}
                     className="text-xs underline"
                     style={{
                       color:
-                        modifica === t.tableNumber
-                          ? "var(--text)"
-                          : "var(--muted)",
+                        modifica === t.key ? "var(--text)" : "var(--muted)",
                     }}
                   >
-                    {modifica === t.tableNumber ? "fine" : "modifica"}
+                    {modifica === t.key ? "fine" : "modifica"}
                   </button>
                 </div>
                 <div className="text-right">
@@ -134,36 +145,52 @@ export default function BillBoard({
               </div>
 
               {/* Il numero di persone decide quote e coperti: si corregge qui,
-                  perche' il cliente puo' averlo sbagliato. */}
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span style={{ color: "var(--muted)" }}>Persone al tavolo</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() =>
-                      cambiaPersone(t.tableNumber, Math.max(1, t.partySize - 1))
-                    }
-                    aria-label={`Una persona in meno al tavolo ${t.tableNumber}`}
-                    className="btn btn-sm"
-                  >
-                    −
-                  </button>
-                  <span className="tnum w-8 text-center font-semibold">
-                    {t.partySize}
-                  </span>
-                  <button
-                    onClick={() => cambiaPersone(t.tableNumber, t.partySize + 1)}
-                    aria-label={`Una persona in piu' al tavolo ${t.tableNumber}`}
-                    className="btn btn-sm"
-                  >
-                    +
-                  </button>
+                  perche' il cliente puo' averlo sbagliato. Fuori dalla sala
+                  non c'e' nessuno seduto, quindi non c'e' niente da correggere:
+                  al suo posto servono i contatti di chi ritira. */}
+              {inSala ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                  <span style={{ color: "var(--muted)" }}>Persone al tavolo</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() =>
+                        cambiaPersone(t.key, Math.max(1, t.partySize - 1))
+                      }
+                      aria-label={`Una persona in meno al tavolo ${t.tableNumber}`}
+                      className="btn btn-sm"
+                    >
+                      −
+                    </button>
+                    <span className="tnum w-8 text-center font-semibold">
+                      {t.partySize}
+                    </span>
+                    <button
+                      onClick={() => cambiaPersone(t.key, t.partySize + 1)}
+                      aria-label={`Una persona in piu' al tavolo ${t.tableNumber}`}
+                      className="btn btn-sm"
+                    >
+                      +
+                    </button>
+                  </div>
+                  {t.coverChargeCents > 0 && (
+                    <span className="badge badge-muted">
+                      coperto {fmt(t.coverChargeCents)} a persona
+                    </span>
+                  )}
                 </div>
-                {t.coverChargeCents > 0 && (
-                  <span className="badge badge-muted">
-                    coperto {fmt(t.coverChargeCents)} a persona
-                  </span>
-                )}
-              </div>
+              ) : (
+                (t.customerAddress || t.customerPhone) && (
+                  <div className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+                    {t.customerAddress}
+                    {t.customerAddress && t.customerPhone && " · "}
+                    {t.customerPhone && (
+                      <a href={`tel:${t.customerPhone}`} className="underline">
+                        {t.customerPhone}
+                      </a>
+                    )}
+                  </div>
+                )
+              )}
 
               <div
                 className="mt-3 h-1.5 w-full overflow-hidden rounded-full"
@@ -186,13 +213,13 @@ export default function BillBoard({
                 {fmt(t.incassato)} di {fmt(t.total)}
               </div>
 
-              {modifica === t.tableNumber && (
+              {modifica === t.key && (
                 <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
                   Annulla quello che non è stato servito: esce dal totale e
                   resta barrato, così si sa sempre perché il conto è questo.
                 </p>
               )}
-              {modifica === t.tableNumber && erroreVoce && (
+              {modifica === t.key && erroreVoce && (
                 <p
                   role="status"
                   className="mt-1 text-xs"
@@ -216,7 +243,13 @@ export default function BillBoard({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-medium">{p.alias}</span>
+                        {/* Fuori dalla sala l'intestatario e' uno solo, e si
+                            chiama "Tavolo" solo dentro al database. */}
+                        <span className="truncate font-medium">
+                          {inSala
+                            ? p.alias
+                            : (t.customerName ?? "Da incassare")}
+                        </span>
                         {p.placeholder && (
                           <span className="badge badge-muted">
                             solo condiviso
@@ -231,11 +264,11 @@ export default function BillBoard({
                       <span className="badge badge-ok">Pagato</span>
                     ) : (
                       <button
-                        onClick={() => incassa(t.tableNumber, p.alias)}
-                        disabled={busy === `${t.tableNumber}:${p.alias}`}
+                        onClick={() => incassa(t.key, p.alias)}
+                        disabled={busy === `${t.key}:${p.alias}`}
                         className="btn btn-primary btn-sm"
                       >
-                        {busy === `${t.tableNumber}:${p.alias}`
+                        {busy === `${t.key}:${p.alias}`
                           ? "..."
                           : `Incassa ${fmt(p.total)}`}
                       </button>
@@ -267,7 +300,7 @@ export default function BillBoard({
                           {i.voided && (
                             <span className="badge badge-muted">annullato</span>
                           )}
-                          {modifica === t.tableNumber && i.id && !i.paid && (
+                          {modifica === t.key && i.id && !i.paid && (
                             <button
                               onClick={() => annulla(i.id!, !i.voided)}
                               className="text-xs underline"
@@ -308,7 +341,9 @@ export default function BillBoard({
                             className="flex justify-between gap-3"
                             style={{ color: "var(--muted)" }}
                           >
-                            <span>Quota condiviso e coperto</span>
+                            <span>
+                              {inSala ? "Quota condiviso e coperto" : "Consegna"}
+                            </span>
                             <span className="tnum">
                               {fmt(p.total - p.itemsTotal)}
                             </span>
@@ -332,6 +367,20 @@ export default function BillBoard({
                               >
                                 <span>Coperto</span>
                                 <span className="tnum">{fmt(p.coverCharge)}</span>
+                              </li>
+                            )}
+                            {/* La consegna e' un servizio, non una
+                                consumazione: senza una riga sua il totale di
+                                chi ritira sembrerebbe sbagliato. */}
+                            {t.deliveryFeeCents > 0 && (
+                              <li
+                                className="flex justify-between gap-3"
+                                style={{ color: "var(--muted)" }}
+                              >
+                                <span>Consegna</span>
+                                <span className="tnum">
+                                  {fmt(t.deliveryFeeCents)}
+                                </span>
                               </li>
                             )}
                           </>
@@ -367,7 +416,7 @@ export default function BillBoard({
                           {i.voided && (
                             <span className="badge badge-muted">annullato</span>
                           )}
-                          {modifica === t.tableNumber && i.id && !i.paid && (
+                          {modifica === t.key && i.id && !i.paid && (
                             <button
                               onClick={() => annulla(i.id!, !i.voided)}
                               className="text-xs underline"
@@ -396,6 +445,7 @@ export default function BillBoard({
                   </ul>
                 </div>
               )}
+
             </div>
 
             <div
@@ -403,21 +453,31 @@ export default function BillBoard({
               style={{ background: "var(--surface-2)" }}
             >
               <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Lo scontrino lo emette la cassa.
+                Lo scontrino fiscale lo emette la cassa.
               </span>
+              <button
+                onClick={() => stampaConto(t.key)}
+                className="btn btn-sm ml-auto"
+              >
+                Stampa il conto
+              </button>
               <button onClick={() => onCloseClick(t)} className="btn btn-sm">
-                {saldato ? "Chiudi tavolo" : "Chiudi e salda il resto"}
+                {saldato
+                  ? inSala
+                    ? "Chiudi tavolo"
+                    : "Archivia"
+                  : "Chiudi e salda il resto"}
               </button>
             </div>
           </section>
         );
       })}
 
-      {confirmTable !== null && (
+      {confermaChiusura && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.5)" }}
-          onClick={() => setConfirmTable(null)}
+          onClick={() => setConfermaChiusura(null)}
         >
           <div
             className="card w-full max-w-sm p-5"
@@ -427,15 +487,18 @@ export default function BillBoard({
           >
             <div className="text-base font-semibold">Ordine ancora in corso</div>
             <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
-              Il tavolo {confirmTable} ha ancora un ordine da preparare o in
+              {confermaChiusura.label} ha ancora un ordine da preparare o in
               preparazione. Chiudendo, l&apos;ordine verrà segnato come servito.
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setConfirmTable(null)} className="btn btn-sm">
+              <button
+                onClick={() => setConfermaChiusura(null)}
+                className="btn btn-sm"
+              >
                 Annulla
               </button>
               <button
-                onClick={() => confirmClose(confirmTable)}
+                onClick={() => confirmClose(confermaChiusura.key)}
                 className="btn btn-primary btn-sm"
               >
                 Conferma chiusura

@@ -2,10 +2,15 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { billSettlements, orderItems, orders, tenants } from "@/lib/db/schema";
 import { buildTable, type BillLine, type BillTable } from "@/lib/bill";
+import { getChannel } from "@/lib/channels";
 
 // Carica i conti aperti di un locale. Sta a parte dalla route perche' lo usa
 // anche l'incasso: il totale da congelare dev'essere calcolato con le stesse
 // regole che il cassiere vede a schermo.
+//
+// In sala il conto e' il tavolo e raccoglie tutti gli ordini di quel tavolo.
+// Fuori dalla sala il conto e' il singolo ordine: due asporti in coda sono due
+// conti distinti, e appoggiarli a un numero di tavolo inventato li mescolerebbe.
 export async function loadOpenTables(
   tenantId: string,
   onlyTable?: number
@@ -23,15 +28,26 @@ export async function loadOpenTables(
     .select({
       id: orders.id,
       tableNumber: orders.tableNumber,
+      channel: orders.channel,
       status: orders.status,
       partySize: orders.partySize,
+      customerName: orders.customerName,
+      customerPhone: orders.customerPhone,
+      customerAddress: orders.customerAddress,
+      deliveryFeeCents: orders.deliveryFeeCents,
     })
     .from(orders)
     .where(and(eq(orders.tenantId, tenantId), isNull(orders.closedAt)))
-    .orderBy(asc(orders.tableNumber));
+    .orderBy(asc(orders.createdAt));
 
+  // Il filtro per tavolo serve alla pagina cliente, che vive in sala: gli
+  // ordini senza tavolo non la riguardano.
   const wanted =
-    onlyTable === undefined ? os : os.filter((o) => o.tableNumber === onlyTable);
+    onlyTable === undefined
+      ? os
+      : os.filter(
+          (o) => o.channel === "tavolo" && o.tableNumber === onlyTable
+        );
   const ids = wanted.map((o) => o.id);
   if (!ids.length) return [];
 
@@ -49,50 +65,83 @@ export async function loadOpenTables(
     .from(billSettlements)
     .where(eq(billSettlements.tenantId, tenantId));
 
-  const orderTable = new Map(wanted.map((o) => [o.id, o.tableNumber]));
-
   // Un ordine annullato per intero non e' piu' "in corso": non arrivera' mai
   // niente, e segnalarlo bloccherebbe la chiusura del tavolo per nulla.
   const conRigheVive = new Set(
     its.filter((i) => i.voidedAt === null).map((i) => i.orderId)
   );
 
-  const pending = new Map<number, boolean>();
-  // Se due telefoni dichiarano numeri diversi si tiene il maggiore, cosi'
-  // nessuno resta senza coperto.
-  const partySizes = new Map<number, number>();
+  // Chiave del conto a cui appartiene ogni ordine.
+  function chiaveDi(o: (typeof wanted)[number]): string {
+    return o.channel === "tavolo" ? `t:${o.tableNumber ?? 0}` : `o:${o.id}`;
+  }
+
+  type Conto = {
+    key: string;
+    channel: string;
+    label: string;
+    tableNumber: number;
+    orderId: string | null;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerAddress: string | null;
+    deliveryFeeCents: number;
+    partySize: number;
+    pending: boolean;
+    byAlias: Map<string, BillLine[]>;
+  };
+
+  const conti = new Map<string, Conto>();
+
   for (const o of wanted) {
+    const key = chiaveDi(o);
+    const canale = getChannel(o.channel);
+    const esistente = conti.get(key);
+
+    if (!esistente) {
+      conti.set(key, {
+        key,
+        channel: o.channel,
+        label:
+          o.channel === "tavolo"
+            ? `Tavolo ${o.tableNumber}`
+            : o.customerName
+              ? `${canale.singolare} · ${o.customerName}`
+              : canale.singolare,
+        tableNumber: o.tableNumber ?? 0,
+        orderId: o.channel === "tavolo" ? null : o.id,
+        customerName: o.customerName,
+        customerPhone: o.customerPhone,
+        customerAddress: o.customerAddress,
+        deliveryFeeCents: o.deliveryFeeCents,
+        partySize: o.partySize ?? 0,
+        pending: false,
+        byAlias: new Map(),
+      });
+    }
+
+    const c = conti.get(key)!;
+    // Se due telefoni dichiarano numeri diversi si tiene il maggiore, cosi'
+    // nessuno resta senza coperto.
+    if (o.partySize) c.partySize = Math.max(c.partySize, o.partySize);
     if (
       (o.status === "new" || o.status === "preparing") &&
       conRigheVive.has(o.id)
     ) {
-      pending.set(o.tableNumber, true);
-    }
-    if (o.partySize) {
-      partySizes.set(
-        o.tableNumber,
-        Math.max(partySizes.get(o.tableNumber) ?? 0, o.partySize)
-      );
+      c.pending = true;
     }
   }
 
-  const settledByTable = new Map<number, Map<string, number>>();
-  for (const s of settlements) {
-    if (!settledByTable.has(s.tableNumber)) {
-      settledByTable.set(s.tableNumber, new Map());
-    }
-    settledByTable.get(s.tableNumber)!.set(s.alias, s.amountCents);
-  }
+  const contoDiOrdine = new Map(wanted.map((o) => [o.id, chiaveDi(o)]));
 
-  const tablesMap = new Map<number, Map<string, BillLine[]>>();
   for (const it of its) {
-    const tn = orderTable.get(it.orderId);
-    if (tn === undefined) continue;
-    if (!tablesMap.has(tn)) tablesMap.set(tn, new Map());
-    const am = tablesMap.get(tn)!;
+    const key = contoDiOrdine.get(it.orderId);
+    if (key === undefined) continue;
+    const c = conti.get(key);
+    if (!c) continue;
     const alias = it.alias ?? "Tavolo";
-    if (!am.has(alias)) am.set(alias, []);
-    am.get(alias)!.push({
+    if (!c.byAlias.has(alias)) c.byAlias.set(alias, []);
+    c.byAlias.get(alias)!.push({
       id: it.id,
       name: it.name,
       quantity: it.quantity,
@@ -104,16 +153,47 @@ export async function loadOpenTables(
     });
   }
 
-  return [...tablesMap.entries()]
-    .map(([tableNumber, byAlias]) =>
-      buildTable({
-        tableNumber,
-        byAlias,
-        declaredPartySize: partySizes.get(tableNumber) ?? null,
-        coverChargeCents,
-        settled: settledByTable.get(tableNumber) ?? new Map(),
-        hasPending: !!pending.get(tableNumber),
-      })
-    )
-    .sort((a, b) => a.tableNumber - b.tableNumber);
+  // Gli incassi parziali esistono solo dove si divide il conto, cioe' in sala:
+  // sono registrati per numero di tavolo.
+  const settledByTable = new Map<number, Map<string, number>>();
+  for (const s of settlements) {
+    if (!settledByTable.has(s.tableNumber)) {
+      settledByTable.set(s.tableNumber, new Map());
+    }
+    settledByTable.get(s.tableNumber)!.set(s.alias, s.amountCents);
+  }
+
+  return [...conti.values()]
+    .map((c) => {
+      const inSala = c.channel === "tavolo";
+      return buildTable({
+        key: c.key,
+        channel: c.channel,
+        label: c.label,
+        tableNumber: c.tableNumber,
+        orderId: c.orderId,
+        customerName: c.customerName,
+        customerPhone: c.customerPhone,
+        customerAddress: c.customerAddress,
+        deliveryFeeCents: c.deliveryFeeCents,
+        byAlias: c.byAlias,
+        declaredPartySize: inSala ? c.partySize || null : null,
+        // Il coperto si paga per stare seduti: al banco, in asporto e a
+        // domicilio nessuno e' seduto.
+        coverChargeCents: inSala ? coverChargeCents : 0,
+        settled: inSala
+          ? (settledByTable.get(c.tableNumber) ?? new Map())
+          : new Map(),
+        hasPending: c.pending,
+      });
+    })
+    // Prima la sala in ordine di tavolo, poi gli altri canali.
+    .sort((a, b) => {
+      if (a.channel !== b.channel) {
+        if (a.channel === "tavolo") return -1;
+        if (b.channel === "tavolo") return 1;
+        return a.channel.localeCompare(b.channel);
+      }
+      return a.tableNumber - b.tableNumber || a.label.localeCompare(b.label);
+    });
 }

@@ -1,13 +1,15 @@
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, repartoAttivo } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getTenantModules } from "@/lib/modules";
 import DashboardNav from "@/components/DashboardNav";
 import ThemeToggle from "@/components/ThemeToggle";
 import CallsBell from "@/components/CallsBell";
 import { IconLogout } from "@/components/icons";
+import Stampante from "@/components/Stampante";
 import { logout } from "./actions";
 import { resolveCall } from "./calls-actions";
+import { segnaStampati } from "./stampa-actions";
 
 export default async function DashboardLayout({
   children,
@@ -28,6 +30,8 @@ export default async function DashboardLayout({
   const modules = await getTenantModules(session.tenantId);
 
   return (
+    <>
+      <Stampante segnaStampati={segnaStampati} />
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
       <div className="mx-auto flex min-h-screen max-w-6xl">
         <aside
@@ -63,7 +67,11 @@ export default async function DashboardLayout({
             </div>
           </div>
 
-          <DashboardNav modules={modules} />
+          <DashboardNav
+            modules={modules}
+            soloCoda={!!repartoAttivo(session)}
+            isOwner={session.role === "owner"}
+          />
 
           <form action={logout} className="mt-auto">
             <button
@@ -102,5 +110,6 @@ export default async function DashboardLayout({
         </main>
       </div>
     </div>
+    </>
   );
 }
