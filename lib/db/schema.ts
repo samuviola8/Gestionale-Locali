@@ -8,6 +8,7 @@ import {
   unique,
   jsonb,
   index,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -30,6 +31,11 @@ export const tenants = pgTable("tenants", {
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
   notes: text("notes"),
+  // Dove sta il locale, ricavate una volta sola dall'indirizzo. Servono a
+  // cercare gli indirizzi di consegna intorno a lui: una consegna e' quasi
+  // sempre a pochi chilometri, e "Via Roma" esiste in ogni comune d'Italia.
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
 
   // Branding: il preset vive nel codice (lib/themes.ts), qui solo la scelta
   // e gli scostamenti del singolo locale. Null = usa il valore del preset.

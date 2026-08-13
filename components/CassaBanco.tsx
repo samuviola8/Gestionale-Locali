@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { formatPrice as fmt } from "@/lib/format";
 import { CHANNELS, getChannel, type Channel } from "@/lib/channels";
+import OraRitiro from "@/components/OraRitiro";
+import IndirizzoAuto from "@/components/IndirizzoAuto";
 import type { DatiCliente, IncomingItem } from "@/lib/order-create";
 
 // Cassa del banco. Non e' il menu del cliente rimpicciolito: qui l'operatore ha
@@ -390,28 +392,19 @@ export default function CassaBanco({
               />
               {/* Al telefono l'ora concordata e' la prima cosa che dicono:
                   senza, la cucina parte subito e il cliente ritira freddo. */}
-              <label className="block text-xs" style={{ color: "var(--muted)" }}>
-                {channel === "domicilio" ? "Ora di consegna" : "Ora di ritiro"}
-                <input
-                  type="time"
-                  value={oraRitiro}
-                  onChange={(e) => setOraRitiro(e.target.value)}
-                  aria-label={
-                    channel === "domicilio"
-                      ? "Ora di consegna"
-                      : "Ora di ritiro"
-                  }
-                  className="input mt-1 h-10 w-full"
-                />
-              </label>
+              <OraRitiro
+                value={oraRitiro}
+                onChange={setOraRitiro}
+                etichetta={
+                  channel === "domicilio" ? "Ora di consegna" : "Ora di ritiro"
+                }
+              />
               {canale.chiedeIndirizzo && (
                 <>
-                  <input
+                  <IndirizzoAuto
                     value={indirizzo}
-                    onChange={(e) => setIndirizzo(e.target.value)}
+                    onChange={setIndirizzo}
                     placeholder="Indirizzo di consegna"
-                    aria-label="Indirizzo di consegna"
-                    className="input h-10 w-full"
                   />
                   <input
                     value={consegna}
