@@ -51,6 +51,21 @@ export const tenants = pgTable("tenants", {
   // 0 = il locale non lo applica.
   coverChargeCents: integer("cover_charge_cents").notNull().default(0),
 
+  // Impostazioni di stampa. Stanno qui e non in una tabella a parte perche'
+  // sono una manciata di interruttori di un solo locale, non una collezione.
+  // Quali abbiano senso lo decidono i moduli attivi: senza asporto, l'opzione
+  // "stampa le comande d'asporto" non deve nemmeno comparire.
+  printComandaTavolo: boolean("print_comanda_tavolo").notNull().default(false),
+  printComandaBanco: boolean("print_comanda_banco").notNull().default(false),
+  printComandaAsporto: boolean("print_comanda_asporto").notNull().default(false),
+  printComandaDomicilio: boolean("print_comanda_domicilio")
+    .notNull()
+    .default(false),
+  // Scontrino del conto alla chiusura del tavolo, oltre che a richiesta.
+  printContoAllaChiusura: boolean("print_conto_alla_chiusura")
+    .notNull()
+    .default(false),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -86,6 +101,20 @@ export const restaurantTables = pgTable(
   (table) => [unique().on(table.tenantId, table.number)]
 );
 
+// Postazione di preparazione: cucina, pizzeria, bar. Le comande si smistano
+// per reparto e non per persona, perche' il personale ruota e alla stessa
+// postazione ci stanno in due: legare le categorie a un nome proprio vuol dire
+// che il giorno che quello e' a casa la pizza non arriva a nessuno.
+export const reparti = pgTable("reparti", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const menuCategories = pgTable("menu_categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: uuid("tenant_id")
@@ -93,6 +122,11 @@ export const menuCategories = pgTable("menu_categories", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Chi prepara questa categoria. Nullo = nessuno in particolare: le sue voci
+  // restano nella coda generale invece di sparire in un reparto inesistente.
+  repartoId: uuid("reparto_id").references(() => reparti.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -159,7 +193,12 @@ export const users = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
+    // owner | staff | reparto. Chi e' di un reparto vede solo la propria coda:
+    // al pizzaiolo non serve il conto del tavolo 7.
     role: text("role").notNull().default("staff"),
+    repartoId: uuid("reparto_id").references(() => reparti.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.email)]
@@ -230,6 +269,16 @@ export const orderItems = pgTable("order_items", {
   // altrimenti al cliente il totale cambierebbe senza spiegazione e in cassa
   // resterebbe un buco che nessuno sa ricostruire.
   voidedAt: timestamp("voided_at", { withTimezone: true }),
+  // Chi deve preparare questa voce, congelato al momento dell'ordine: se domani
+  // la categoria passa a un altro reparto, la comanda gia' partita non cambia
+  // padrone a meta' servizio.
+  repartoId: uuid("reparto_id").references(() => reparti.id, {
+    onDelete: "set null",
+  }),
+  // Lo stato sta sulla riga e non sull'ordine: con due reparti la pizza puo'
+  // essere pronta e il cocktail no, e un solo stato per ordine mentirebbe su
+  // uno dei due. new | preparing | done
+  status: text("status").notNull().default("new"),
   alias: text("alias"),
   paid: boolean("paid").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -274,6 +323,29 @@ export const tableClosures = pgTable("table_closures", {
   partySize: integer("party_size").notNull().default(0),
   coverChargeCents: integer("cover_charge_cents").notNull().default(0),
   closedAt: timestamp("closed_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Lavoro di stampa in attesa. Esiste perche' un ordine nasce sul telefono del
+// cliente, dove non c'e' nessuna stampante: qualcuno al locale deve venirselo
+// a prendere. Il giorno che si passa a stampanti che interrogano loro il
+// server cambia chi svuota questa coda, non il resto.
+export const printJobs = pgTable("print_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  // Nullo per lo scontrino del conto, che non e' di nessun reparto.
+  repartoId: uuid("reparto_id").references(() => reparti.id, {
+    onDelete: "set null",
+  }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+  // comanda | conto
+  kind: text("kind").notNull().default("comanda"),
+  // Cosa stampare, congelato adesso: una ristampa deve mostrare quello che era
+  // stato mandato in cucina, non l'ordine com'e' diventato dopo.
+  payload: jsonb("payload").notNull(),
+  printedAt: timestamp("printed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Gestore del servizio (super-admin), separato dagli utenti dei locali.

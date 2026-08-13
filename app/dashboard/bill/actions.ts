@@ -7,11 +7,27 @@ import {
   orders,
   orderItems,
   tableClosures,
+  tenants,
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { revokeTableSessions } from "@/lib/table-session";
 import { ALIAS_CONDIVISO } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
+import { creaScontrinoConto } from "@/lib/stampa";
+
+// Scontrino del conto su richiesta, prima di chiuderlo: il cliente vuole
+// vedere cosa paga, e il tavolo resta aperto.
+export async function stampaConto(key: string): Promise<void> {
+  const session = await getSessionUser();
+  if (!session) return;
+
+  const conto = (await loadOpenTables(session.tenantId)).find(
+    (t) => t.key === key
+  );
+  if (!conto) return;
+
+  await creaScontrinoConto(session.tenantId, conto);
+}
 
 // I conti si indirizzano per chiave e non per numero di tavolo: in sala la
 // chiave e' il tavolo, fuori e' il singolo ordine, che un numero non ce l'ha.
@@ -109,6 +125,17 @@ export async function closeTable(key: string): Promise<void> {
   const tavolo = (await loadOpenTables(session.tenantId)).find(
     (t) => t.key === key
   );
+
+  // Scontrino alla chiusura, se il locale l'ha chiesto. Prima di archiviare:
+  // dopo, il conto non si legge piu'.
+  const [impostazioni] = await db
+    .select({ allaChiusura: tenants.printContoAllaChiusura })
+    .from(tenants)
+    .where(eq(tenants.id, session.tenantId))
+    .limit(1);
+  if (tavolo && impostazioni?.allaChiusura) {
+    await creaScontrinoConto(session.tenantId, tavolo);
+  }
 
   if (conto.tipo === "tavolo") {
     // Il tavolo si libera: i telefoni ancora collegati devono riscansionare.

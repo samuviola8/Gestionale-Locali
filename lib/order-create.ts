@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { menuProducts, menuProductVariants, orders, orderItems } from "@/lib/db/schema";
 import type { ModuleState } from "@/lib/modules";
 import { getChannel, type Channel } from "@/lib/channels";
+import { creaComande, repartoPerProdotto } from "@/lib/stampa";
 
 // Un ordine nasce uguale sia dal telefono del cliente sia dalla dashboard del
 // cameriere: cambia solo chi ha il diritto di crearlo. Qui sta la parte comune
@@ -22,6 +23,9 @@ export type DatiCliente = {
   telefono?: string;
   indirizzo?: string;
   consegnaCents?: number;
+  // "HH:MM" dell'ora concordata. Chi chiama per le 20:30 va preparato per le
+  // 20:30: partire subito vuol dire consegnargli roba fredda.
+  oraRitiro?: string;
 };
 
 const MAX_NOTA = 200;
@@ -148,11 +152,27 @@ export async function createOrderRows(
       ? cliente!.consegnaCents!
       : 0;
 
+  // L'ora concordata si legge come "oggi alle HH:MM"; se e' gia' passata vale
+  // per domani, perche' nessuno ordina per un orario trascorso.
+  let ritiro: Date | null = null;
+  const hhmm = (cliente?.oraRitiro ?? "").trim();
+  if (!canale.seduti && /^\d{1,2}:\d{2}$/.test(hhmm)) {
+    const [h, m] = hhmm.split(":").map(Number);
+    if (h < 24 && m < 60) {
+      const ora = new Date();
+      ritiro = new Date(ora.getFullYear(), ora.getMonth(), ora.getDate(), h, m);
+      if (ritiro.getTime() < ora.getTime() - 60 * 60 * 1000) {
+        ritiro = new Date(ritiro.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+  }
+
   const inserted = await db
     .insert(orders)
     .values({
       tenantId,
       tableNumber: canale.seduti ? tableNumber : null,
+      dueAt: ritiro,
       channel,
       status: "new",
       partySize: persone,
@@ -166,6 +186,14 @@ export async function createOrderRows(
     .returning({ id: orders.id });
   const orderId = inserted[0].id;
 
+  // Chi prepara cosa si decide adesso e resta scritto sulla riga: se domani la
+  // categoria passa a un altro reparto, la comanda gia' partita non cambia
+  // padrone a meta' servizio.
+  const reparti = await repartoPerProdotto(
+    tenantId,
+    rows.map((r) => r.productId)
+  );
+
   await db.insert(orderItems).values(
     rows.map((r) => ({
       orderId,
@@ -176,8 +204,14 @@ export async function createOrderRows(
       priceCents: r.priceCents,
       quantity: r.quantity,
       alias: r.alias,
+      repartoId: reparti.get(r.productId) ?? null,
     }))
   );
+
+  // Le comande partono da sole se il locale ha acceso la stampa per questo
+  // canale: la cucina deve partire quando l'ordine arriva, non quando qualcuno
+  // si ricorda di stamparlo.
+  await creaComande(tenantId, orderId);
 
   return { ok: true, orderId };
 }

@@ -20,6 +20,7 @@ type Order = {
   channel: string;
   customerName: string | null;
   customerAddress: string | null;
+  dueAt: string | null;
   status: string;
   createdAt: string;
   items: Item[];
@@ -237,8 +238,21 @@ export default function OrderQueue({
   return (
     <div className="space-y-3">
       {sorted.map((o) => {
+        // Con un orario concordato l'attesa non conta: conta quanto manca.
+        // Un asporto per le 20:30 ordinato alle 18 non e' in ritardo di due ore.
+        const perLe = o.dueAt ? new Date(o.dueAt) : null;
+        const mancano = perLe
+          ? Math.round((perLe.getTime() - now) / 60000)
+          : null;
         const min = waitedMinutes(o.createdAt, now);
-        const level = urgency(min, o.channel);
+        const level =
+          mancano !== null
+            ? mancano <= 0
+              ? "danger"
+              : mancano <= 10
+                ? "warn"
+                : "ok"
+            : urgency(min, o.channel);
         const canale = getChannel(o.channel);
         const inSala = o.channel === "tavolo";
         const isNew = o.status === "new";
@@ -285,9 +299,24 @@ export default function OrderQueue({
 
               <div className="flex items-center gap-2">
                 <span className={"badge badge-" + level}>
-                  <span className="tnum">{waitLabel(min)}</span>
-                  {level === "danger" && " di attesa"}
+                  {mancano !== null ? (
+                    <span className="tnum">
+                      {mancano > 0
+                        ? `fra ${waitLabel(mancano)}`
+                        : `in ritardo di ${waitLabel(-mancano)}`}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="tnum">{waitLabel(min)}</span>
+                      {level === "danger" && " di attesa"}
+                    </>
+                  )}
                 </span>
+                {perLe && (
+                  <span className="tnum text-xs font-medium">
+                    per le {time(o.dueAt!)}
+                  </span>
+                )}
                 <span className="tnum text-xs" style={{ color: "var(--muted)" }}>
                   {time(o.createdAt)}
                 </span>

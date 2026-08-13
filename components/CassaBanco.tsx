@@ -52,6 +52,7 @@ export default function CassaBanco({
   const [telefono, setTelefono] = useState("");
   const [indirizzo, setIndirizzo] = useState("");
   const [consegna, setConsegna] = useState("");
+  const [oraRitiro, setOraRitiro] = useState("");
   const [inviando, setInviando] = useState(false);
   const [esito, setEsito] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
@@ -130,6 +131,7 @@ export default function CassaBanco({
     setTelefono("");
     setIndirizzo("");
     setConsegna("");
+    setOraRitiro("");
     setErrore(null);
   }
 
@@ -170,6 +172,7 @@ export default function CassaBanco({
           telefono: telefono.trim() || undefined,
           indirizzo: indirizzo.trim() || undefined,
           consegnaCents: channel === "domicilio" ? consegnaCents : 0,
+          oraRitiro: oraRitiro.trim() || undefined,
         },
         // Al banco si paga subito; asporto e domicilio si incassano al ritiro
         // o alla consegna, quindi restano fra i conti aperti.
@@ -385,6 +388,22 @@ export default function CassaBanco({
                 inputMode="tel"
                 className="input h-10 w-full"
               />
+              {/* Al telefono l'ora concordata e' la prima cosa che dicono:
+                  senza, la cucina parte subito e il cliente ritira freddo. */}
+              <label className="block text-xs" style={{ color: "var(--muted)" }}>
+                {channel === "domicilio" ? "Ora di consegna" : "Ora di ritiro"}
+                <input
+                  type="time"
+                  value={oraRitiro}
+                  onChange={(e) => setOraRitiro(e.target.value)}
+                  aria-label={
+                    channel === "domicilio"
+                      ? "Ora di consegna"
+                      : "Ora di ritiro"
+                  }
+                  className="input mt-1 h-10 w-full"
+                />
+              </label>
               {canale.chiedeIndirizzo && (
                 <>
                   <input

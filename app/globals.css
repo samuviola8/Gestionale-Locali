@@ -193,6 +193,114 @@ label:has(input[type="radio"]) {
   height: 0;
 }
 
+/* --- Stampa ----------------------------------------------------------------
+   Comande e scontrini escono da una stampante termica: carta stretta, nero su
+   bianco, nessun colore del tema. In video il foglio non esiste; in stampa
+   esiste solo lui. */
+
+.area-stampa {
+  display: none;
+}
+
+@media print {
+  /* Si nasconde tutto e si riporta a schermo il solo foglio: stampare la
+     dashboard intorno alla comanda sprecherebbe mezzo rotolo. */
+  body > *:not(.area-stampa) {
+    display: none !important;
+  }
+
+  .area-stampa {
+    display: block;
+    color: #000;
+    background: #fff;
+  }
+
+  .foglio {
+    /* Larghezza tipica di un rotolo da 80 mm, meno i margini. */
+    width: 72mm;
+    font-family: ui-monospace, "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    /* Ogni comanda sul suo foglio: due reparti non devono trovarsi sullo
+       stesso pezzo di carta, o uno dei due resta senza. */
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .foglio:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .foglio hr {
+    border: none;
+    border-top: 1px dashed #000;
+    margin: 6px 0;
+  }
+
+  .foglio-titolo {
+    font-size: 17px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .foglio-intestazione {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .foglio-riga-piccola {
+    font-size: 11px;
+  }
+
+  .foglio-voce {
+    margin-top: 6px;
+  }
+
+  .foglio-voce-riga {
+    display: flex;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .foglio-conto-riga {
+    justify-content: space-between;
+    font-weight: 400;
+    font-size: 12px;
+  }
+
+  .foglio-qta {
+    min-width: 2.2em;
+  }
+
+  /* La richiesta del cliente e' la riga che chi prepara deve leggere davvero:
+     rientrata e in corsivo si stacca dal nome del prodotto. */
+  .foglio-nota {
+    font-style: italic;
+    font-size: 12px;
+    padding-left: 2.2em;
+  }
+
+  .foglio-totale {
+    font-size: 15px;
+    justify-content: space-between;
+  }
+
+  .foglio-chiusa {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed #000;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  @page {
+    margin: 4mm;
+  }
+}
+
 /* Fascia che scorre in orizzontale (pillole delle categorie e simili). */
 .scroll-x {
   overflow-x: auto;

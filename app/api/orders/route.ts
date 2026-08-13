@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, repartoAttivo } from "@/lib/auth";
 
 export async function GET() {
   const session = await getSessionUser();
@@ -34,6 +34,7 @@ export async function GET() {
     channel: o.channel,
     customerName: o.customerName,
     customerAddress: o.customerAddress,
+    dueAt: o.dueAt?.toISOString() ?? null,
     status: o.status,
     createdAt: o.createdAt.toISOString(),
     items: its
@@ -49,12 +50,26 @@ export async function GET() {
         priceCents: i.priceCents,
         priceAdjusted: i.priceAdjusted,
         voided: i.voidedAt !== null,
+        repartoId: i.repartoId,
       })),
   }));
 
+  // Chi e' assegnato a un reparto vede solo la sua parte: al pizzaiolo i
+  // cocktail non servono, e una coda piena di roba altrui e' una coda che non
+  // si legge.
+  const mio = repartoAttivo(session);
+  const filtrato = mio
+    ? result
+        .map((o) => ({
+          ...o,
+          items: o.items.filter((i) => i.repartoId === mio),
+        }))
+        .filter((o) => o.items.length > 0)
+    : result;
+
   // Un ordine annullato per intero non ha piu' niente da preparare: sparisce
   // dalla coda, ma le righe restano sul conto per la traccia.
-  const daPreparare = result.filter((o) => o.items.some((i) => !i.voided));
+  const daPreparare = filtrato.filter((o) => o.items.some((i) => !i.voided));
 
   return NextResponse.json({ orders: daPreparare });
 }

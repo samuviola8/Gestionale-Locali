@@ -9,10 +9,12 @@ export default function BillBoard({
   closeTable,
   setPartySize,
   voidItem,
+  stampaConto,
 }: {
   markAliasPaid: (key: string, alias: string) => Promise<void>;
   closeTable: (key: string) => Promise<void>;
   setPartySize: (key: string, partySize: number) => Promise<void>;
+  stampaConto: (key: string) => Promise<void>;
   voidItem: (
     itemId: string,
     annulla: boolean
@@ -451,8 +453,14 @@ export default function BillBoard({
               style={{ background: "var(--surface-2)" }}
             >
               <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Lo scontrino lo emette la cassa.
+                Lo scontrino fiscale lo emette la cassa.
               </span>
+              <button
+                onClick={() => stampaConto(t.key)}
+                className="btn btn-sm ml-auto"
+              >
+                Stampa il conto
+              </button>
               <button onClick={() => onCloseClick(t)} className="btn btn-sm">
                 {saldato
                   ? inSala

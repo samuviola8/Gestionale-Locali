@@ -2,7 +2,12 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
 import BillBoard from "@/components/BillBoard";
-import { markAliasPaid, closeTable, setPartySize } from "./actions";
+import {
+  markAliasPaid,
+  closeTable,
+  setPartySize,
+  stampaConto,
+} from "./actions";
 import { voidOrderItem } from "../orders/actions";
 
 export default async function BillPage() {
@@ -23,6 +28,7 @@ export default async function BillPage() {
         closeTable={closeTable}
         setPartySize={setPartySize}
         voidItem={voidOrderItem}
+        stampaConto={stampaConto}
       />
     </div>
   );

@@ -3,10 +3,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, repartoAttivo } from "@/lib/auth";
 
 const VALID = ["new", "preparing", "served"];
 
+// Avanza la parte di ordine che compete a chi sta guardando: il pizzaiolo
+// segna pronte le sue pizze, non i cocktail del barman. Lo stato dell'ordine
+// e' la somma dei suoi pezzi, e si ricalcola dopo.
 export async function advanceOrderStatus(
   orderId: string,
   status: string
@@ -15,9 +18,40 @@ export async function advanceOrderStatus(
   if (!session) return;
   if (!VALID.includes(status)) return;
 
+  const suo = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)))
+    .limit(1);
+  if (!suo.length) return;
+
+  // Chi non ha un reparto (titolare, cassa) muove tutto l'ordine.
+  const mio = repartoAttivo(session);
+  const mie = mio
+    ? and(eq(orderItems.orderId, orderId), eq(orderItems.repartoId, mio))
+    : eq(orderItems.orderId, orderId);
+
+  await db.update(orderItems).set({ status }).where(mie);
+
+  const righe = await db
+    .select({ status: orderItems.status, voidedAt: orderItems.voidedAt })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+
+  // Un ordine e' servito quando lo sono tutti i suoi pezzi vivi: finche' la
+  // cucina non ha finito, non lo e' nemmeno se il bar ha gia' consegnato.
+  const vive = righe.filter((r) => r.voidedAt === null);
+  const complessivo = !vive.length
+    ? "served"
+    : vive.every((r) => r.status === "served")
+      ? "served"
+      : vive.some((r) => r.status !== "new")
+        ? "preparing"
+        : "new";
+
   await db
     .update(orders)
-    .set({ status })
+    .set({ status: complessivo })
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
 }
 

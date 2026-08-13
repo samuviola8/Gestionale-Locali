@@ -141,6 +141,13 @@
       "when": 1786565551496,
       "tag": "0019_mixed_captain_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786630888220,
+      "tag": "0020_perfect_newton_destine",
+      "breakpoints": true
     }
   ]
 }
