@@ -29,8 +29,12 @@ type Riga = {
   priceCents: number;
   qty: number;
   // I prodotti su richiesta non hanno senso senza: la nota E' il prodotto.
+  // Su tutti gli altri la nota c'e' lo stesso, ma facoltativa: "senza
+  // ghiaccio" lo si dice al banco esattamente come al tavolo.
   richiedeNota: boolean;
   note: string;
+  // Campo aperto a mano su una riga che non lo pretende.
+  notaAperta: boolean;
 };
 
 export default function CassaBanco({
@@ -104,11 +108,16 @@ export default function CassaBanco({
     const nomeRiga = v ? `${p.name} — ${v.name}` : p.name;
     const prezzo = v ? v.priceCents : p.priceCents;
     setRighe((prev) => {
-      // Due richieste diverse non si sommano: sono due drink diversi.
+      // Due richieste diverse non si sommano: sono due drink diversi. Nemmeno
+      // una riga con la nota aperta, che e' un'altra cosa da preparare.
       const i = p.acceptsNote
         ? -1
         : prev.findIndex(
-            (r) => r.productId === p.id && r.variantId === variantId
+            (r) =>
+              r.productId === p.id &&
+              r.variantId === variantId &&
+              !r.notaAperta &&
+              !r.note
           );
       if (i >= 0) {
         const next = [...prev];
@@ -125,6 +134,7 @@ export default function CassaBanco({
           qty: 1,
           richiedeNota: p.acceptsNote,
           note: "",
+          notaAperta: false,
         },
       ];
     });
@@ -133,6 +143,21 @@ export default function CassaBanco({
   function cambiaNota(i: number, testo: string) {
     setRighe((prev) =>
       prev.map((r, k) => (k === i ? { ...r, note: testo } : r))
+    );
+  }
+
+  // Una riga con la nota aperta non si somma piu' alle altre uguali: quella
+  // "senza ghiaccio" e' un'altra cosa da preparare.
+  function apriNota(i: number) {
+    setRighe((prev) =>
+      prev.flatMap((r, k) => {
+        if (k !== i) return [r];
+        if (r.qty === 1) return [{ ...r, notaAperta: true }];
+        return [
+          { ...r, qty: r.qty - 1 },
+          { ...r, qty: 1, notaAperta: true },
+        ];
+      })
     );
   }
 
@@ -382,19 +407,33 @@ export default function CassaBanco({
                       </button>
                     </div>
                     <span className="min-w-0 flex-1 truncate">{r.nome}</span>
+                    {!r.richiedeNota && !r.notaAperta && (
+                      <button
+                        onClick={() => apriNota(i)}
+                        className="shrink-0 text-xs underline"
+                        style={{ color: "var(--brand-text)" }}
+                      >
+                        + nota
+                      </button>
+                    )}
                     <span className="tnum shrink-0 font-medium">
                       {fmt(r.priceCents * r.qty)}
                     </span>
                   </div>
                   {/* Su un prodotto su richiesta la nota e' il prodotto: senza,
-                      chi lo prepara non sa cosa versare. */}
-                  {r.richiedeNota && (
+                      chi lo prepara non sa cosa versare. Sugli altri e'
+                      facoltativa, ma serve lo stesso — "senza ghiaccio" si
+                      dice al banco come al tavolo. */}
+                  {(r.richiedeNota || r.notaAperta) && (
                     <input
+                      autoFocus={r.notaAperta}
                       value={r.note}
                       onChange={(e) => cambiaNota(i, e.target.value)}
                       maxLength={200}
-                      placeholder="Cosa vuole?"
-                      aria-label={`Cosa vuole per ${r.nome}`}
+                      placeholder={
+                        r.richiedeNota ? "Cosa vuole?" : "Senza ghiaccio, ben cotta…"
+                      }
+                      aria-label={`Nota per ${r.nome}`}
                       className="input mt-1 h-9 w-full text-xs"
                     />
                   )}
