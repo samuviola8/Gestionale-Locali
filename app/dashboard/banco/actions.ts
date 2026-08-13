@@ -11,6 +11,7 @@ import {
   type DatiCliente,
   type IncomingItem,
 } from "@/lib/order-create";
+import { creaScontrinoOrdine } from "@/lib/stampa";
 
 // Ordine battuto alla cassa: al banco, in asporto o da consegnare. Nessun
 // tavolo sotto, quindi il conto e' l'ordine stesso.
@@ -21,8 +22,11 @@ export async function createCounterOrder(
   // Al banco si paga subito: l'ordine nasce gia' saldato e archiviato, senza
   // passare dai conti aperti. In asporto e a domicilio invece resta aperto,
   // perche' si incassa al ritiro o alla consegna.
-  saldaSubito: boolean
-): Promise<{ ok: boolean }> {
+  saldaSubito: boolean,
+  // Le spunte dell'operatore, che partono dalle impostazioni ma valgono solo
+  // per questo ordine: chi paga un caffe' lo scontrino non lo vuole.
+  stampa: { comanda: boolean; scontrino: boolean }
+): Promise<{ ok: boolean; comande?: number; scontrino?: boolean }> {
   const session = await getSessionUser();
   if (!session) return { ok: false };
   if (!isChannel(channel) || channel === "tavolo") return { ok: false };
@@ -43,10 +47,18 @@ export async function createCounterOrder(
     modules,
     undefined,
     channel,
-    cliente
+    cliente,
+    stampa.comanda
   );
   if (!esito.ok) return { ok: false };
-  if (!saldaSubito) return { ok: true };
+
+  if (stampa.scontrino) {
+    await creaScontrinoOrdine(session.tenantId, esito.orderId);
+  }
+
+  if (!saldaSubito) {
+    return { ok: true, comande: esito.comande, scontrino: stampa.scontrino };
+  }
 
   // Incassato e archiviato, ma NON servito: lo status resta "new" perche' il
   // drink va comunque preparato. Chiuderlo qui lo toglierebbe dalla coda e
@@ -60,5 +72,5 @@ export async function createCounterOrder(
     .set({ closedAt: new Date() })
     .where(eq(orders.id, esito.orderId));
 
-  return { ok: true };
+  return { ok: true, comande: esito.comande, scontrino: stampa.scontrino };
 }

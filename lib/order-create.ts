@@ -44,8 +44,12 @@ export async function createOrderRows(
   modules: ModuleState,
   partySize?: number,
   channel: Channel = "tavolo",
-  cliente?: DatiCliente
-): Promise<{ ok: false } | { ok: true; orderId: string }> {
+  cliente?: DatiCliente,
+  // Forzatura della stampa decisa dall'operatore per questo ordine.
+  stampaComanda?: boolean
+): Promise<
+  { ok: false } | { ok: true; orderId: string; comande: number }
+> {
   const canale = getChannel(channel);
   const clean = items.filter((i) => i.productId && i.quantity > 0);
   if (!clean.length) return { ok: false };
@@ -214,8 +218,10 @@ export async function createOrderRows(
 
   // Le comande partono da sole se il locale ha acceso la stampa per questo
   // canale: la cucina deve partire quando l'ordine arriva, non quando qualcuno
-  // si ricorda di stamparlo.
-  await creaComande(tenantId, orderId);
+  // si ricorda di stamparlo. Quante ne sono partite torna a chi ha inviato,
+  // perche' "non stampa niente" e' l'unico esito che l'operatore non deve
+  // scoprire da solo.
+  const comande = await creaComande(tenantId, orderId, stampaComanda);
 
-  return { ok: true, orderId };
+  return { ok: true, orderId, comande };
 }

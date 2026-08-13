@@ -112,6 +112,7 @@ export async function salvaStampa(formData: FormData): Promise<void> {
       printComandaAsporto: on("asporto"),
       printComandaDomicilio: on("domicilio"),
       printContoAllaChiusura: on("contoChiusura"),
+      printScontrinoCassa: on("scontrinoCassa"),
     })
     .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");

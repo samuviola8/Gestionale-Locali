@@ -71,6 +71,12 @@ export const tenants = pgTable("tenants", {
   printContoAllaChiusura: boolean("print_conto_alla_chiusura")
     .notNull()
     .default(false),
+  // Scontrino per gli ordini battuti in cassa. E' il valore di partenza della
+  // spunta: l'operatore lo forza ordine per ordine, perche' chi paga un caffe'
+  // di solito lo scontrino non lo vuole e chi porta a casa la cena si'.
+  printScontrinoCassa: boolean("print_scontrino_cassa")
+    .notNull()
+    .default(false),
 
   // Orari di apertura per giorno della settimana, a intervalli. Da qui si
   // ricavano le fasce di ritiro: senza, l'unica alternativa e' una finestra

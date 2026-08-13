@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "print_scontrino_cassa" boolean DEFAULT false NOT NULL;

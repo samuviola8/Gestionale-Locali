@@ -37,17 +37,24 @@ export default function CassaBanco({
   prodotti,
   canaliAttivi,
   orari,
+  stampaPredefinita,
   invia,
 }: {
   prodotti: ProdottoCassa[];
   canaliAttivi: Channel[];
   orari: OrariApertura;
+  // Da cosa partono le spunte, per canale: sono le impostazioni del locale.
+  stampaPredefinita: {
+    comanda: Record<string, boolean>;
+    scontrino: boolean;
+  };
   invia: (
     channel: Channel,
     items: IncomingItem[],
     cliente: DatiCliente,
-    saldaSubito: boolean
-  ) => Promise<{ ok: boolean }>;
+    saldaSubito: boolean,
+    stampa: { comanda: boolean; scontrino: boolean }
+  ) => Promise<{ ok: boolean; comande?: number; scontrino?: boolean }>;
 }) {
   const [channel, setChannel] = useState<Channel>(canaliAttivi[0] ?? "banco");
   const [categoria, setCategoria] = useState<string>("Preferiti");
@@ -58,11 +65,18 @@ export default function CassaBanco({
   const [indirizzo, setIndirizzo] = useState("");
   const [consegna, setConsegna] = useState("");
   const [oraRitiro, setOraRitiro] = useState("");
+  // Le spunte partono dalle impostazioni e si ritarano cambiando canale, ma
+  // una volta toccate restano come le ha messe l'operatore: se le ha spente
+  // apposta, riaccenderle da sole sarebbe un dispetto.
+  const [stampaComanda, setStampaComanda] = useState<boolean | null>(null);
+  const [stampaScontrino, setStampaScontrino] = useState<boolean | null>(null);
   const [inviando, setInviando] = useState(false);
   const [esito, setEsito] = useState<string | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
 
   const canale = getChannel(channel);
+  const comandaOn = stampaComanda ?? (stampaPredefinita.comanda[channel] ?? false);
+  const scontrinoOn = stampaScontrino ?? stampaPredefinita.scontrino;
 
   const categorie = useMemo(() => {
     const c = [...new Set(prodotti.map((p) => p.categoria))];
@@ -181,16 +195,29 @@ export default function CassaBanco({
         },
         // Al banco si paga subito; asporto e domicilio si incassano al ritiro
         // o alla consegna, quindi restano fra i conti aperti.
-        channel === "banco"
+        channel === "banco",
+        { comanda: comandaOn, scontrino: scontrinoOn }
       );
       if (!r.ok) {
         setErrore("Non sono riuscito a registrare l'ordine. Riprova.");
         return;
       }
+      // "Non ha stampato niente" e' un esito che l'operatore non deve
+      // scoprire guardando la stampante ferma: o si dice quante comande sono
+      // partite, o si dice perche' non ne e' partita nessuna.
+      const pezzi: string[] = [];
+      if (r.comande) {
+        pezzi.push(`${r.comande} ${r.comande === 1 ? "comanda" : "comande"}`);
+      }
+      if (r.scontrino) pezzi.push("scontrino");
+      const stampa = pezzi.length
+        ? ` In stampa: ${pezzi.join(" e ")}.`
+        : " Niente da stampare.";
+
       setEsito(
-        channel === "banco"
+        (channel === "banco"
           ? `Incassato ${fmt(totale)}. È in coda per la preparazione.`
-          : `${canale.singolare} registrato. Si incassa al ritiro.`
+          : `${canale.singolare} registrato. Si incassa al ritiro.`) + stampa
       );
       svuota();
     } finally {
@@ -431,8 +458,42 @@ export default function CassaBanco({
             </p>
           )}
 
+          {/* Le spunte partono dalle impostazioni, ma l'ultima parola ce l'ha
+              chi sta alla cassa: davanti ha il cliente, non un pannello. */}
           <div
-            className="mt-3 flex items-baseline justify-between border-t pt-3"
+            className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2.5 text-xs"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {[
+              {
+                on: comandaOn,
+                set: setStampaComanda,
+                etichetta: "Comanda",
+              },
+              {
+                on: scontrinoOn,
+                set: setStampaScontrino,
+                etichetta: "Scontrino",
+              },
+            ].map((s) => (
+              <label
+                key={s.etichetta}
+                className="flex cursor-pointer items-center gap-1.5"
+                style={{ color: s.on ? "var(--text)" : "var(--muted)" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={s.on}
+                  onChange={(e) => s.set(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--brand)]"
+                />
+                Stampa {s.etichetta.toLowerCase()}
+              </label>
+            ))}
+          </div>
+
+          <div
+            className="mt-2 flex items-baseline justify-between border-t pt-3"
             style={{ borderColor: "var(--border)" }}
           >
             <span className="text-sm" style={{ color: "var(--muted)" }}>

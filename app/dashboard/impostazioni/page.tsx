@@ -1,7 +1,13 @@
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { menuCategories, reparti, tenants, users } from "@/lib/db/schema";
+import {
+  menuCategories,
+  printJobs,
+  reparti,
+  tenants,
+  users,
+} from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { getTenantModules } from "@/lib/modules";
 import Select from "@/components/Select";
@@ -87,6 +93,21 @@ export default async function ImpostazioniPage() {
       .where(eq(users.tenantId, session.tenantId))
       .orderBy(asc(users.email)),
   ]);
+
+  // Comande create e mai stampate da piu' di due minuti: vuol dire che nessun
+  // dispositivo sta servendo quel reparto. Senza questo avviso la coda si
+  // riempie in silenzio e il locale se ne accorge dai clienti che aspettano.
+  const dueMinutiFa = new Date(Date.now() - 2 * 60 * 1000);
+  const arretrati = await db
+    .select({ id: printJobs.id })
+    .from(printJobs)
+    .where(
+      and(
+        eq(printJobs.tenantId, session.tenantId),
+        isNull(printJobs.printedAt),
+        lt(printJobs.createdAt, dueMinutiFa)
+      )
+    );
 
   const opzioniReparto = [
     { value: "", label: "Coda generale" },
@@ -298,10 +319,35 @@ export default async function ImpostazioniPage() {
                 acceso={locale.printContoAllaChiusura}
               />
             )}
+            {canaliStampabili.some((c) => c.nome !== "tavolo") && (
+              <Interruttore
+                nome="scontrinoCassa"
+                etichetta="Scontrino sugli ordini di cassa"
+                descrizione="È il valore di partenza della spunta: alla cassa si decide ordine per ordine."
+                acceso={locale.printScontrinoCassa}
+              />
+            )}
           </div>
           <button className="btn btn-primary btn-sm mt-3">Salva</button>
         </form>
       </section>
+
+      {arretrati.length > 0 && (
+        <div
+          className="card p-4"
+          style={{ borderColor: "var(--warn)", background: "var(--warn-bg)" }}
+        >
+          <div className="text-sm font-medium">
+            {arretrati.length}{" "}
+            {arretrati.length === 1 ? "comanda ferma" : "comande ferme"} in coda
+          </div>
+          <p className="mt-0.5 text-xs">
+            Sono state create ma nessun dispositivo le ha stampate. Controlla
+            che almeno un computer abbia selezionato i reparti giusti qui sotto,
+            e che quel computer abbia questa pagina aperta.
+          </p>
+        </div>
+      )}
 
       <PostazioneStampa reparti={elencoReparti} />
     </div>

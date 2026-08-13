@@ -84,7 +84,10 @@ function quandoRitira(d: Date): string {
 // il punto: la pizzeria non deve leggere i cocktail per trovare le sue pizze.
 export async function creaComande(
   tenantId: string,
-  orderId: string
+  orderId: string,
+  // Forzatura dell'operatore: acceso o spento a mano per questo ordine, invece
+  // di seguire l'impostazione del canale. Undefined = decide l'impostazione.
+  forza?: boolean
 ): Promise<number> {
   const o = (
     await db
@@ -109,7 +112,7 @@ export async function creaComande(
   )[0];
   if (!impostazioni) return 0;
 
-  const attiva =
+  const daImpostazioni =
     o.channel === "tavolo"
       ? impostazioni.tavolo
       : o.channel === "banco"
@@ -117,7 +120,7 @@ export async function creaComande(
         : o.channel === "asporto"
           ? impostazioni.asporto
           : impostazioni.domicilio;
-  if (!attiva) return 0;
+  if (!(forza ?? daImpostazioni)) return 0;
 
   const voci = await db
     .select()
@@ -175,6 +178,59 @@ export async function creaComande(
 
   await db.insert(printJobs).values(lavori);
   return lavori.length;
+}
+
+// Scontrino di un ordine di cassa. Non passa da loadOpenTables perche' un
+// ordine al banco si chiude nello stesso istante in cui nasce, e quando lo si
+// stampa fra i conti aperti non c'e' gia' piu'.
+export async function creaScontrinoOrdine(
+  tenantId: string,
+  orderId: string
+): Promise<void> {
+  const o = (
+    await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId)))
+      .limit(1)
+  )[0];
+  if (!o) return;
+
+  const voci = await db
+    .select()
+    .from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), isNull(orderItems.voidedAt)));
+
+  const canale = getChannel(o.channel);
+  const righe: ContoPayload["righe"] = voci.map((v) => ({
+    descrizione: `${v.quantity}× ${v.name}`,
+    importoCents: v.priceCents * v.quantity,
+  }));
+  if (o.deliveryFeeCents > 0) {
+    righe.push({ descrizione: "Consegna", importoCents: o.deliveryFeeCents });
+  }
+
+  await db.insert(printJobs).values({
+    tenantId,
+    repartoId: null,
+    orderId,
+    kind: "conto",
+    payload: {
+      kind: "conto",
+      intestazione: o.customerName
+        ? `${canale.singolare} · ${o.customerName}`
+        : canale.singolare,
+      quando: new Date().toLocaleString("it-IT", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      righe,
+      totaleCents: righe.reduce((s, r) => s + r.importoCents, 0),
+      nota: "Riepilogo. Lo scontrino fiscale lo emette la cassa.",
+    } satisfies ContoPayload,
+  });
 }
 
 // Scontrino del conto: quello che il cliente guarda prima di pagare. Non e' un

@@ -22,7 +22,13 @@ export default async function BancoPage() {
 
   const modules = await getTenantModules(session.tenantId);
   const [locale] = await db
-    .select({ openingHours: tenants.openingHours })
+    .select({
+      openingHours: tenants.openingHours,
+      banco: tenants.printComandaBanco,
+      asporto: tenants.printComandaAsporto,
+      domicilio: tenants.printComandaDomicilio,
+      scontrino: tenants.printScontrinoCassa,
+    })
     .from(tenants)
     .where(eq(tenants.id, session.tenantId))
     .limit(1);
@@ -105,6 +111,14 @@ export default async function BancoPage() {
         prodotti={prodotti}
         canaliAttivi={canaliAttivi}
         orari={leggiOrari(locale?.openingHours)}
+        stampaPredefinita={{
+          comanda: {
+            banco: locale?.banco ?? false,
+            asporto: locale?.asporto ?? false,
+            domicilio: locale?.domicilio ?? false,
+          },
+          scontrino: locale?.scontrino ?? false,
+        }}
         invia={createCounterOrder}
       />
     </div>
