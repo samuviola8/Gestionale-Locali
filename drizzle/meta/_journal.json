@@ -176,6 +176,13 @@
       "when": 1786636686438,
       "tag": "0024_stormy_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786644621448,
+      "tag": "0025_lucky_thing",
+      "breakpoints": true
     }
   ]
 }
