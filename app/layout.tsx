@@ -7,6 +7,7 @@ import {
   renderThemeCss,
   renderThemeScript,
 } from "@/lib/branding";
+import ScrollOrizzontale from "@/components/ScrollOrizzontale";
 
 // Font ospitati da Next in locale: nessuna chiamata a Google a runtime e
 // nessuno spostamento del layout al caricamento.
@@ -60,6 +61,7 @@ export default async function RootLayout({
             __html: renderThemeScript(branding.defaultTheme),
           }}
         />
+        <ScrollOrizzontale />
         {children}
       </body>
     </html>
