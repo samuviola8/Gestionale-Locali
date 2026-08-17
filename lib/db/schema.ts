@@ -94,6 +94,10 @@ export const tenants = pgTable("tenants", {
   // abbassata.
   // { "0": [{ "da": "12:00", "a": "15:00" }, { "da": "19:00", "a": "23:30" }] }
   openingHours: jsonb("opening_hours").notNull().default(sql`'{}'::jsonb`),
+  // Le chiusure a data fissa: feste, ferie, giornate storte. Stanno a parte
+  // dagli orari perche' non sono un giorno della settimana ma un pezzo di
+  // calendario, e perche' cosi' gli orari gia' salvati restano come sono.
+  closureDays: jsonb("closure_days").notNull().default(sql`'[]'::jsonb`),
 
   // Prenotazione del tavolo dal web. Come per la stampa, sono i pochi numeri
   // di un locale solo e non una collezione: stanno qui e non in una tabella a

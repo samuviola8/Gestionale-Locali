@@ -9,8 +9,8 @@ import {
   fasceOrarie,
   giorniDisponibili,
   inMinuti,
-  leggiOrari,
-  type OrariApertura,
+  leggiCalendario,
+  type Calendario,
 } from "@/lib/orari";
 
 // Prenotazione del tavolo: chi ci sta, quando, e su quale tavolo.
@@ -262,7 +262,7 @@ export function assegnaTavoli(
 const MARGINE_CHIUSURA = 30;
 
 export function fascePrenotabili(
-  orari: OrariApertura,
+  orari: Calendario,
   giorno: Date,
   adesso: Date,
   cfg: ImpostazioniPrenotazione
@@ -275,7 +275,7 @@ export function fascePrenotabili(
 }
 
 export function giorniPrenotabili(
-  orari: OrariApertura,
+  orari: Calendario,
   adesso: Date,
   cfg: ImpostazioniPrenotazione
 ): Date[] {
@@ -335,7 +335,7 @@ export function disponibilita({
   persone,
   cfg,
 }: {
-  orari: OrariApertura;
+  orari: Calendario;
   tavoli: TavoloPrenotabile[];
   occupate: Occupazione[];
   giorno: Date;
@@ -518,7 +518,7 @@ export type ContestoPrenotazione = {
   logoUrl: string | null;
   telefono: string | null;
   indirizzo: string | null;
-  orari: OrariApertura;
+  orari: Calendario;
   cfg: ImpostazioniPrenotazione;
   // Se il locale ha la posta configurata. Con la mail attiva l'indirizzo del
   // cliente diventa obbligatorio: e' il modo in cui gli arriva la conferma e
@@ -538,6 +538,7 @@ export async function contestoPrenotazione(): Promise<ContestoPrenotazione | nul
       address: tenants.address,
       city: tenants.city,
       openingHours: tenants.openingHours,
+      closureDays: tenants.closureDays,
       reservationSlotMinutes: tenants.reservationSlotMinutes,
       reservationDurationMinutes: tenants.reservationDurationMinutes,
       reservationMinParty: tenants.reservationMinParty,
@@ -563,7 +564,7 @@ export async function contestoPrenotazione(): Promise<ContestoPrenotazione | nul
     logoUrl: tenant.logoUrl,
     telefono: row.phone,
     indirizzo: [row.address, row.city].filter(Boolean).join(", ") || null,
-    orari: leggiOrari(row.openingHours),
+    orari: leggiCalendario(row.openingHours, row.closureDays),
     cfg: leggiImpostazioni(row),
     mailAttiva: !!(row.smtpHost && row.smtpUser && row.smtpPass),
   };

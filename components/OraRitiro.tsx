@@ -5,7 +5,7 @@ import {
   dataISO,
   fasceRitiro,
   giorniDisponibili,
-  type OrariApertura,
+  type Calendario,
 } from "@/lib/orari";
 
 // Quando ritira o quando si consegna. Il valore e' "AAAA-MM-GGTHH:MM": serve
@@ -45,7 +45,7 @@ export default function OraRitiro({
   value: string;
   onChange: (v: string) => void;
   etichetta: string;
-  orari: OrariApertura;
+  orari: Calendario;
 }) {
   const [aperto, setAperto] = useState(false);
   // L'ora del client si legge dopo il montaggio: calcolarla nel render darebbe
@@ -91,7 +91,7 @@ export default function OraRitiro({
     [orari, giornoAttivo, adesso]
   );
 
-  const senzaOrari = Object.keys(orari).length === 0;
+  const senzaOrari = Object.keys(orari.settimana).length === 0;
 
   // Il valore scelto, spezzato.
   const [dataVal, oraVal] = value.includes("T") ? value.split("T") : ["", ""];

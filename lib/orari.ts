@@ -8,6 +8,22 @@ export type Fascia = { da: string; a: string };
 // Lunedi' = 0. Un giorno assente o con elenco vuoto e' un giorno di chiusura.
 export type OrariApertura = Record<string, Fascia[]>;
 
+// Una chiusura a data fissa: Natale, le ferie, il giorno del funzionamento
+// della caldaia. Da e a sono date ISO, estremi compresi: un giorno solo si
+// scrive con `da` uguale ad `a`.
+export type Chiusura = { da: string; a: string; nota?: string };
+
+// Gli orari e le chiusure viaggiano insieme.
+//
+// Tenerli separati vorrebbe dire passarli entrambi a ogni funzione che decide
+// se si puo' prenotare o ritirare, e il giorno che una pagina si dimentica il
+// secondo argomento il locale prende una prenotazione a Natale senza che
+// nessuno se ne accorga fino al 25.
+export type Calendario = {
+  settimana: OrariApertura;
+  chiusure: Chiusura[];
+};
+
 export const GIORNI = [
   "Lunedì",
   "Martedì",
@@ -58,6 +74,60 @@ export function aperto(orari: OrariApertura, giorno: number): boolean {
   return (orari[String(giorno)] ?? []).length > 0;
 }
 
+// Una data ISO e' valida e scritta bene? Le chiusure arrivano da un modulo e
+// finiscono in un confronto fra stringhe: una data storta li' dentro non da'
+// errore, semplicemente non chiude mai niente.
+function dataValida(s: unknown): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+export function leggiChiusure(raw: unknown): Chiusura[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Chiusura[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== "object") continue;
+    const { da, a, nota } = v as Chiusura;
+    if (!dataValida(da)) continue;
+    // Una chiusura di un giorno solo puo' arrivare senza fine, e un periodo
+    // al contrario e' un errore di battitura: si raddrizza invece di buttarlo.
+    const fine = dataValida(a) ? a : da;
+    out.push({
+      da: da < fine ? da : fine,
+      a: da < fine ? fine : da,
+      ...(typeof nota === "string" && nota.trim()
+        ? { nota: nota.trim().slice(0, 60) }
+        : {}),
+    });
+  }
+  return out.sort((x, y) => x.da.localeCompare(y.da));
+}
+
+export function leggiCalendario(
+  orariRaw: unknown,
+  chiusureRaw: unknown
+): Calendario {
+  return {
+    settimana: leggiOrari(orariRaw),
+    chiusure: leggiChiusure(chiusureRaw),
+  };
+}
+
+// La chiusura che copre questa data, se c'e'. Le date ISO si confrontano come
+// stringhe: "2026-12-25" sta fra "2026-12-24" e "2026-12-26" senza bisogno di
+// costruire tre oggetti Date per ogni giorno dell'elenco.
+export function chiusuraDi(cal: Calendario, giorno: Date): Chiusura | null {
+  const d = dataISO(giorno);
+  return cal.chiusure.find((c) => c.da <= d && d <= c.a) ?? null;
+}
+
+// Chiusure che devono ancora arrivare o sono in corso. Quelle passate restano
+// a database — servono a spiegare un mese di incassi — ma in pagina sarebbero
+// solo un elenco che cresce.
+export function chiusureFuture(chiusure: Chiusura[], oggi: Date): Chiusura[] {
+  const d = dataISO(oggi);
+  return chiusure.filter((c) => c.a >= d);
+}
+
 // Le fasce di un giorno dentro gli orari di apertura, a passi regolari:
 // nessuno concorda un ritiro alle 20:37 ne' prenota per le 20:07.
 //
@@ -73,12 +143,16 @@ export type OpzioniFasce = {
 };
 
 export function fasceOrarie(
-  orari: OrariApertura,
+  cal: Calendario,
   giorno: Date,
   adesso: Date,
   { passo = 15, anticipo = 20, margine = 15 }: OpzioniFasce = {}
 ): string[] {
-  const fasce = orari[String(giornoSettimana(giorno))] ?? [];
+  // Una chiusura vince sull'orario della settimana: il 25 dicembre e' un
+  // giovedi' come gli altri, e senza questo controllo aprirebbe.
+  if (chiusuraDi(cal, giorno)) return [];
+
+  const fasce = cal.settimana[String(giornoSettimana(giorno))] ?? [];
   if (!fasce.length) return [];
 
   const stessoGiorno =
@@ -99,19 +173,19 @@ export function fasceOrarie(
 }
 
 export function fasceRitiro(
-  orari: OrariApertura,
+  cal: Calendario,
   giorno: Date,
   adesso: Date,
   minutiMinimi = 20
 ): string[] {
-  return fasceOrarie(orari, giorno, adesso, { anticipo: minutiMinimi });
+  return fasceOrarie(cal, giorno, adesso, { anticipo: minutiMinimi });
 }
 
 // I prossimi giorni in cui il locale apre. Serve a chi chiama oggi per domani:
 // mostrare una data di chiusura vorrebbe dire prendere un ordine che nessuno
 // preparera'.
 export function giorniDisponibili(
-  orari: OrariApertura,
+  cal: Calendario,
   adesso: Date,
   quanti = 7,
   opzioni: OpzioniFasce = {},
@@ -127,12 +201,56 @@ export function giorniDisponibili(
       adesso.getMonth(),
       adesso.getDate() + i
     );
-    if (!aperto(orari, giornoSettimana(d))) continue;
+    if (!aperto(cal.settimana, giornoSettimana(d))) continue;
+    if (chiusuraDi(cal, d)) continue;
     // Oggi conta solo se resta ancora qualcosa da poter prenotare o ritirare.
-    if (i === 0 && fasceOrarie(orari, d, adesso, opzioni).length === 0) continue;
+    if (i === 0 && fasceOrarie(cal, d, adesso, opzioni).length === 0) continue;
     out.push(d);
   }
   return out;
+}
+
+// --- Feste ----------------------------------------------------------------
+
+// Pasqua, con l'algoritmo di Meeus: e' l'unica festa italiana che si sposta, e
+// senza calcolarla il locale dovrebbe cercarla sul calendario ogni anno.
+function pasqua(anno: number): Date {
+  const a = anno % 19;
+  const b = Math.floor(anno / 100);
+  const c = anno % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const giorni = h + l - 7 * m + 114;
+  return new Date(anno, Math.floor(giorni / 31) - 1, (giorni % 31) + 1);
+}
+
+// Le feste italiane di un anno, per poterle chiudere con un tocco invece di
+// scriverle a mano una per una. Che poi il locale chiuda o no e' affar suo:
+// molti a Ferragosto lavorano piu' del solito.
+export function festivi(anno: number): { data: string; nome: string }[] {
+  const p = pasqua(anno);
+  const pasquetta = new Date(anno, p.getMonth(), p.getDate() + 1);
+  return [
+    { data: `${anno}-01-01`, nome: "Capodanno" },
+    { data: `${anno}-01-06`, nome: "Epifania" },
+    { data: dataISO(p), nome: "Pasqua" },
+    { data: dataISO(pasquetta), nome: "Lunedì dell'Angelo" },
+    { data: `${anno}-04-25`, nome: "Liberazione" },
+    { data: `${anno}-05-01`, nome: "Festa del lavoro" },
+    { data: `${anno}-06-02`, nome: "Festa della Repubblica" },
+    { data: `${anno}-08-15`, nome: "Ferragosto" },
+    { data: `${anno}-11-01`, nome: "Ognissanti" },
+    { data: `${anno}-12-08`, nome: "Immacolata" },
+    { data: `${anno}-12-25`, nome: "Natale" },
+    { data: `${anno}-12-26`, nome: "Santo Stefano" },
+  ].sort((x, y) => x.data.localeCompare(y.data));
 }
 
 export function dataISO(d: Date): string {

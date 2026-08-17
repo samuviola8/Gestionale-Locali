@@ -7,7 +7,7 @@ import {
   menuProductVariants,
   tenants,
 } from "@/lib/db/schema";
-import { leggiOrari } from "@/lib/orari";
+import { leggiCalendario } from "@/lib/orari";
 import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
 import { getTenantModules } from "@/lib/modules";
@@ -24,6 +24,7 @@ export default async function BancoPage() {
   const [locale] = await db
     .select({
       openingHours: tenants.openingHours,
+      closureDays: tenants.closureDays,
       banco: tenants.printComandaBanco,
       asporto: tenants.printComandaAsporto,
       domicilio: tenants.printComandaDomicilio,
@@ -110,7 +111,7 @@ export default async function BancoPage() {
       <CassaBanco
         prodotti={prodotti}
         canaliAttivi={canaliAttivi}
-        orari={leggiOrari(locale?.openingHours)}
+        orari={leggiCalendario(locale?.openingHours, locale?.closureDays)}
         stampaPredefinita={{
           comanda: {
             banco: locale?.banco ?? false,

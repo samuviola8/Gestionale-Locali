@@ -14,7 +14,8 @@ import Select from "@/components/Select";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PostazioneStampa from "@/components/PostazioneStampa";
 import EditorOrari from "@/components/OrariApertura";
-import { leggiOrari } from "@/lib/orari";
+import { leggiChiusure, leggiOrari } from "@/lib/orari";
+import ChiusureLocale from "@/components/ChiusureLocale";
 import Field from "@/components/Field";
 import ProvaPosta from "@/components/ProvaPosta";
 import SuoneriaChiamate from "@/components/SuoneriaChiamate";
@@ -25,6 +26,7 @@ import {
   deleteReparto,
   provaPosta,
   salvaChiamate,
+  salvaChiusure,
   salvaOrari,
   salvaPosta,
   salvaPrenotazioni,
@@ -306,6 +308,21 @@ export default async function ImpostazioniPage() {
               : "Da qui si calcolano le fasce di ritiro e consegna proposte in cassa. Due intervalli per giorno, se chiudete nel pomeriggio."}
           </p>
           <EditorOrari iniziali={leggiOrari(locale.openingHours)} salva={salvaOrari} />
+
+          <div
+            className="mt-5 border-t pt-4"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div className="text-sm font-medium">Giorni di chiusura</div>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+              Feste, ferie, giornate storte. In quei giorni non si prenota e non
+              si propone nessun ritiro, anche se in settimana sarebbe aperto.
+            </p>
+            <ChiusureLocale
+              iniziali={leggiChiusure(locale.closureDays)}
+              salva={salvaChiusure}
+            />
+          </div>
         </section>
       )}
 

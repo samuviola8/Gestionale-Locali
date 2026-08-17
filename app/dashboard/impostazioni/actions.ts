@@ -6,7 +6,12 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuCategories, reparti, tenants, users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
-import { leggiOrari, type OrariApertura } from "@/lib/orari";
+import {
+  leggiChiusure,
+  leggiOrari,
+  type Chiusura,
+  type OrariApertura,
+} from "@/lib/orari";
 import { normalizzaImpostazioni } from "@/lib/prenotazioni";
 import { mittenteLocale } from "@/lib/prenotazioni-mail";
 import { inviaMailLocale, provaMailLocale } from "@/lib/mail";
@@ -101,6 +106,20 @@ export async function salvaOrari(orari: OrariApertura): Promise<void> {
     .set({ openingHours: leggiOrari(orari) })
     .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");
+}
+
+// I giorni di chiusura a data fissa. Si ripuliscono prima di scrivere come si
+// fa con gli orari: una data storta qui dentro non da' errore, semplicemente
+// non chiude mai niente, e il locale se ne accorgerebbe con la sala piena a
+// Natale.
+export async function salvaChiusure(chiusure: Chiusura[]): Promise<void> {
+  const tenantId = await requireOwner();
+  await db
+    .update(tenants)
+    .set({ closureDays: leggiChiusure(chiusure) })
+    .where(eq(tenants.id, tenantId));
+  revalidatePath("/dashboard/impostazioni");
+  revalidatePath("/dashboard/prenotazioni");
 }
 
 // Le regole della prenotazione online. Sono i numeri che decidono quanta

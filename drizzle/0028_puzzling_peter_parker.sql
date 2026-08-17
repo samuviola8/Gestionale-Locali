@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "closure_days" jsonb DEFAULT '[]'::jsonb NOT NULL;

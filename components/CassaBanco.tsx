@@ -5,7 +5,7 @@ import { formatPrice as fmt } from "@/lib/format";
 import { CHANNELS, getChannel, type Channel } from "@/lib/channels";
 import OraRitiro from "@/components/OraRitiro";
 import IndirizzoAuto from "@/components/IndirizzoAuto";
-import type { OrariApertura } from "@/lib/orari";
+import type { Calendario } from "@/lib/orari";
 import type { DatiCliente, IncomingItem } from "@/lib/order-create";
 
 // Cassa del banco. Non e' il menu del cliente rimpicciolito: qui l'operatore ha
@@ -46,7 +46,7 @@ export default function CassaBanco({
 }: {
   prodotti: ProdottoCassa[];
   canaliAttivi: Channel[];
-  orari: OrariApertura;
+  orari: Calendario;
   // Da cosa partono le spunte, per canale: sono le impostazioni del locale.
   stampaPredefinita: {
     comanda: Record<string, boolean>;
