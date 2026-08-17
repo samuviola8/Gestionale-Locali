@@ -6,7 +6,6 @@ build/
 .DS_Store
 npm-debug.log*
 next-env.d.ts
-/public/uploads/
 /CREDENZIALI.local.md
 
 # cache incrementale di TypeScript: si rigenera, non va versionata
