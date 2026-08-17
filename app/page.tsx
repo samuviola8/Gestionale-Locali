@@ -1,4 +1,7 @@
-import { getTenantFromHost } from "@/lib/tenant-host";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { slugFromHost } from "@/lib/tenant-host";
+import { getTenant } from "@/lib/tenants";
 import { MODULES } from "@/lib/modules";
 import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
@@ -38,7 +41,10 @@ function Titolo({
 }
 
 export default async function Home() {
-  const tenant = await getTenantFromHost();
+  const host = (await headers()).get("host") ?? "";
+  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "";
+  const slug = slugFromHost(host, rootDomain);
+  const tenant = await getTenant(slug);
 
   // Sottodominio di un locale -> home del locale.
   if (tenant) {
@@ -78,6 +84,14 @@ export default async function Home() {
       </main>
     );
   }
+
+  // Nessun locale corrisponde. La vetrina esce solo sul dominio radice e su
+  // comanda.<dominio> (e su localhost in sviluppo): ogni altro sottodominio
+  // inventato riceve un 404 pulito ("Locale non trovato") invece della vetrina.
+  const rootBare = (rootDomain || "localhost:3000").split(":")[0];
+  const isVetrina =
+    slug === "comanda" || slug === rootBare || slug === "localhost";
+  if (!isVetrina) notFound();
 
   // Dominio radice -> landing pubblica. I moduli e i canali si leggono dal
   // catalogo: la vetrina non puo' promettere qualcosa che il prodotto non ha.
