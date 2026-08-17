@@ -29,6 +29,58 @@ export function componiIndirizzo(
   return [strada, dettaglio.trim()].filter(Boolean).join(", ");
 }
 
+const PAROLA = /[\p{L}\p{N}][\p{L}\p{N}/'’-]*/gu;
+// Un civico ha quattro cifre al massimo, con la coda che si usa da noi: 329,
+// 12/A, 12a. Il tetto delle cifre tiene fuori il CAP, che ne ha cinque ed e'
+// il numero che piu' facilmente si scambia per un civico.
+const NUMERO = /^\d{1,4}(?:[/-]?[a-z]{1,6})?$/i;
+const CODA = /^(bis|ter|quater)$/i;
+
+// Il civico che ha battuto chi prende l'ordine, riconosciuto per sottrazione:
+// dalla riga scritta si tolgono le parole che il fornitore ha gia' spiegato —
+// la via, il CAP, il comune — e il numero che avanza e' il civico.
+//
+// Serve il confronto perche' il numero si scrive in mezzo, "via garibaldi 329
+// viagrande": cercarlo in fondo alla riga non lo trova, e cercarlo dovunque
+// prenderebbe il 4 di "Via 4 Novembre". Per sottrazione quel 4 sparisce da
+// solo, perche' sta dentro il nome della via che il fornitore ha riconosciuto.
+export function civicoScritto(battuto: string, riconosciuto: string): string {
+  const scritte = battuto.match(PAROLA) ?? [];
+  // Un numero da solo non e' un indirizzo: e' qualcuno a meta' della battuta.
+  if (scritte.length < 2) return "";
+
+  const noti = new Set(
+    (riconosciuto.match(PAROLA) ?? []).map((p) => p.toLowerCase())
+  );
+  if (!noti.size) return "";
+
+  // Dall'ultimo: se il fornitore scrive la via in lettere dove il locale la
+  // scrive in cifre ("Via Quattro Novembre" contro "Via 4 Novembre 12"),
+  // avanzano due numeri e quello buono e' il secondo.
+  const restano = scritte.filter((p) => !noti.has(p.toLowerCase()));
+  for (let i = restano.length - 1; i >= 0; i--) {
+    if (!NUMERO.test(restano[i])) continue;
+    const dopo = restano[i + 1];
+    return dopo && CODA.test(dopo) ? `${restano[i]} ${dopo}` : restano[i];
+  }
+  return "";
+}
+
+// C'e' un numero che possa essere un civico, in qualunque punto della riga?
+//
+// Domanda diversa dalla precedente e con un metro diverso: qui non si deve
+// estrarre niente, si deve solo decidere se dire "manca il civico" a chi sta
+// ancora scrivendo. Quindi basta il sospetto: su "Via 4 Novembre" senza numero
+// l'avviso non esce, ed e' il prezzo che si paga per non farlo uscire a
+// sproposito su ogni indirizzo battuto col comune in coda. Un avviso che
+// sbaglia spesso lo si smette di leggere, e allora non serve piu' nemmeno
+// quando ha ragione.
+export function sembraAvereCivico(testo: string): boolean {
+  const parole = testo.match(PAROLA) ?? [];
+  // Dalla seconda in poi: la prima e' "via", "corso", "piazza".
+  return parole.slice(1).some((p) => NUMERO.test(p));
+}
+
 type Contesto = {
   // Dove sta il locale: i risultati vicini vengono prima, perche' una consegna
   // e' quasi sempre nel raggio di pochi chilometri. Sono coordinate e non il
@@ -210,11 +262,28 @@ export async function cercaIndirizzi(
           ? await geoapify(q, ctx)
           : await photon(q, ctx);
 
+    // Il civico che ha battuto chi prende l'ordine vale quanto quello del
+    // fornitore. Photon conosce solo i civici mappati su OSM: su "Via Roma 12"
+    // risponde con la via e basta, e chi sceglie dall'elenco si vedeva
+    // cancellare il numero appena scritto. Se il suggerimento non ce l'ha, si
+    // tiene quello dell'ordine: il posto dove suonare l'ha detto il cliente,
+    // non il geocoder.
+    const completi = grezzi.map((s) => {
+      if (s.civico) return s;
+      const civico = civicoScritto(q, `${s.via} ${s.dettaglio}`);
+      if (!civico) return s;
+      return {
+        ...s,
+        civico,
+        testo: componiIndirizzo(s.via, civico, s.dettaglio),
+      };
+    });
+
     // Si scartano solo le righe davvero identiche. La chiave e' l'indirizzo
     // intero e non la sola via: "Via Roma 12" esiste in dieci comuni qui
     // intorno, e sono dieci posti diversi dove andare.
     const visti = new Set<string>();
-    return grezzi
+    return completi
       .filter((s) => {
         const k = s.testo.toLowerCase();
         if (visti.has(k)) return false;

@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { componiIndirizzo, type Suggerimento } from "@/lib/indirizzi";
+import {
+  civicoScritto,
+  componiIndirizzo,
+  sembraAvereCivico,
+  type Suggerimento,
+} from "@/lib/indirizzi";
 
 // Indirizzo di consegna: via con i suggerimenti, civico in un campo suo.
 //
@@ -32,6 +37,11 @@ export default function IndirizzoAuto({
   // Cosa e' arrivato dall'elenco: serve a non ricercare subito dopo, o
   // scegliendo un indirizzo il pannello si riaprirebbe da solo.
   const scelto = useRef("");
+  // Se il numero nel campo l'ha battuto una persona nel suo campo. Quello che
+  // arriva dall'elenco o dalla riga della via appartiene all'indirizzo scelto e
+  // decade insieme a lui; quello scritto a mano no, e cancellarlo vorrebbe dire
+  // farlo riscrivere.
+  const civicoAMano = useRef(false);
 
   // Il genitore tiene una stringa sola: qui si ricompone a ogni pezzo.
   useEffect(() => {
@@ -48,6 +58,7 @@ export default function IndirizzoAuto({
       setCivico("");
       setDettaglio("");
       scelto.current = "";
+      civicoAMano.current = false;
     }
   }, [value]);
 
@@ -95,17 +106,42 @@ export default function IndirizzoAuto({
     };
   }, [via]);
 
+  function cambiaVia(v: string) {
+    setVia(v);
+    if (v.trim() === scelto.current) return;
+
+    // Ritoccando la via, quello che era arrivato con l'indirizzo di prima non
+    // vale piu': il CAP e il comune erano di quell'indirizzo, non di questo.
+    // Lasciandoli attaccati, chi corregge "Via Roma" in una via di un altro
+    // paese si porta dietro il comune vecchio senza vederlo, e il fattorino
+    // parte con un indirizzo che nessuno ha mai scritto.
+    if (dettaglio) setDettaglio("");
+    if (!civicoAMano.current && civico) setCivico("");
+    scelto.current = "";
+  }
+
   function prendi(s: Suggerimento) {
+    // Il numero puo' essere in tre posti: nel suggerimento, gia' nel suo campo,
+    // o dentro la riga appena battuta ("via garibaldi 329 viagrande").
+    // Scegliendo dall'elenco la via viene riscritta come la dice il fornitore:
+    // se non lo si recuperasse da li', sparirebbe sotto gli occhi di chi
+    // l'aveva appena scritto.
+    const numero =
+      s.civico ||
+      civico.trim() ||
+      civicoScritto(via, `${s.via} ${s.dettaglio}`);
+
+    // Resta "a mano" solo se e' rimasto in piedi quello gia' battuto nel campo.
+    civicoAMano.current = !!civico.trim() && numero === civico.trim();
+
     scelto.current = s.via;
     setVia(s.via);
     setDettaglio(s.dettaglio);
-    // Il civico del suggerimento vince; se non ce l'ha si tiene quello gia'
-    // battuto, invece di azzerarlo.
-    if (s.civico) setCivico(s.civico);
+    if (numero) setCivico(numero);
     setAperto(false);
     setSuggerimenti([]);
     // Senza numero il posto e' incompleto: il cursore va dove manca.
-    if (!s.civico && !civico.trim()) {
+    if (!numero) {
       requestAnimationFrame(() => campoCivico.current?.focus());
     }
   }
@@ -126,7 +162,11 @@ export default function IndirizzoAuto({
     }
   }
 
-  const mancaCivico = via.trim().length > 2 && !civico.trim();
+  // L'avviso guarda anche la via: chi scrive "Via Roma 12" tutto di seguito il
+  // numero l'ha dato, e vedersi dire che manca insegna solo a non fidarsi
+  // dell'avviso — che poi e' quello che serve quando manca davvero.
+  const mancaCivico =
+    via.trim().length > 2 && !civico.trim() && !sembraAvereCivico(via);
 
   return (
     <div className="space-y-1" ref={box}>
@@ -134,7 +174,7 @@ export default function IndirizzoAuto({
         <div className="relative min-w-0 flex-1">
           <input
             value={via}
-            onChange={(e) => setVia(e.target.value)}
+            onChange={(e) => cambiaVia(e.target.value)}
             onKeyDown={tasti}
             onFocus={() => suggerimenti.length && setAperto(true)}
             placeholder="Via di consegna"
@@ -200,7 +240,10 @@ export default function IndirizzoAuto({
         <input
           ref={campoCivico}
           value={civico}
-          onChange={(e) => setCivico(e.target.value)}
+          onChange={(e) => {
+            civicoAMano.current = true;
+            setCivico(e.target.value);
+          }}
           placeholder="Civico"
           aria-label="Numero civico"
           className="input h-10 w-20 shrink-0"
