@@ -172,6 +172,44 @@ export const STILE_LANDING = `
   letter-spacing: 0.02em;
 }
 
+/* --- Modulo di contatto --- */
+.lp-campo {
+  display: grid;
+  gap: 6px;
+}
+
+.lp-etichetta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Come .input ma alto: il messaggio e' il campo che conta, e deve invitare a
+   scrivere piu' di una riga. */
+.lp-area {
+  width: 100%;
+  min-height: 108px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* L'esca per i robot: sparita alla vista ma presente nel modulo. Non si usa
+   display:none, che qualche robot sa riconoscere. */
+.lp-esca {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
 /* --- Griglia delle sezioni --- */
 .lp-sezione {
   position: relative;
@@ -187,10 +225,13 @@ export const STILE_LANDING = `
   border-top: 1px solid var(--border);
 }
 
+/* Il colore del testo e' scritto e non ereditato: una card puo' finire dentro
+   una fascia scura, e li' l'inchiostro chiaro sparirebbe sul fondo chiaro. */
 .lp-vetro {
   border-radius: 20px;
   border: 1px solid var(--border);
   background: var(--surface);
+  color: var(--text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 20px 40px -32px rgba(0, 0, 0, 0.3);
 }
 

@@ -7,6 +7,8 @@ import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
 import Scena from "@/components/landing/Scena";
 import Rivela from "@/components/landing/Rivela";
+import ModuloContatto from "@/components/landing/ModuloContatto";
+import { configSmtp, indirizzoContatto } from "@/lib/mail";
 import {
   MiniQr,
   MiniStampa,
@@ -14,9 +16,6 @@ import {
   PannelloCoda,
   SchermoCliente,
 } from "@/components/landing/Mockup";
-
-// Indirizzo a cui arrivano le richieste dalla landing.
-const EMAIL_CONTATTO = "samu.viola8@gmail.com";
 
 function Titolo({
   occhiello,
@@ -99,6 +98,11 @@ export default async function Home() {
   const inArrivo = MODULES.filter((m) => m.comingSoon);
   const canali = CHANNELS;
 
+  // Il modulo compare solo se la casella e' collegata davvero: se manca,
+  // meglio l'indirizzo da copiare che un modulo che scrive nel vuoto.
+  const moduloAttivo = configSmtp() !== null;
+  const emailContatto = indirizzoContatto();
+
   return (
     <main className="lp">
       <style dangerouslySetInnerHTML={{ __html: STILE_LANDING }} />
@@ -133,7 +137,10 @@ export default async function Home() {
 
             <Rivela ritardo={220}>
               <div className="mt-8 flex flex-wrap gap-3">
-                <a href={`mailto:${EMAIL_CONTATTO}`} className="btn btn-primary">
+                <a
+                  href={moduloAttivo ? "#contatti" : `mailto:${emailContatto}`}
+                  className="btn btn-primary"
+                >
                   Chiedi una demo col tuo menu
                 </a>
                 <a href="#come-funziona" className="btn">
@@ -459,11 +466,11 @@ export default async function Home() {
       </section>
 
       {/* ---------- Chiusura ---------- */}
-      <section className="lp-sezione pb-28">
+      <section id="contatti" className="lp-sezione scroll-mt-4 pb-28">
         <div className="lp-contenuto">
           <Rivela>
             <div
-              className="relative overflow-hidden rounded-3xl px-8 py-14 text-center sm:px-12"
+              className="relative overflow-hidden rounded-3xl px-6 py-12 sm:px-12 sm:py-14"
               style={{
                 background:
                   "linear-gradient(140deg, var(--hero-from), var(--hero-to))",
@@ -471,26 +478,54 @@ export default async function Home() {
               }}
             >
               <div className="lp-alone" />
-              <div className="relative">
-                <h2 className="lp-display text-3xl sm:text-4xl">
-                  Vuoi vederlo sul tuo menu?
-                </h2>
-                <p className="mx-auto mt-4 max-w-lg text-white/75">
-                  Prepariamo una demo con il vostro menu, il vostro logo e i
-                  vostri colori, così vedete come apparirebbe davvero ai vostri
-                  clienti — prima di decidere qualsiasi cosa.
-                </p>
-                <a
-                  href={`mailto:${EMAIL_CONTATTO}`}
-                  className="btn mt-8"
-                  style={{
-                    background: "#ffffff",
-                    borderColor: "#ffffff",
-                    color: "#111111",
-                  }}
-                >
-                  Scrivici
-                </a>
+              <div
+                className={
+                  moduloAttivo
+                    ? "relative grid items-center gap-10 lg:grid-cols-[1fr_1.05fr]"
+                    : "relative text-center"
+                }
+              >
+                <div className={moduloAttivo ? "text-center lg:text-left" : ""}>
+                  <h2 className="lp-display text-3xl sm:text-4xl">
+                    Vuoi vederlo sul tuo menu?
+                  </h2>
+                  <p
+                    className={`mt-4 max-w-lg text-white/75 ${
+                      moduloAttivo ? "mx-auto lg:mx-0" : "mx-auto"
+                    }`}
+                  >
+                    Prepariamo una demo con il vostro menu, il vostro logo e i
+                    vostri colori, così vedete come apparirebbe davvero ai
+                    vostri clienti — prima di decidere qualsiasi cosa.
+                  </p>
+
+                  {moduloAttivo ? (
+                    <p className="mt-6 text-sm text-white/60">
+                      Preferisci la posta?{" "}
+                      <a
+                        href={`mailto:${emailContatto}`}
+                        className="underline"
+                        style={{ color: "inherit" }}
+                      >
+                        {emailContatto}
+                      </a>
+                    </p>
+                  ) : (
+                    <a
+                      href={`mailto:${emailContatto}`}
+                      className="btn mt-8"
+                      style={{
+                        background: "#ffffff",
+                        borderColor: "#ffffff",
+                        color: "#111111",
+                      }}
+                    >
+                      Scrivici
+                    </a>
+                  )}
+                </div>
+
+                {moduloAttivo && <ModuloContatto indirizzo={emailContatto} />}
               </div>
             </div>
           </Rivela>

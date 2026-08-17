@@ -165,6 +165,13 @@ messi insieme al database.
 **Il super-admin è sotto `/admin`**, raggiungibile da qualunque sottodominio.
 Prima di aprire il server a internet controlla che la sua password sia solida.
 
+**Il modulo di contatto della vetrina** spedisce via SMTP con la casella
+configurata in `.env.production.local` (`SMTP_USER` / `SMTP_PASS`). Con Gmail
+serve una **password per le app**, non la password dell'account: si genera da
+account Google → Sicurezza → Verifica in due passaggi → Password per le app, e
+si revoca da lì se finisce dove non deve. Finché quelle due variabili sono
+vuote il modulo non compare e la landing mostra solo l'indirizzo da copiare.
+
 **La stampa** funziona dai computer del locale con Chrome avviato con
 `--kiosk-printing`: la pagina non stampa da sola sul server, è ogni postazione
 che si prende i suoi lavori. Vedi Impostazioni → Postazione di stampa.
