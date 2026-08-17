@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   billSettlements,
@@ -8,10 +8,11 @@ import {
   orderItems,
   tableClosures,
   tenants,
+  waiterCalls,
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { revokeTableSessions } from "@/lib/table-session";
-import { ALIAS_CONDIVISO } from "@/lib/bill";
+import { eGruppo } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
 import { creaScontrinoConto } from "@/lib/stampa";
 
@@ -70,8 +71,9 @@ async function risolvi(tenantId: string, key: string): Promise<Conto | null> {
 export async function markAliasPaid(key: string, alias: string): Promise<void> {
   const session = await getSessionUser();
   if (!session || !alias) return;
-  // "Condiviso" non e' un pagante: la sua spesa e' gia' ripartita in quote.
-  if (alias === ALIAS_CONDIVISO) return;
+  // Un gruppo non e' un pagante: la sua spesa esiste gia' ripartita in quote
+  // sui suoi, e incassarla di nuovo qui la conterebbe due volte.
+  if (eGruppo(alias)) return;
 
   const conto = await risolvi(session.tenantId, key);
   if (!conto) return;
@@ -140,6 +142,20 @@ export async function closeTable(key: string): Promise<void> {
   if (conto.tipo === "tavolo") {
     // Il tavolo si libera: i telefoni ancora collegati devono riscansionare.
     await revokeTableSessions(session.tenantId, conto.tableNumber);
+
+    // E chi aveva chiamato se n'e' andato: una chiamata lasciata aperta fa
+    // suonare la campanella per un tavolo che non c'e' piu', e chi va a
+    // vedere trova le sedie vuote.
+    await db
+      .update(waiterCalls)
+      .set({ resolvedAt: new Date() })
+      .where(
+        and(
+          eq(waiterCalls.tenantId, session.tenantId),
+          eq(waiterCalls.tableNumber, conto.tableNumber),
+          isNull(waiterCalls.resolvedAt)
+        )
+      );
   }
 
   await db

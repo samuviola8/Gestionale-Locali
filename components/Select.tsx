@@ -13,6 +13,7 @@ export default function Select({
   size = "md",
   placeholder,
   className,
+  ariaLabel,
   submitOnChange = false,
 }: {
   options: Option[];
@@ -23,6 +24,9 @@ export default function Select({
   size?: "md" | "sm";
   placeholder?: string;
   className?: string;
+  // Serve dove la tendina non ha un'etichetta accanto e da sola non si
+  // capisce: due tendine in fila dicono "12" e "30" e basta.
+  ariaLabel?: string;
   // Manda il form appena si sceglie: su un elenco di assegnazioni un pulsante
   // "salva" per riga sarebbe un clic in piu' per ognuna.
   submitOnChange?: boolean;
@@ -33,6 +37,21 @@ export default function Select({
   );
   const selected = value ?? internal;
   const ref = useRef<HTMLDivElement>(null);
+  const lista = useRef<HTMLUListElement>(null);
+
+  // Aprendo, la voce scelta si mette al centro. Su un elenco corto non cambia
+  // niente; su uno lungo — gli orari della giornata — e' la differenza tra
+  // scegliere le 20:00 e scorrere fino alle 20:00 partendo da mezzanotte.
+  // Si sposta solo la lista, non la pagina: `scrollIntoView` porterebbe con se'
+  // anche lo scorrimento di quello che ci sta dietro.
+  useEffect(() => {
+    if (!open) return;
+    const el = lista.current?.querySelector<HTMLElement>('[data-scelta="1"]');
+    if (!el || !lista.current) return;
+    const voce = el.getBoundingClientRect();
+    const box = lista.current.getBoundingClientRect();
+    lista.current.scrollTop += voce.top - box.top - (box.height - voce.height) / 2;
+  }, [open]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -65,6 +84,7 @@ export default function Select({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={ariaLabel}
         className={"flex w-full items-center justify-between gap-2 rounded-xl border bd " + pad}
         style={{ background: "var(--surface)", color: "var(--text)" }}
       >
@@ -95,13 +115,14 @@ export default function Select({
           className="absolute left-0 right-0 z-50 mt-1.5 overflow-hidden rounded-xl border bd shadow-lg"
           style={{ background: "var(--surface)" }}
         >
-          <ul className="max-h-60 overflow-auto p-1">
+          <ul ref={lista} className="max-h-60 overflow-auto p-1">
             {options.map((o) => {
               const isSel = o.value === selected;
               return (
                 <li key={o.value}>
                   <button
                     type="button"
+                    data-scelta={isSel ? "1" : undefined}
                     onClick={() => pick(o.value)}
                     className="opt flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm"
                     style={

@@ -57,6 +57,16 @@ export const tenants = pgTable("tenants", {
   // 0 = il locale non lo applica.
   coverChargeCents: integer("cover_charge_cents").notNull().default(0),
 
+  // Come si fa sentire una chiamata dal tavolo. Il suono e' un nome, non un
+  // file: lo genera il browser (lib/suoni.ts). "muto" = solo a schermo, per
+  // chi lavora in sala con la musica alta o in un locale dove un trillo ogni
+  // due minuti darebbe fastidio ai clienti al bancone.
+  callSound: text("call_sound").notNull().default("campanello"),
+  // La campanella lampeggia finche' la chiamata non e' presa. Il pallino
+  // rosso da solo si confonde con lo sfondo di uno schermo guardato di
+  // sfuggita da tre metri.
+  callBlink: boolean("call_blink").notNull().default(true),
+
   // Impostazioni di stampa. Stanno qui e non in una tabella a parte perche'
   // sono una manciata di interruttori di un solo locale, non una collezione.
   // Quali abbiano senso lo decidono i moduli attivi: senza asporto, l'opzione

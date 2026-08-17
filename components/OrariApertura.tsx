@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { GIORNI, inMinuti, type Fascia, type OrariApertura } from "@/lib/orari";
+import CampoOra from "@/components/CampoOra";
 
 // Editor degli orari. Due fasce per giorno — pranzo e cena — perche' quasi
 // ogni ristorante chiude nel mezzo, e un orario continuato direbbe che alle
@@ -87,20 +88,20 @@ export default function EditorOrari({
 
               {[0, 1].map((i) => (
                 <span key={i} className="flex items-center gap-1">
-                  <input
-                    type="time"
+                  <CampoOra
+                    size="sm"
+                    passo={15}
                     value={fascia(g, i).da}
-                    onChange={(e) => cambia(g, i, "da", e.target.value)}
-                    aria-label={`${nome}, apertura ${i === 0 ? "pranzo" : "cena"}`}
-                    className="input h-9 w-[6.5rem] text-sm"
+                    onChange={(v) => cambia(g, i, "da", v)}
+                    etichetta={`${nome}, apertura ${i === 0 ? "pranzo" : "cena"}`}
                   />
                   <span style={{ color: "var(--muted)" }}>–</span>
-                  <input
-                    type="time"
+                  <CampoOra
+                    size="sm"
+                    passo={15}
                     value={fascia(g, i).a}
-                    onChange={(e) => cambia(g, i, "a", e.target.value)}
-                    aria-label={`${nome}, chiusura ${i === 0 ? "pranzo" : "cena"}`}
-                    className="input h-9 w-[6.5rem] text-sm"
+                    onChange={(v) => cambia(g, i, "a", v)}
+                    etichetta={`${nome}, chiusura ${i === 0 ? "pranzo" : "cena"}`}
                   />
                 </span>
               ))}

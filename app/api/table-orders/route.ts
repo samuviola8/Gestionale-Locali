@@ -5,6 +5,7 @@ import { orders, orderItems } from "@/lib/db/schema";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { requireTableSession } from "@/lib/table-session";
 import { loadOpenTables } from "@/lib/bill-query";
+import { ALIAS_CONDIVISO, eGruppo, membriDi } from "@/lib/bill";
 
 // Usato dalla pagina cliente per lo stato del proprio tavolo: richiede la
 // sessione aperta col QR, altrimenti si leggerebbero gli ordini altrui.
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
       id: orders.id,
       status: orders.status,
       createdAt: orders.createdAt,
+      partySize: orders.partySize,
     })
     .from(orders)
     .where(
@@ -58,5 +60,25 @@ export async function GET(req: Request) {
   // staff corregge le persone al tavolo, qui cambia di conseguenza.
   const conto = (await loadOpenTables(tenant.id, table))[0] ?? null;
 
-  return NextResponse.json({ orders: result, conto });
+  // In quanti sono, se qualcuno l'ha gia' detto. Non e' il numero del conto,
+  // che quando nessuno ha risposto lo deduce da chi ha ordinato: qui serve
+  // sapere se la domanda ha gia' avuto una risposta, non una stima.
+  const personeDichiarate =
+    os.reduce((m, o) => Math.max(m, o.partySize ?? 0), 0) || null;
+
+  // I nomi gia' in uso al tavolo, da qualunque telefono siano stati scritti.
+  // Senza, ogni telefono conosce solo chi ci ha digitato sopra, e dividere con
+  // chi ha ordinato dall'altro telefono e' impossibile: per lui non esiste.
+  // Un alias di gruppo vale per le persone che nomina.
+  const persone = [
+    ...new Set(
+      its.flatMap((i) => {
+        const a = i.alias ?? "";
+        if (!a || a === "Tavolo" || a === ALIAS_CONDIVISO) return [];
+        return eGruppo(a) ? membriDi(a) : [a];
+      })
+    ),
+  ];
+
+  return NextResponse.json({ orders: result, conto, personeDichiarate, persone });
 }

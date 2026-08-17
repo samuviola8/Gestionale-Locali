@@ -244,11 +244,14 @@ export async function creaScontrinoConto(
       alias: string;
       items: { name: string; quantity: number; priceCents: number; voided?: boolean }[];
       itemsTotal: number;
-      sharedQuota: number;
+      shares: { label: string; amountCents: number }[];
       coverCharge: number;
       total: number;
     }[];
-    sharedItems: { name: string; quantity: number; priceCents: number; voided?: boolean }[];
+    shared: {
+      alias: string;
+      items: { name: string; quantity: number; priceCents: number; voided?: boolean }[];
+    }[];
     deliveryFeeCents: number;
     total: number;
   }
@@ -268,20 +271,24 @@ export async function creaScontrinoConto(
         importoCents: i.priceCents * i.quantity,
       });
     }
-    if (p.sharedQuota > 0) {
-      righe.push({ descrizione: "  Quota condiviso", importoCents: p.sharedQuota });
+    // Una quota per ogni gruppo a cui partecipa: sommarle in una riga sola
+    // lascerebbe il cliente a chiedersi da dove esce quella cifra.
+    for (const q of p.shares) {
+      righe.push({ descrizione: `  ${q.label}`, importoCents: q.amountCents });
     }
     if (p.coverCharge > 0) {
       righe.push({ descrizione: "  Coperto", importoCents: p.coverCharge });
     }
   }
 
-  for (const i of conto.sharedItems) {
-    if (i.voided) continue;
-    righe.push({
-      descrizione: `Condiviso: ${i.quantity}× ${i.name}`,
-      importoCents: i.priceCents * i.quantity,
-    });
+  for (const g of conto.shared) {
+    for (const i of g.items) {
+      if (i.voided) continue;
+      righe.push({
+        descrizione: `${g.alias}: ${i.quantity}× ${i.name}`,
+        importoCents: i.priceCents * i.quantity,
+      });
+    }
   }
 
   if (conto.deliveryFeeCents > 0) {

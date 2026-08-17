@@ -342,7 +342,7 @@ export default function BillBoard({
                             style={{ color: "var(--muted)" }}
                           >
                             <span>
-                              {inSala ? "Quota condiviso e coperto" : "Consegna"}
+                              {inSala ? "Quote e coperto" : "Consegna"}
                             </span>
                             <span className="tnum">
                               {fmt(p.total - p.itemsTotal)}
@@ -351,15 +351,19 @@ export default function BillBoard({
                         )
                       : (
                           <>
-                            {p.sharedQuota > 0 && (
+                            {/* Una riga per gruppo: chi ha diviso la pizza in
+                                due e il vino con tutti deve vedere due voci
+                                diverse, non una somma. */}
+                            {p.shares.map((q) => (
                               <li
+                                key={q.alias}
                                 className="flex justify-between gap-3"
                                 style={{ color: "var(--muted)" }}
                               >
-                                <span>Quota condiviso</span>
-                                <span className="tnum">{fmt(p.sharedQuota)}</span>
+                                <span>{q.label}</span>
+                                <span className="tnum">{fmt(q.amountCents)}</span>
                               </li>
-                            )}
+                            ))}
                             {p.coverCharge > 0 && (
                               <li
                                 className="flex justify-between gap-3"
@@ -389,19 +393,22 @@ export default function BillBoard({
                 </div>
               ))}
 
-              {t.sharedItems.length > 0 && (
+              {/* Un riquadro per gruppo: "Condiviso" e' quello di tutto il
+                  tavolo, gli altri portano i nomi di chi se li divide. */}
+              {t.shared.map((g) => (
                 <div
+                  key={g.alias}
                   className="rounded-xl p-3"
                   style={{ background: "var(--surface-2)" }}
                 >
                   <div className="text-sm font-medium">
-                    Condiviso{" "}
+                    {g.alias}{" "}
                     <span className="font-normal" style={{ color: "var(--muted)" }}>
-                      · diviso in {t.partySize}
+                      · diviso in {g.teste}
                     </span>
                   </div>
                   <ul className="mt-1 space-y-0.5 text-sm" style={{ color: "var(--muted)" }}>
-                    {t.sharedItems.map((i, idx) => (
+                    {g.items.map((i, idx) => (
                       <li key={i.id ?? idx} className="flex justify-between gap-3">
                         <span
                           style={
@@ -444,7 +451,7 @@ export default function BillBoard({
                     ))}
                   </ul>
                 </div>
-              )}
+              ))}
 
             </div>
 

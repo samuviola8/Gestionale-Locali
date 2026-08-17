@@ -56,7 +56,9 @@ export default function TableStatus({
   if (orders.length === 0) return null;
 
   return (
-    <div className="mt-8 space-y-4">
+    // L'id e' il punto di arrivo del pulsante che sta in fondo al menu: senza,
+    // per vedere il conto bisogna scorrere tutta la lista dei prodotti.
+    <div id="stato-tavolo" className="mt-8 scroll-mt-4 space-y-4">
       <div className="rounded-xl border bd p-4">
         <div className="flex items-center gap-2">
           <span className="font-medium">Stato del tavolo</span>
@@ -162,12 +164,14 @@ export default function TableStatus({
                         {i.name} annullato dal locale
                       </div>
                     ))}
-                  {p.sharedQuota > 0 && (
-                    <div className="flex justify-between gap-3">
-                      <span>Parte del condiviso</span>
-                      <span className="tabular-nums">{fmt(p.sharedQuota)}</span>
+                  {/* Una riga per gruppo: "Diviso con Marco" dice da solo
+                      perche' quella cifra e' li'. */}
+                  {p.shares.map((q) => (
+                    <div key={q.alias} className="flex justify-between gap-3">
+                      <span>{q.label}</span>
+                      <span className="tabular-nums">{fmt(q.amountCents)}</span>
                     </div>
-                  )}
+                  ))}
                   {p.coverCharge > 0 && (
                     <div className="flex justify-between gap-3">
                       <span>Coperto</span>
@@ -179,21 +183,23 @@ export default function TableStatus({
             ))}
           </ul>
 
-          {conto.sharedItems.some((i) => i.voided) && (
+          {conto.shared.flatMap((g) => g.items).some((i) => i.voided) && (
             <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
-              {conto.sharedItems
+              {conto.shared
+                .flatMap((g) => g.items)
                 .filter((i) => i.voided)
                 .map((i) => i.name)
                 .join(", ")}{" "}
-              annullato dal locale: non è nel condiviso.
+              annullato dal locale: non è da dividere.
             </p>
           )}
-          {conto.sharedTotal > 0 && (
-            <p className="mt-3 text-xs text-neutral-500">
-              Il condiviso ({fmt(conto.sharedTotal)}) è diviso tra{" "}
-              {conto.partySize} persone.
-            </p>
-          )}
+          {conto.shared
+            .filter((g) => g.total > 0)
+            .map((g) => (
+              <p key={g.alias} className="mt-3 text-xs text-neutral-500">
+                {g.alias} ({fmt(g.total)}) è diviso in {g.teste}.
+              </p>
+            ))}
           <p className="mt-1 text-xs text-neutral-500">
             Si paga alla cassa. Gli importi si aggiornano da soli.
           </p>

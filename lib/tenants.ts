@@ -14,6 +14,9 @@ export type Tenant = {
   // cliente cosa vedra' sul conto prima di ordinare.
   coverChargeCents: number;
   menuSkin: string;
+  // Come si annuncia una chiamata dal tavolo sugli schermi dello staff.
+  callSound: string;
+  callBlink: boolean;
   branding: TenantBranding;
 };
 
@@ -30,10 +33,12 @@ const columns = {
   tableSessionMinutes: tenants.tableSessionMinutes,
   coverChargeCents: tenants.coverChargeCents,
   menuSkin: tenants.menuSkin,
+  callSound: tenants.callSound,
+  callBlink: tenants.callBlink,
 };
 
 type Row = {
-  [K in keyof typeof columns]: K extends "suspended"
+  [K in keyof typeof columns]: K extends "suspended" | "callBlink"
     ? boolean
     : K extends "tableSessionMinutes" | "coverChargeCents"
       ? number
@@ -52,6 +57,8 @@ function toTenant(row: Row): Tenant {
     tableSessionMinutes: row.tableSessionMinutes,
     coverChargeCents: row.coverChargeCents,
     menuSkin: row.menuSkin,
+    callSound: row.callSound,
+    callBlink: row.callBlink,
     branding: {
       themePreset: row.themePreset,
       brandColor: row.brandColor,

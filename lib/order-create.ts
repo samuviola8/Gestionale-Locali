@@ -4,6 +4,7 @@ import { menuProducts, menuProductVariants, orders, orderItems } from "@/lib/db/
 import type { ModuleState } from "@/lib/modules";
 import { getChannel, type Channel } from "@/lib/channels";
 import { creaComande, repartoPerProdotto } from "@/lib/stampa";
+import { normalizzaAlias } from "@/lib/bill";
 
 // Un ordine nasce uguale sia dal telefono del cliente sia dalla dashboard del
 // cameriere: cambia solo chi ha il diritto di crearlo. Qui sta la parte comune
@@ -107,7 +108,7 @@ export async function createOrderRows(
       // conto solo: al banco o in consegna non c'e' niente da dividere.
       const alias =
         modules.split_bill && canale.seduti
-          ? i.alias?.trim() || "Tavolo"
+          ? normalizzaAlias(i.alias)
           : "Tavolo";
 
       if (i.variantId) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { IconBell } from "@/components/icons";
+import { sbloccaAudio, suona } from "@/lib/suoni";
 
 type Call = { id: string; tableNumber: number; createdAt: string };
 
@@ -13,18 +14,44 @@ function timeAgo(iso: string): string {
 
 export default function CallsBell({
   resolveCall,
+  suono,
+  lampeggia,
 }: {
   resolveCall: (id: string) => Promise<void>;
+  // Come il locale ha scelto di farsi avvisare.
+  suono: string;
+  lampeggia: boolean;
 }) {
   const [calls, setCalls] = useState<Call[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Le chiamate gia' viste da questo schermo. Il suono e' per quelle nuove:
+  // ripeterlo a ogni giro di lettura, ogni tre secondi, finche' qualcuno non
+  // la prende, sarebbe un allarme antifurto.
+  const viste = useRef<Set<string> | null>(null);
+  // Il suono si legge da un riferimento: la lettura riparte ogni tre secondi
+  // con la funzione di quel momento, e senza questo continuerebbe a suonare
+  // quello scelto quando la pagina si e' aperta.
+  const suonoRef = useRef(suono);
+  suonoRef.current = suono;
 
   async function load() {
     try {
       const r = await fetch("/api/calls", { cache: "no-store" });
       const d = await r.json();
-      setCalls(d.calls ?? []);
+      const arrivate: Call[] = d.calls ?? [];
+      setCalls(arrivate);
+
+      // Alla prima lettura si prende nota e basta: le chiamate gia' in coda
+      // non sono "arrivate adesso", e chi ricarica la pagina non deve
+      // sentirsele suonare tutte.
+      if (viste.current === null) {
+        viste.current = new Set(arrivate.map((c) => c.id));
+        return;
+      }
+      const nuove = arrivate.filter((c) => !viste.current!.has(c.id));
+      viste.current = new Set(arrivate.map((c) => c.id));
+      if (nuove.length) suona(suonoRef.current);
     } catch {
       // si riprova al prossimo giro
     }
@@ -34,6 +61,21 @@ export default function CallsBell({
     load();
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
+  }, []);
+
+  // I browser non suonano niente finche' l'utente non ha toccato la pagina.
+  // Al primo tocco si apre la strada, una volta sola: cosi' la chiamata che
+  // arriva mezz'ora dopo si sente.
+  useEffect(() => {
+    function primoTocco() {
+      sbloccaAudio();
+    }
+    window.addEventListener("pointerdown", primoTocco, { once: true });
+    window.addEventListener("keydown", primoTocco, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", primoTocco);
+      window.removeEventListener("keydown", primoTocco);
+    };
   }, []);
 
   useEffect(() => {
@@ -56,7 +98,9 @@ export default function CallsBell({
         aria-label="Chiamate ai tavoli"
         className="relative flex h-9 w-9 items-center justify-center rounded-lg border bd"
       >
-        <IconBell />
+        <span className={lampeggia && calls.length > 0 ? "campanella-viva" : ""}>
+          <IconBell />
+        </span>
         {calls.length > 0 && (
           <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
             {calls.length}

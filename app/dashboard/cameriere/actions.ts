@@ -6,6 +6,7 @@ import { restaurantTables } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { getTenantModules } from "@/lib/modules";
 import { createOrderRows, type IncomingItem } from "@/lib/order-create";
+import { staccaCondiviso } from "@/lib/condiviso";
 
 // Ordine preso a voce dal cameriere, al tavolo. Stessa interfaccia del cliente,
 // ma al posto della sessione del tavolo vale il login dello staff — il cameriere
@@ -45,6 +46,22 @@ export async function createStaffOrder(
     modules,
     partySize
   );
+}
+
+// Stessa cosa, ma richiesta dal cameriere: al posto della sessione del tavolo
+// vale il suo login.
+export async function chiudiCondivisoStaff(
+  tableNumber: number
+): Promise<{ ok: boolean }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false };
+  if (!Number.isInteger(tableNumber) || tableNumber <= 0) return { ok: false };
+
+  const modules = await getTenantModules(session.tenantId);
+  if (!modules.split_bill) return { ok: false };
+
+  const esito = await staccaCondiviso(session.tenantId, tableNumber);
+  return { ok: esito.ok };
 }
 
 // Il cameriere sta gia' davanti al cliente: non ha nessuno da chiamare.

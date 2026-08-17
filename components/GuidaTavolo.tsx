@@ -11,7 +11,9 @@ import { formatPrice as fmt } from "@/lib/format";
 // I passi si costruiscono sui moduli attivi del locale: dove il conto non si
 // divide, di sotto-conti e condiviso non si parla proprio.
 
-const VERSIONE = "v1";
+// Cambiando, la guida si riapre da sola anche a chi l'aveva gia' vista: il
+// modo di dividere non e' un dettaglio grafico, e chi non lo sa non lo cerca.
+const VERSIONE = "v2";
 
 type Passo = {
   chiave: string;
@@ -58,10 +60,31 @@ function MockPersone() {
       <div className="text-[11px] font-medium text-neutral-500">Aggiungi per</div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Pillola testo="Io" attiva />
-        <Pillola testo="Giulia" />
         <Pillola testo="Condiviso" />
+        <Pillola testo="Giulia" />
         <span className="rounded-full border border-dashed border-neutral-300 px-3 py-1.5 text-xs text-neutral-500">
           + persona
+        </span>
+      </div>
+    </Riquadro>
+  );
+}
+
+// La riga che si apre sotto "Condiviso": e' li' che si decide con chi, ed e'
+// la cosa che nessuno si aspetta di trovare.
+function MockScelta() {
+  return (
+    <Riquadro>
+      <div className="text-[11px] font-medium text-neutral-500">Aggiungi per</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Pillola testo="Io" />
+        <Pillola testo="Condiviso" attiva />
+        <Pillola testo="Giulia" />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5 border-t border-neutral-200 pt-2">
+        <Pillola testo="Tutti · in 4" attiva />
+        <span className="rounded-full border border-dashed border-neutral-300 px-3 py-1.5 text-xs text-neutral-500">
+          Personalizzato
         </span>
       </div>
     </Riquadro>
@@ -72,11 +95,19 @@ function MockCondiviso() {
   return (
     <Riquadro>
       <div className="flex items-baseline justify-between text-sm">
-        <span className="font-medium">Tagliere · Condiviso</span>
+        <span className="font-medium">Tagliere · Tutti</span>
         <span className="font-semibold tabular-nums">{fmt(1800)}</span>
       </div>
       <div className="mt-1 flex items-baseline justify-between text-xs text-neutral-500">
-        <span>diviso tra 4 persone</span>
+        <span>diviso in 4</span>
+        <span className="tabular-nums">{fmt(450)} a testa</span>
+      </div>
+      <div className="mt-2 flex items-baseline justify-between border-t border-neutral-200 pt-2 text-sm">
+        <span className="font-medium">Pizza · Io e Giulia</span>
+        <span className="font-semibold tabular-nums">{fmt(900)}</span>
+      </div>
+      <div className="mt-1 flex items-baseline justify-between text-xs text-neutral-500">
+        <span>diviso in 2</span>
         <span className="tabular-nums">{fmt(450)} a testa</span>
       </div>
     </Riquadro>
@@ -159,7 +190,7 @@ function MockConto({ coperto }: { coperto: number }) {
           <span className="tabular-nums">{fmt(1000)}</span>
         </div>
         <div className="flex justify-between gap-3">
-          <span>Parte del condiviso</span>
+          <span>Quota condiviso</span>
           <span className="tabular-nums">{fmt(450)}</span>
         </div>
         {coperto > 0 && (
@@ -213,14 +244,21 @@ function costruisciPassi({
 
     passi.push({
       chiave: "condiviso",
-      titolo: "Quello che è di tutti va in «Condiviso»",
+      titolo: "Quello che è di tutti, o solo di due",
       testo:
-        "La bottiglia, il tagliere, la pizza da dividere: aggiungili sulla pillola «Condiviso». La prima volta ti chiediamo in quanti siete, poi il costo si divide in parti uguali.",
+        "La bottiglia per il tavolo, la pizza da dividere in due: tocca «Condiviso» e sotto scegli con chi. «Tutti» lo divide per quante persone siete — te lo chiediamo una volta sola. «Personalizzato» lo divide solo tra chi spunti tu.",
       punti: [
+        "Un gruppo non vale per una cosa sola: una volta fatto resta lì, e ci metti dentro anche il resto del giro.",
+        "Chi è fuori dal gruppo di quel piatto non ne paga niente.",
         "La divisione è esatta al centesimo: la somma delle parti torna sempre al prezzo pieno.",
-        "Se arriva qualcuno dopo, il personale corregge il numero di persone.",
+        "Se qualcuno arriva a metà serata, quando lo aggiungi ti chiediamo se il giro di prima lo riguarda: rispondendo «no» resta a chi c'era.",
       ],
-      mock: <MockCondiviso />,
+      mock: (
+        <>
+          <MockScelta />
+          <MockCondiviso />
+        </>
+      ),
     });
   }
 
@@ -240,7 +278,7 @@ function costruisciPassi({
     chiave: "invio",
     titolo: "Controlla, invia, segui",
     testo: splitBill
-      ? "Nel carrello le voci sono raggruppate per persona, con il subtotale di ciascuno. Voce sulla persona sbagliata? Spostala col menù a tendina di fianco. Poi «Invia ordine»."
+      ? "Nel carrello le voci sono raggruppate per persona, con il subtotale di ciascuno. Voce sulla persona sbagliata? Spostala col menù a tendina di fianco, dove trovi anche «Dividi tra…» se quel piatto lo pagate in due. Poi «Invia ordine»."
       : "Nel carrello controlli quantità e note, poi «Invia ordine». Puoi ordinare ancora quante volte vuoi: si aggiunge tutto allo stesso tavolo.",
     punti: [
       "Dopo l'invio l'ordine non si modifica più dal telefono: per una correzione chiedi al personale.",

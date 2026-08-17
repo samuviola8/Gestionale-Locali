@@ -18,6 +18,7 @@ import {
   type StatoPrenotazione,
 } from "@/lib/prenotazioni";
 import Field from "@/components/Field";
+import CampoOra from "@/components/CampoOra";
 import Select from "@/components/Select";
 import SceltaGiorno from "@/components/SceltaGiorno";
 import {
@@ -187,7 +188,7 @@ export default async function PrenotazioniPage({
               <input type="date" name="giorno" defaultValue={giorno} required className="input" />
             </Field>
             <Field label="Ora">
-              <input type="time" name="ora" required step={300} className="input" />
+              <CampoOra name="ora" passo={15} />
             </Field>
             <Field label="Persone">
               <input
@@ -393,12 +394,11 @@ export default async function PrenotazioniPage({
                             />
                           </Field>
                           <Field label="Ora" className="min-w-[7rem]">
-                            <input
-                              type="time"
+                            <CampoOra
                               name="ora"
-                              step={300}
+                              passo={15}
                               defaultValue={ora}
-                              className="input"
+                              size="sm"
                             />
                           </Field>
                           <Field label="Persone" className="w-24">

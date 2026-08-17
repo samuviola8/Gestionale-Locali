@@ -9,7 +9,11 @@ import { getMenu } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
 import { requireModule } from "@/lib/module-guard";
 import OrderClient from "@/components/OrderClient";
-import { createStaffOrder, noopCallWaiter } from "../actions";
+import {
+  createStaffOrder,
+  noopCallWaiter,
+  chiudiCondivisoStaff,
+} from "../actions";
 
 // La stessa pagina che vede il cliente, aperta dal cameriere. Non e' una copia:
 // e' proprio OrderClient, cosi' una modifica al menu o alle note vale per
@@ -70,6 +74,7 @@ export default async function OrdinaPerTavolo({
           staffMode
           submitOrder={createStaffOrder}
           callWaiter={noopCallWaiter}
+          chiudiCondiviso={chiudiCondivisoStaff}
         />
       </div>
     </div>

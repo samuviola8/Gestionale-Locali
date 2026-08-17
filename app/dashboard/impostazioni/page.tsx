@@ -17,12 +17,14 @@ import EditorOrari from "@/components/OrariApertura";
 import { leggiOrari } from "@/lib/orari";
 import Field from "@/components/Field";
 import ProvaPosta from "@/components/ProvaPosta";
+import SuoneriaChiamate from "@/components/SuoneriaChiamate";
 import { leggiImpostazioni } from "@/lib/prenotazioni";
 import { cifraturaDisponibile } from "@/lib/segreti";
 import {
   addReparto,
   deleteReparto,
   provaPosta,
+  salvaChiamate,
   salvaOrari,
   salvaPosta,
   salvaPrenotazioni,
@@ -561,6 +563,39 @@ export default async function ImpostazioniPage() {
               {locale.smtpUser && locale.smtpPass && <ProvaPosta prova={provaPosta} />}
             </>
           )}
+        </section>
+      )}
+
+      {/* --- Chiamate al tavolo --- */}
+      {modules.waiter_call && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Chiamate al tavolo</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Come ve ne accorgete quando un tavolo chiama. Vale per tutti gli
+            schermi che hanno la dashboard aperta.
+          </p>
+
+          <form action={salvaChiamate} className="mt-3">
+            <Field
+              label="Suono"
+              hint="Si sente scegliendolo. Con la musica alta conviene provarli in sala, non in ufficio."
+            >
+              <SuoneriaChiamate scelto={locale.callSound} />
+            </Field>
+
+            <div
+              className="mt-1 divide-y"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <Interruttore
+                nome="lampeggia"
+                etichetta="Campanella lampeggiante"
+                descrizione="Si muove finché la chiamata non è presa: da tre metri il pallino rosso non si vede."
+                acceso={locale.callBlink}
+              />
+            </div>
+            <button className="btn btn-primary btn-sm mt-3">Salva</button>
+          </form>
         </section>
       )}
 

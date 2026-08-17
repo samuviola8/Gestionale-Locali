@@ -11,6 +11,7 @@ import { normalizzaImpostazioni } from "@/lib/prenotazioni";
 import { mittenteLocale } from "@/lib/prenotazioni-mail";
 import { inviaMailLocale, provaMailLocale } from "@/lib/mail";
 import { cifra, cifraturaDisponibile } from "@/lib/segreti";
+import { suonoValido } from "@/lib/suoni";
 
 async function requireOwner(): Promise<string> {
   const s = await getSessionUser();
@@ -225,6 +226,25 @@ export async function provaPosta(): Promise<EsitoProva> {
         "Il server di posta ha rifiutato: controlla indirizzo, password per applicazione e porta.",
     };
   }
+}
+
+// Come si annuncia una chiamata dal tavolo. Un suono che non esiste non si
+// scrive: resta quello di prima, che almeno si sente.
+export async function salvaChiamate(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  const suono = String(formData.get("suono") ?? "");
+
+  await db
+    .update(tenants)
+    .set({
+      ...(suonoValido(suono) ? { callSound: suono } : {}),
+      callBlink: formData.get("lampeggia") === "on",
+    })
+    .where(eq(tenants.id, tenantId));
+  revalidatePath("/dashboard/impostazioni");
+  // La campanella vive nel guscio della dashboard: senza questo continuerebbe
+  // a suonare come prima fino al prossimo caricamento completo.
+  revalidatePath("/dashboard", "layout");
 }
 
 // Gli interruttori della stampa. Arrivano tutti insieme dal form: le caselle

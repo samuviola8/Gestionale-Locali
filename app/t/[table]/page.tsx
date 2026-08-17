@@ -1,13 +1,15 @@
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getMenu } from "@/lib/menu";
 import { getTableSession } from "@/lib/table-session";
 import { getTenantModules } from "@/lib/modules";
+import { cookieNome, marcaSessione, nomeRicordato } from "@/lib/nome-tavolo";
 import OrderClient from "@/components/OrderClient";
 import TableStatus from "@/components/TableStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import GuidaTavolo from "@/components/GuidaTavolo";
-import { createOrder, callWaiter } from "./order-actions";
+import { createOrder, callWaiter, chiudiCondiviso } from "./order-actions";
 
 function Avviso({
   titolo,
@@ -85,8 +87,17 @@ export default async function TablePage({
 
   const menu = await getMenu(t.id);
 
+  // Chi ha gia' scritto il suo nome in questa sessione non deve riscriverlo a
+  // ogni ricarica: si legge qui, cosi' la pagina nasce gia' col nome giusto.
+  const marca = marcaSessione(session.expiresAt);
+  const ricordo = {
+    cookie: cookieNome(t.id),
+    marca,
+    nome: nomeRicordato((await cookies()).get(cookieNome(t.id))?.value, marca),
+  };
+
   return (
-    <main className="mx-auto max-w-md px-4 py-5 pb-28">
+    <main className="mx-auto max-w-md px-4 py-5 pb-36">
       <div className="mb-3 flex items-center justify-between gap-2">
         <GuidaTavolo
           tenantId={t.id}
@@ -108,6 +119,8 @@ export default async function TablePage({
         waiterCall={modules.waiter_call}
         submitOrder={createOrder}
         callWaiter={callWaiter}
+        chiudiCondiviso={chiudiCondiviso}
+        ricordo={ricordo}
       />
       <TableStatus tableNumber={tableNumber} splitBill={modules.split_bill} />
     </main>

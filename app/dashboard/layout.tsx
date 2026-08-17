@@ -102,7 +102,13 @@ export default async function DashboardLayout({
               Aggiornamento in tempo reale
             </span>
             <div className="flex items-center gap-3">
-              {modules.waiter_call && <CallsBell resolveCall={resolveCall} />}
+              {modules.waiter_call && (
+                <CallsBell
+                  resolveCall={resolveCall}
+                  suono={tenant.callSound}
+                  lampeggia={tenant.callBlink}
+                />
+              )}
               <ThemeToggle />
             </div>
           </div>
