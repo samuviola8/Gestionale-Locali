@@ -167,6 +167,72 @@ export function PannelloConto({ className }: { className?: string }) {
   );
 }
 
+// La prenotazione come la vede chi arriva sul sito del locale: tre scelte e
+// via. Gli orari mostrati sono quelli con un tavolo libero davvero, ed e' la
+// cosa che qui va fatta vedere — non un calendario generico.
+export function PannelloPrenotazione() {
+  const scelte: [string, string[], number][] = [
+    ["Quante persone", ["2", "3", "4", "5", "6"], 2],
+    ["Che giorno", ["ven 12", "sab 13", "dom 14"], 1],
+    ["A che ora", ["19:30", "20:00", "20:30", "21:00"], 1],
+  ];
+
+  return (
+    <div className="lp-vetro w-full max-w-sm p-5">
+      <div className="flex items-baseline justify-between">
+        <span className="lp-occhiello">Prenotazione</span>
+        {/* Nessun nome di locale: la vetrina mostra il prodotto, e un cliente
+            vero messo qui dentro sembrerebbe una referenza, non un esempio. */}
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>
+          Dal sito del locale
+        </span>
+      </div>
+
+      {scelte.map(([titolo, voci, attivo]) => (
+        <div key={titolo} className="mt-3.5">
+          <div style={{ fontSize: 11, color: "var(--muted)" }}>{titolo}</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {voci.map((v, i) => (
+              <span
+                key={v}
+                className="lp-chip"
+                data-attivo={i === attivo ? "si" : "no"}
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div
+        className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5"
+        style={{
+          background: "var(--lp-accent-soft)",
+          color: "var(--lp-accent)",
+          fontSize: 11,
+          fontWeight: 600,
+        }}
+      >
+        <span>4 persone · sab 13 · 20:00</span>
+        <span>Tavolo 6</span>
+      </div>
+
+      <div
+        className="mt-2 rounded-xl py-2 text-center"
+        style={{
+          background: "var(--brand)",
+          color: "var(--brand-on)",
+          fontSize: 11,
+          fontWeight: 600,
+        }}
+      >
+        Prenota il tavolo
+      </div>
+    </div>
+  );
+}
+
 // Mockup piu' piccoli, per le sezioni esplicative.
 export function MiniQr() {
   return (

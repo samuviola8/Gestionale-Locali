@@ -6,6 +6,7 @@ import { getTenantModules } from "@/lib/modules";
 import OrderClient from "@/components/OrderClient";
 import TableStatus from "@/components/TableStatus";
 import ThemeToggle from "@/components/ThemeToggle";
+import GuidaTavolo from "@/components/GuidaTavolo";
 import { createOrder, callWaiter } from "./order-actions";
 
 function Avviso({
@@ -86,7 +87,15 @@ export default async function TablePage({
 
   return (
     <main className="mx-auto max-w-md px-4 py-5 pb-28">
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <GuidaTavolo
+          tenantId={t.id}
+          tableNumber={tableNumber}
+          splitBill={modules.split_bill}
+          waiterCall={modules.waiter_call}
+          coverChargeCents={t.coverChargeCents}
+          sessionMinutes={t.tableSessionMinutes}
+        />
         <ThemeToggle />
       </div>
       <OrderClient

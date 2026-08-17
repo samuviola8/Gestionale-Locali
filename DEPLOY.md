@@ -172,6 +172,14 @@ account Google → Sicurezza → Verifica in due passaggi → Password per le ap
 si revoca da lì se finisce dove non deve. Finché quelle due variabili sono
 vuote il modulo non compare e la landing mostra solo l'indirizzo da copiare.
 
+**Le conferme di prenotazione** partono invece dalla casella del *locale*, che
+il titolare configura da Impostazioni → Posta del locale (anche lì serve una
+password per applicazione). Quella password viene salvata cifrata, e la chiave
+è `APP_SECRET` in `.env.production.local`: metti una frase lunga a caso e non
+cambiarla più — cambiandola, le password già salvate diventano illeggibili e
+ogni locale deve reinserire la sua. Senza `APP_SECRET` la sezione lo dice e non
+salva niente.
+
 **La stampa** funziona dai computer del locale con Chrome avviato con
 `--kiosk-printing`: la pagina non stampa da sola sul server, è ogni postazione
 che si prende i suoi lavori. Vedi Impostazioni → Postazione di stampa.

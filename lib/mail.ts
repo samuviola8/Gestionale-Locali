@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import nodemailer, { type Transporter } from "nodemailer";
 
 // Invio delle mail di servizio (per ora: le richieste dalla vetrina).
@@ -70,6 +71,70 @@ function creaTrasporto(cfg: ConfigSmtp): Transporter {
 // il modo per farci spedire mail a indirizzi che non abbiamo scelto noi.
 function unaRigaSola(v: string): string {
   return v.replace(/[\r\n]+/g, " ").trim();
+}
+
+// --- Posta di un locale ------------------------------------------------------
+//
+// Le conferme di prenotazione non partono dalla nostra casella: il cliente ha
+// prenotato al ristorante, e la mail deve arrivare da li' — con il nome giusto
+// nella posta in arrivo e, se risponde, una risposta che finisce al locale e
+// non a noi.
+
+export type ConfigMailLocale = {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  /** Nome mostrato al destinatario: quello del locale. */
+  mittente: string;
+};
+
+// Un trasporto per casella, tenuto aperto fra una mail e l'altra. La chiave
+// include l'impronta della password: cambiandola, il trasporto vecchio non
+// viene riusato con le credenziali di ieri.
+const trasportiLocali = new Map<string, Transporter>();
+
+function trasportoLocale(cfg: ConfigMailLocale): Transporter {
+  const impronta = createHash("sha256").update(cfg.pass).digest("hex").slice(0, 12);
+  const chiave = `${cfg.host}:${cfg.port}:${cfg.user}:${impronta}`;
+
+  let t = trasportiLocali.get(chiave);
+  if (!t) {
+    t = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.port === 465,
+      auth: { user: cfg.user, pass: cfg.pass },
+    });
+    // Una manciata di caselle per installazione: la mappa non cresce, ma se un
+    // locale cambia password dieci volte i trasporti vecchi restano appesi.
+    if (trasportiLocali.size > 20) trasportiLocali.clear();
+    trasportiLocali.set(chiave, t);
+  }
+  return t;
+}
+
+export async function inviaMailLocale(
+  cfg: ConfigMailLocale,
+  m: { a: string; oggetto: string; testo: string; html?: string }
+): Promise<void> {
+  await trasportoLocale(cfg).sendMail({
+    from: { name: unaRigaSola(cfg.mittente), address: cfg.user },
+    to: unaRigaSola(m.a),
+    subject: unaRigaSola(m.oggetto),
+    text: m.testo,
+    html: m.html,
+    // Chi risponde alla conferma scrive al locale: e' la cosa che la gente fa
+    // per dire "siamo in cinque e non in quattro".
+    replyTo: cfg.user,
+  });
+}
+
+// Verifica delle credenziali senza mandare niente a nessuno. Serve al pulsante
+// "prova la connessione": scoprire che la password e' sbagliata alla prima
+// prenotazione vuol dire un cliente che non riceve la conferma.
+export async function provaMailLocale(cfg: ConfigMailLocale): Promise<void> {
+  await trasportoLocale(cfg).verify();
 }
 
 export async function inviaMail(m: {

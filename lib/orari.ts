@@ -58,18 +58,25 @@ export function aperto(orari: OrariApertura, giorno: number): boolean {
   return (orari[String(giorno)] ?? []).length > 0;
 }
 
-// Le fasce ritirabili di un giorno, a passi di un quarto d'ora: nessuno
-// concorda un ritiro alle 20:37.
+// Le fasce di un giorno dentro gli orari di apertura, a passi regolari:
+// nessuno concorda un ritiro alle 20:37 ne' prenota per le 20:07.
 //
-// `da` esclude quello che e' gia' passato piu' il tempo minimo di
-// preparazione: proporre "fra due minuti" a chi sta ancora impastando non
-// serve a nessuno. Si smette un quarto d'ora prima della chiusura, perche'
-// un ritiro all'ora esatta in cui si abbassa la serranda non esiste.
-export function fasceRitiro(
+// `anticipo` esclude quello che e' gia' passato piu' il tempo minimo di
+// preavviso: proporre "fra due minuti" a chi sta ancora impastando non serve a
+// nessuno. `margine` chiude prima della serranda, perche' un ritiro all'ora
+// esatta in cui si chiude non esiste — e per la prenotazione quel margine e'
+// piu' largo, dato che dopo essersi seduti si mangia.
+export type OpzioniFasce = {
+  passo?: number;
+  anticipo?: number;
+  margine?: number;
+};
+
+export function fasceOrarie(
   orari: OrariApertura,
   giorno: Date,
   adesso: Date,
-  minutiMinimi = 20
+  { passo = 15, anticipo = 20, margine = 15 }: OpzioniFasce = {}
 ): string[] {
   const fasce = orari[String(giornoSettimana(giorno))] ?? [];
   if (!fasce.length) return [];
@@ -79,16 +86,25 @@ export function fasceRitiro(
     giorno.getMonth() === adesso.getMonth() &&
     giorno.getDate() === adesso.getDate();
   const primoUtile = stessoGiorno
-    ? adesso.getHours() * 60 + adesso.getMinutes() + minutiMinimi
+    ? adesso.getHours() * 60 + adesso.getMinutes() + anticipo
     : 0;
 
   const slot: string[] = [];
   for (const f of fasce) {
-    const inizio = Math.ceil(Math.max(inMinuti(f.da), primoUtile) / 15) * 15;
-    const fine = inMinuti(f.a) - 15;
-    for (let m = inizio; m <= fine; m += 15) slot.push(inOrario(m));
+    const inizio = Math.ceil(Math.max(inMinuti(f.da), primoUtile) / passo) * passo;
+    const fine = inMinuti(f.a) - margine;
+    for (let m = inizio; m <= fine; m += passo) slot.push(inOrario(m));
   }
   return [...new Set(slot)].sort();
+}
+
+export function fasceRitiro(
+  orari: OrariApertura,
+  giorno: Date,
+  adesso: Date,
+  minutiMinimi = 20
+): string[] {
+  return fasceOrarie(orari, giorno, adesso, { anticipo: minutiMinimi });
 }
 
 // I prossimi giorni in cui il locale apre. Serve a chi chiama oggi per domani:
@@ -97,18 +113,23 @@ export function fasceRitiro(
 export function giorniDisponibili(
   orari: OrariApertura,
   adesso: Date,
-  quanti = 7
+  quanti = 7,
+  opzioni: OpzioniFasce = {},
+  // Entro quanti giorni cercare. Serve a chi prenota con settimane di
+  // anticipo: un locale aperto solo il fine settimana ha quattro giorni utili
+  // in un mese, e fermarsi a due settimane glieli dimezzerebbe.
+  finestraGiorni = 14
 ): Date[] {
   const out: Date[] = [];
-  for (let i = 0; i < 14 && out.length < quanti; i++) {
+  for (let i = 0; i < finestraGiorni && out.length < quanti; i++) {
     const d = new Date(
       adesso.getFullYear(),
       adesso.getMonth(),
       adesso.getDate() + i
     );
     if (!aperto(orari, giornoSettimana(d))) continue;
-    // Oggi conta solo se resta ancora qualcosa da poter ritirare.
-    if (i === 0 && fasceRitiro(orari, d, adesso).length === 0) continue;
+    // Oggi conta solo se resta ancora qualcosa da poter prenotare o ritirare.
+    if (i === 0 && fasceOrarie(orari, d, adesso, opzioni).length === 0) continue;
     out.push(d);
   }
   return out;

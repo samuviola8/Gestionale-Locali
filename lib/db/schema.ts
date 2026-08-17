@@ -79,10 +79,59 @@ export const tenants = pgTable("tenants", {
     .default(false),
 
   // Orari di apertura per giorno della settimana, a intervalli. Da qui si
-  // ricavano le fasce di ritiro: senza, l'unica alternativa e' una finestra
-  // inventata, che propone consegne a serranda abbassata.
+  // ricavano le fasce di ritiro e quelle di prenotazione: senza, l'unica
+  // alternativa e' una finestra inventata, che propone consegne a serranda
+  // abbassata.
   // { "0": [{ "da": "12:00", "a": "15:00" }, { "da": "19:00", "a": "23:30" }] }
   openingHours: jsonb("opening_hours").notNull().default(sql`'{}'::jsonb`),
+
+  // Prenotazione del tavolo dal web. Come per la stampa, sono i pochi numeri
+  // di un locale solo e non una collezione: stanno qui e non in una tabella a
+  // parte. Hanno senso solo col modulo `reservations` acceso.
+  // Ogni quanto si propone una fascia: 30 minuti e' il passo con cui la gente
+  // ragiona ("alle otto e mezza"), 15 lo si usa dove il turno e' stretto.
+  reservationSlotMinutes: integer("reservation_slot_minutes").notNull().default(30),
+  // Quanto resta occupato il tavolo. E' l'unica cosa che decide quanti
+  // coperti entrano in una sera: troppo corto e la gente si accavalla, troppo
+  // lungo e la sala risulta piena mentre e' mezza vuota.
+  reservationDurationMinutes: integer("reservation_duration_minutes")
+    .notNull()
+    .default(105),
+  reservationMinParty: integer("reservation_min_party").notNull().default(1),
+  // Oltre questo numero la prenotazione online non si prende: i gruppi grandi
+  // si concordano a voce, perche' quasi sempre portano un menu concordato.
+  reservationMaxParty: integer("reservation_max_party").notNull().default(8),
+  // Preavviso minimo: nessuno prenota per "fra cinque minuti", e una richiesta
+  // che arriva mentre il gruppo e' gia' sulla porta non la legge nessuno.
+  reservationLeadMinutes: integer("reservation_lead_minutes").notNull().default(120),
+  reservationHorizonDays: integer("reservation_horizon_days").notNull().default(30),
+  // Con la conferma automatica il tavolo e' preso appena il cliente invia e la
+  // mail parte da sola; senza, resta una richiesta finche' il locale non
+  // risponde — e allora e' l'operatore a confermarla, spostarla o rifiutarla.
+  reservationAutoConfirm: boolean("reservation_auto_confirm")
+    .notNull()
+    .default(true),
+  // Quanti tavoli si possono accostare per un gruppo solo. La sala non e' fatta
+  // di posti fissi: cinque tavoli da due diventano un tavolo da dieci, e il
+  // limite vero e' quanti se ne riescono a spostare — non quanti ne esistono.
+  // 1 = i tavoli non si uniscono.
+  reservationMaxJoin: integer("reservation_max_join").notNull().default(3),
+  // Sedie che si possono aggiungere a un tavolo. Un tavolo da due diventa da
+  // tre con una sedia in piu': senza questo numero il sistema rifiuterebbe il
+  // terzo commensale mentre in sala ci sta comodo.
+  reservationExtraSeats: integer("reservation_extra_seats").notNull().default(0),
+
+  // Posta del locale. Le conferme di prenotazione partono dalla sua casella,
+  // non dalla nostra: il cliente ha prenotato dal ristorante, e la risposta
+  // deve arrivare — e potersi rigirare — da li'. La password e' una "password
+  // per applicazione" e sta cifrata (lib/segreti.ts), mai in chiaro.
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port").notNull().default(465),
+  smtpUser: text("smtp_user"),
+  smtpPass: text("smtp_pass"),
+  // Riga mostrata al cliente prima di confermare: "cuciniamo su prenotazione",
+  // "il tavolo si tiene 15 minuti". Ogni locale ha la sua.
+  reservationNote: text("reservation_note"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -114,9 +163,74 @@ export const restaurantTables = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     number: integer("number").notNull(),
     token: text("token").notNull(),
+    // Quante persone ci stanno sedute. Serve alla prenotazione: senza, il
+    // sistema non sa se il gruppo di sei entra o va rifiutato. Due e' il
+    // valore prudente di partenza — meglio rifiutare che scoprire in sala che
+    // il tavolo era piccolo.
+    seats: integer("seats").notNull().default(2),
+    // Prenotabile dal web. Il bancone e i due sgabelli all'ingresso esistono
+    // come tavoli per il QR, ma non si danno a chi prenota.
+    bookable: boolean("bookable").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.number)]
+);
+
+// Prenotazione di un tavolo, presa dal web o scritta dallo staff al telefono.
+//
+// Non e' un ordine: nasce prima, non ha consumazioni e vive anche se quella
+// sera il cliente non si presenta. Quando il gruppo arriva, lo staff lo segna
+// "arrivato" e da li' in poi il tavolo lavora come sempre, col suo QR.
+export const reservations = pgTable(
+  "reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // Quando si siedono. La durata non e' qui: e' un'impostazione del locale
+    // che puo' cambiare, e congelarla su ogni riga renderebbe impossibile
+    // correggere l'unica cosa che regola il ricambio dei tavoli.
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    partySize: integer("party_size").notNull(),
+    // I tavoli assegnati, per numero e non per id: e' l'identificativo che
+    // usano gia' gli ordini e il conto, ed e' quello che lo staff legge in
+    // sala. Piu' di uno quando il gruppo non sta in un tavolo solo.
+    tableNumbers: integer("table_numbers")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    customerName: text("customer_name").notNull(),
+    // Il telefono e' l'unico modo per avvisare che il tavolo salta: si chiede
+    // sempre, anche allo staff che prende la prenotazione a voce.
+    customerPhone: text("customer_phone").notNull(),
+    customerEmail: text("customer_email"),
+    notes: text("notes"),
+    // pending | confirmed | proposed | seated | cancelled | no_show
+    // "pending" esiste solo dove il locale non ha la conferma automatica: il
+    // tavolo e' comunque tenuto occupato, altrimenti si accetterebbero due
+    // gruppi sullo stesso posto mentre si decide. "proposed" e' una
+    // prenotazione che il locale ha spostato: vale gia' il nuovo orario, ma
+    // finche' il cliente non accetta resta scritto che non l'ha ancora fatto.
+    status: text("status").notNull().default("confirmed"),
+    // L'orario che il cliente aveva chiesto prima dello spostamento. Serve a
+    // dirgli cosa e' cambiato invece di mostrargli una prenotazione diversa da
+    // quella che ricordava, senza spiegazioni.
+    previousStartsAt: timestamp("previous_starts_at", { withTimezone: true }),
+    // Quando gli e' partita l'ultima mail. Una conferma che il cliente non ha
+    // mai ricevuto e' una prenotazione che non sa di avere.
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    // web | staff. Serve a distinguere chi ha prenotato da solo da chi ha
+    // telefonato: sono due qualita' di dato diverse quando qualcosa non torna.
+    source: text("source").notNull().default("web"),
+    // Il link che torna al cliente. E' l'unica cosa che gli permette di
+    // rivedere o disdire la prenotazione senza un account.
+    token: text("token").notNull().unique(),
+    seatedAt: timestamp("seated_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("reservations_tenant_start_idx").on(table.tenantId, table.startsAt)]
 );
 
 // Postazione di preparazione: cucina, pizzeria, bar. Le comande si smistano

@@ -10,6 +10,9 @@ export type Tenant = {
   suspended: boolean;
   logoUrl: string | null;
   tableSessionMinutes: number;
+  // Coperto per persona: serve anche alla pagina del tavolo, per dire al
+  // cliente cosa vedra' sul conto prima di ordinare.
+  coverChargeCents: number;
   menuSkin: string;
   branding: TenantBranding;
 };
@@ -25,13 +28,14 @@ const columns = {
   logoUrl: tenants.logoUrl,
   defaultTheme: tenants.defaultTheme,
   tableSessionMinutes: tenants.tableSessionMinutes,
+  coverChargeCents: tenants.coverChargeCents,
   menuSkin: tenants.menuSkin,
 };
 
 type Row = {
   [K in keyof typeof columns]: K extends "suspended"
     ? boolean
-    : K extends "tableSessionMinutes"
+    : K extends "tableSessionMinutes" | "coverChargeCents"
       ? number
       : K extends "brandColor" | "brandAccent" | "logoUrl"
         ? string | null
@@ -46,6 +50,7 @@ function toTenant(row: Row): Tenant {
     suspended: row.suspended,
     logoUrl: row.logoUrl,
     tableSessionMinutes: row.tableSessionMinutes,
+    coverChargeCents: row.coverChargeCents,
     menuSkin: row.menuSkin,
     branding: {
       themePreset: row.themePreset,

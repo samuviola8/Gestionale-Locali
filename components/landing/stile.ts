@@ -172,6 +172,26 @@ export const STILE_LANDING = `
   letter-spacing: 0.02em;
 }
 
+/* Pillole di scelta del mockup della prenotazione: hanno le proporzioni di
+   quelle vere, dove si toccano col pollice. */
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-chip[data-attivo="si"] {
+  border-color: var(--lp-accent);
+  background: var(--lp-accent);
+  color: var(--surface);
+  font-weight: 600;
+}
+
 /* --- Modulo di contatto --- */
 .lp-campo {
   display: grid;

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { slugFromHost } from "@/lib/tenant-host";
 import { getTenant } from "@/lib/tenants";
-import { MODULES } from "@/lib/modules";
+import { MODULES, getTenantModules } from "@/lib/modules";
 import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
 import Scena from "@/components/landing/Scena";
@@ -14,6 +14,7 @@ import {
   MiniStampa,
   PannelloConto,
   PannelloCoda,
+  PannelloPrenotazione,
   SchermoCliente,
 } from "@/components/landing/Mockup";
 
@@ -57,6 +58,10 @@ export default async function Home() {
         </main>
       );
     }
+    // Cosa puo' fare chi arriva sul sito del locale dipende dai moduli accesi:
+    // dove si prenota, la prenotazione e' la ragione per cui uno e' finito qui.
+    const moduli = await getTenantModules(tenant.id);
+
     return (
       <main className="mx-auto max-w-md px-6 py-20 text-center">
         {tenant.logoUrl ? (
@@ -68,11 +73,27 @@ export default async function Home() {
           <h1 className="text-3xl font-semibold">{tenant.name}</h1>
         )}
 
-        <p className="mt-8 text-lg">Inquadra il QR sul tuo tavolo</p>
-        <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
-          Ti apre il menu e ti permette di ordinare dal telefono. Il codice si
-          trova sul tavolo: senza scansionarlo non è possibile ordinare.
-        </p>
+        {moduli.reservations && (
+          <div className="mt-10">
+            <a href="/prenota" className="btn btn-primary w-full">
+              Prenota un tavolo
+            </a>
+            <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+              Scegli quante persone siete, il giorno e l&apos;ora. Vedi solo gli
+              orari con un tavolo davvero libero.
+            </p>
+          </div>
+        )}
+
+        {moduli.qr_ordering && (
+          <>
+            <p className="mt-8 text-lg">Inquadra il QR sul tuo tavolo</p>
+            <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+              Ti apre il menu e ti permette di ordinare dal telefono. Il codice
+              si trova sul tavolo: senza scansionarlo non è possibile ordinare.
+            </p>
+          </>
+        )}
 
         <p className="mt-8 text-sm" style={{ color: "var(--muted)" }}>
           Sei dello staff?{" "}
@@ -128,10 +149,10 @@ export default async function Home() {
                 className="mt-6 max-w-xl text-lg"
                 style={{ color: "var(--muted)" }}
               >
-                Un QR sul tavolo, il menu sul telefono del cliente, le comande
-                che partono da sole verso cucina e bar, e il conto già diviso
-                per persona. Senza scaricare nessuna app e senza toccare la
-                cassa che avete già.
+                Il tavolo si prenota dal sito, il menu sta sul telefono del
+                cliente, le comande partono da sole verso cucina e bar, e il
+                conto è già diviso per persona. Senza scaricare nessuna app e
+                senza toccare la cassa che avete già.
               </p>
             </Rivela>
 
@@ -339,6 +360,70 @@ export default async function Home() {
               </Rivela>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---------- Prenotazione ---------- */}
+      <section className="lp-sezione lp-bordo-sopra">
+        <div className="lp-contenuto grid items-center gap-14 lg:grid-cols-[0.9fr_1fr]">
+          <Rivela>
+            <div className="flex justify-center lg:justify-start">
+              <PannelloPrenotazione />
+            </div>
+          </Rivela>
+
+          <Rivela ritardo={120}>
+            <Titolo occhiello="Prima ancora di entrare">
+              Il tavolo si prenota dal sito,
+              <br />
+              non al telefono durante il servizio
+            </Titolo>
+
+            <ul className="mt-8 space-y-5">
+              {[
+                [
+                  "Propone solo quello che c'è davvero",
+                  "Le fasce nascono dai vostri orari e dai vostri tavoli, con i posti che avete dichiarato. Se alle 20:30 non c'è niente per sei persone, quell'orario non compare: nessuna richiesta da rifiutare il giorno dopo.",
+                ],
+                [
+                  "La sala si muove, e il conto dei posti pure",
+                  "Cinque tavoli da due, accostati, diventano un tavolo da dieci; un tavolo da due regge il terzo commensale con una sedia in più. Quanti tavoli si possono unire e quante sedie si aggiungono lo decide il locale — chi non li sposta mette uno e zero.",
+                ],
+                [
+                  "Il tavolo se lo assegna da solo",
+                  "Fra tutte le combinazioni che tengono il gruppo sceglie quella che spreca meno posti, così il tavolo grande non se lo prendono in due. A parità di posti sprecati, sposta meno tavoli.",
+                ],
+                [
+                  "Confermi, sposti o rifiuti — e la mail parte",
+                  "Dalla casella del locale, con il link alla prenotazione dentro. Se sposti l'orario, il cliente deve accettarlo dalla mail: un tavolo cambiato in silenzio è un tavolo vuoto.",
+                ],
+                [
+                  "La sera si spunta e basta",
+                  "Arrivati, non presentati, chi ha telefonato. Chi buca la prenotazione resta scritto, che è l'unico modo per accorgersene la terza volta.",
+                ],
+              ].map(([t, p]) => (
+                <li key={t} className="flex gap-4">
+                  <span
+                    className="mt-1.5 h-2 w-2 flex-none rounded-full"
+                    style={{ background: "var(--lp-accent)" }}
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <div className="font-semibold">{t}</div>
+                    <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+                      {p}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-8 text-sm" style={{ color: "var(--muted)" }}>
+              È un indirizzo pubblico del locale — da mettere su Google, nella
+              bio e sul menu — e si accende come tutto il resto: se non vi
+              serve, non esiste.
+            </p>
+          </Rivela>
         </div>
       </section>
 

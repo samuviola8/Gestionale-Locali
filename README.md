@@ -16,8 +16,9 @@ configurando dati, mai duplicando codice o deploy**.
 ## Avvio in sviluppo
 
 1. `npm install`
-2. Copia `.env.example` in `.env.local`, poi `docker compose up -d` e
-   `npm run db:migrate`
+2. Copia `.env.example` in `.env.local` (metti una frase lunga a caso in
+   `APP_SECRET`: senza, la posta dei locali non si configura), poi
+   `docker compose up -d` e `npm run db:migrate`
 3. `npm run dev`
 4. Apri nel browser (Chrome gestisce i sottodomini `*.localhost` da solo):
    - Landing: http://localhost:3000
@@ -44,6 +45,10 @@ usata dal pannello.
 | `app/dashboard/` | pannello del singolo locale (menu, tavoli, ordini, conti) |
 | `app/t/[table]/` | pagina cliente, raggiungibile solo con sessione da QR |
 | `app/t/[table]/apri/` | destinazione del QR: valida il token e apre la sessione |
+| `app/prenota/` | prenotazione pubblica del tavolo, sul sito del locale |
+| `lib/prenotazioni.ts` | fasce libere, assegnazione dei tavoli, impostazioni |
+| `lib/prenotazioni-mail.ts` | le mail al cliente, dalla casella del locale |
+| `lib/segreti.ts` | cifratura dei segreti dei locali (password della posta) |
 | `lib/tenant-host.ts` | ricava il locale dal sottodominio |
 | `lib/themes.ts` | preset di tema versionati nel codice |
 | `lib/branding.ts` | preset + scostamenti del locale -> variabili CSS |
@@ -66,7 +71,7 @@ logo. Aggiungere un preset nuovo = una voce in `lib/themes.ts`.
 ## Come funzionano i moduli
 
 `lib/modules.ts` e' il catalogo (ordini QR, sotto-conti, chiamata cameriere,
-pagamenti, agent AI, fedelta). Lo stato per locale sta in `tenant_modules`; le
+prenotazione, pagamenti, agent AI, fedelta). Lo stato per locale sta in `tenant_modules`; le
 righe mancanti ricadono sul default del catalogo, cosi' un modulo aggiunto dopo
 funziona anche sui locali gia' esistenti senza migrazioni di dati.
 
@@ -117,6 +122,75 @@ chiude il conto la revoca — bisogna riscansionare il QR.
 Senza sessione valida per quel preciso tavolo, la pagina cliente, le server
 action e le API pubbliche rispondono tutte di no.
 
+## Prenotazione del tavolo
+
+Modulo `reservations`, spento di default. Acceso, il locale espone
+`https://<slug>.<dominio>/prenota`: una pagina pubblica — niente QR, niente
+sessione — dove il cliente sceglie **quante persone, quando, a che ora**, in
+quest'ordine. I recapiti si chiedono solo dopo aver mostrato un orario libero.
+
+Un orario compare **solo se il gruppo ci sta davvero** per tutta la durata del
+servizio. La disponibilita' nasce da tre cose, tutte configurabili dalla
+dashboard del locale:
+
+| Dove | Cosa si decide |
+| --- | --- |
+| Impostazioni → Orari di apertura | in che fasce si puo' prenotare |
+| Tavoli → Posti a sedere | quanti posti ha ogni tavolo e quali sono prenotabili |
+| Impostazioni → Prenotazione online | persone accettate, durata del tavolo, passo delle fasce, preavviso, giorni in avanti, conferma automatica, **tavoli accostabili** e **sedie in piu' per tavolo** |
+
+### La sala non e' fatta di posti fissi
+
+Il numero di tavoli non e' un vincolo: cinque tavoli da due, accostati,
+diventano un tavolo da dieci, e un tavolo da due regge il terzo commensale con
+una sedia in piu'. Sono due numeri per locale — quanti tavoli si possono unire
+(1 = non si uniscono) e quante sedie si aggiungono a ognuno — perche' ci sono
+locali che i tavoli li spostano e altri che, per i mobili o per il permesso di
+occupazione, no.
+
+Da qui la capienza vera: `posti dei tavoli prenotabili + sedie in piu'`, e il
+gruppo massimo e' la somma dei tavoli piu' capienti che si riescono ad
+accostare. Sono i due numeri mostrati in `Tavoli`.
+
+L'assegnazione, fra tutte le combinazioni che tengono il gruppo, prende
+**quella che spreca meno posti** — dare il tavolo da otto a due persone vuol
+dire rifiutare la comitiva che chiama dieci minuti dopo — e a parita' di spreco
+quella che sposta meno tavoli. I tavoli assegnati si salvano per numero
+(`table_numbers`), lo stesso identificativo che usano ordini e conto.
+
+Ogni prenotazione nasce in una transazione con un lucchetto per locale
+(`pg_advisory_xact_lock`): due persone che premono "prenota" nello stesso
+secondo non possono ricevere lo stesso tavolo.
+
+### Le mail partono dalla casella del locale
+
+In `Impostazioni → Posta del locale` il titolare mette indirizzo e **password
+per applicazione** della propria casella. La password si salva cifrata
+(`lib/segreti.ts`, AES-256-GCM con la chiave `APP_SECRET` dell'ambiente): senza
+`APP_SECRET` la sezione lo dice e non salva niente, invece di scrivere una
+password in chiaro. Un pulsante manda una mail di prova, cosi' la password
+sbagliata si scopre in configurazione e non alla prima prenotazione.
+
+Con la **conferma automatica** il tavolo e' preso subito e la conferma parte da
+sola. Senza, la prenotazione resta `da confermare` e l'operatore ha tre uscite,
+tutte con la loro mail:
+
+| Azione | Cosa succede |
+| --- | --- |
+| Conferma | stato `confirmed`, al cliente arriva il tavolo confermato |
+| Sposta | nuovo orario o numero di persone, tavoli riassegnati, stato `proposed`: **il cliente deve accettare dalla mail**, e finche' non lo fa il tavolo resta bloccato per lui |
+| Rifiuta | stato `cancelled`, al cliente arriva l'annullamento |
+
+Ogni mail contiene il link alla prenotazione (`/prenota/<token>`): da li' il
+cliente rivede, accetta lo spostamento o disdice senza telefonare. Quando
+disdice o rifiuta, un avviso torna sulla casella del locale. Se la mail non
+parte — casella non configurata, cliente senza indirizzo, password scaduta — la
+prenotazione vale lo stesso e in pannello si legge `mail non partita`.
+
+Lo staff vede la giornata in `Dashboard → Prenotazioni`: conferma, sposta,
+segna gli arrivati e i non presentati, cambia tavolo e scrive le prenotazioni
+prese al telefono, che occupano i tavoli come tutte le altre.
+
 ## Roadmap
 
 - [x] **M0** — scheletro + multi-tenant + pipeline
@@ -125,6 +199,7 @@ action e le API pubbliche rispondono tutte di no.
 - [x] **M3** — coda staff in tempo reale
 - [x] **M4** — pre-conto + split per il cassiere
 - [x] **M5** — configurazione per locale (tema, moduli, onboarding)
-- [ ] **M6** — import menu via OCR
-- [ ] **M7** — pagamento Apple/Google Pay
-- [ ] **M8** — agent AI consiglio drink, programma fedelta
+- [x] **M6** — prenotazione del tavolo dal sito del locale
+- [ ] **M7** — import menu via OCR
+- [ ] **M8** — pagamento Apple/Google Pay
+- [ ] **M9** — agent AI consiglio drink, programma fedelta

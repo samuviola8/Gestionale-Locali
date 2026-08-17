@@ -7,6 +7,10 @@ import { db } from "@/lib/db";
 import { menuCategories, reparti, tenants, users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { leggiOrari, type OrariApertura } from "@/lib/orari";
+import { normalizzaImpostazioni } from "@/lib/prenotazioni";
+import { mittenteLocale } from "@/lib/prenotazioni-mail";
+import { inviaMailLocale, provaMailLocale } from "@/lib/mail";
+import { cifra, cifraturaDisponibile } from "@/lib/segreti";
 
 async function requireOwner(): Promise<string> {
   const s = await getSessionUser();
@@ -96,6 +100,131 @@ export async function salvaOrari(orari: OrariApertura): Promise<void> {
     .set({ openingHours: leggiOrari(orari) })
     .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");
+}
+
+// Le regole della prenotazione online. Sono i numeri che decidono quanta
+// gente entra in una sera: si ripuliscono prima di scrivere, perche' una
+// durata a zero o un massimo sotto il minimo non renderebbero prenotabile piu'
+// niente e il locale se ne accorgerebbe dai clienti che non arrivano.
+export async function salvaPrenotazioni(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  const numero = (k: string) => parseInt(String(formData.get(k) ?? ""), 10);
+
+  const cfg = normalizzaImpostazioni({
+    passoMinuti: numero("passo"),
+    durataMinuti: numero("durata"),
+    minPersone: numero("minPersone"),
+    maxPersone: numero("maxPersone"),
+    preavvisoMinuti: numero("preavviso"),
+    giorniAvanti: numero("giorniAvanti"),
+    confermaAutomatica: formData.get("confermaAutomatica") === "on",
+    maxTavoliUniti: numero("maxTavoliUniti"),
+    sedieExtra: numero("sedieExtra"),
+    nota: String(formData.get("nota") ?? ""),
+  });
+
+  await db
+    .update(tenants)
+    .set({
+      reservationSlotMinutes: cfg.passoMinuti,
+      reservationDurationMinutes: cfg.durataMinuti,
+      reservationMinParty: cfg.minPersone,
+      reservationMaxParty: cfg.maxPersone,
+      reservationLeadMinutes: cfg.preavvisoMinuti,
+      reservationHorizonDays: cfg.giorniAvanti,
+      reservationAutoConfirm: cfg.confermaAutomatica,
+      reservationMaxJoin: cfg.maxTavoliUniti,
+      reservationExtraSeats: cfg.sedieExtra,
+      reservationNote: cfg.nota,
+    })
+    .where(eq(tenants.id, tenantId));
+
+  revalidatePath("/dashboard/impostazioni");
+  revalidatePath("/dashboard/prenotazioni");
+}
+
+// La casella del locale, da cui partono le conferme di prenotazione.
+//
+// La password e' una "password per applicazione" (Gmail, Aruba, Register: si
+// genera dal pannello della casella) e non la password vera del titolare: se
+// domani va cambiata, si revoca quella e basta. A database ci va cifrata, e
+// senza APP_SECRET non ci va per niente — meglio dire che non si puo' fare che
+// scriverla in chiaro nella tabella dei locali.
+export async function salvaPosta(
+  formData: FormData
+): Promise<void> {
+  const tenantId = await requireOwner();
+
+  const host = String(formData.get("host") ?? "").trim().slice(0, 120);
+  const user = String(formData.get("user") ?? "").trim().slice(0, 160);
+  const pass = String(formData.get("pass") ?? "").trim();
+  const porta = parseInt(String(formData.get("porta") ?? ""), 10);
+
+  // Senza indirizzo la posta si spegne: e' il modo per tornare indietro.
+  if (!user) {
+    await db
+      .update(tenants)
+      .set({ smtpHost: null, smtpUser: null, smtpPass: null })
+      .where(eq(tenants.id, tenantId));
+    revalidatePath("/dashboard/impostazioni");
+    return;
+  }
+
+  if (!cifraturaDisponibile()) return;
+
+  await db
+    .update(tenants)
+    .set({
+      smtpHost: host || "smtp.gmail.com",
+      smtpPort: porta === 587 ? 587 : 465,
+      smtpUser: user,
+      // Campo lasciato vuoto = si tiene quella gia' salvata: la password non
+      // torna mai in pagina, quindi un salvataggio dell'indirizzo non deve
+      // cancellarla.
+      ...(pass ? { smtpPass: cifra(pass) } : {}),
+    })
+    .where(eq(tenants.id, tenantId));
+
+  revalidatePath("/dashboard/impostazioni");
+}
+
+export type EsitoProva = { ok: boolean; messaggio: string };
+
+// Prova la casella davvero: si collega, si autentica e si manda una mail da
+// sola. Scoprire che la password era sbagliata alla prima prenotazione vuol
+// dire un cliente che aspetta una conferma che non arrivera' mai.
+export async function provaPosta(): Promise<EsitoProva> {
+  const tenantId = await requireOwner();
+  const m = await mittenteLocale(tenantId);
+
+  if (!m?.smtp) {
+    return {
+      ok: false,
+      messaggio:
+        "Manca qualcosa: servono indirizzo e password per applicazione, salvati qui sopra.",
+    };
+  }
+
+  try {
+    await provaMailLocale(m.smtp);
+    await inviaMailLocale(m.smtp, {
+      a: m.smtp.user,
+      oggetto: `Prova di invio — ${m.nome}`,
+      testo:
+        "Questa mail conferma che la casella del locale può mandare le conferme di prenotazione.\n\nSe la stai leggendo, è tutto a posto.",
+    });
+    return {
+      ok: true,
+      messaggio: `Fatto: una mail di prova è appena partita verso ${m.smtp.user}.`,
+    };
+  } catch (e) {
+    console.error("[impostazioni] prova posta fallita", e);
+    return {
+      ok: false,
+      messaggio:
+        "Il server di posta ha rifiutato: controlla indirizzo, password per applicazione e porta.",
+    };
+  }
 }
 
 // Gli interruttori della stampa. Arrivano tutti insieme dal form: le caselle

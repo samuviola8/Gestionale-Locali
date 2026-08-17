@@ -183,6 +183,13 @@
       "when": 1786644621448,
       "tag": "0025_lucky_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786974453757,
+      "tag": "0026_brainy_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,42 @@ export async function addTableRange(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/tables");
 }
 
+// Posti e prenotabilita' di tutti i tavoli in un colpo solo. Salvare tavolo
+// per tavolo vorrebbe dire venti salvataggi per configurare una sala: qui si
+// sistema la griglia e si preme una volta. Le caselle non spuntate non
+// compaiono in FormData, quindi assenza = non prenotabile.
+export async function salvaPosti(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+
+  const righe = await db
+    .select({ id: restaurantTables.id })
+    .from(restaurantTables)
+    .where(eq(restaurantTables.tenantId, tenantId));
+
+  for (const r of righe) {
+    const posti = parseInt(String(formData.get(`posti_${r.id}`) ?? ""), 10);
+    // Un tavolo assente dal modulo non si tocca: il form potrebbe essere
+    // stato inviato mentre qualcun altro ne aggiungeva uno.
+    if (!formData.has(`posti_${r.id}`)) continue;
+
+    await db
+      .update(restaurantTables)
+      .set({
+        seats: Number.isInteger(posti) && posti >= 1 && posti <= 30 ? posti : 2,
+        bookable: formData.get(`prenotabile_${r.id}`) === "on",
+      })
+      .where(
+        and(
+          eq(restaurantTables.id, r.id),
+          eq(restaurantTables.tenantId, tenantId)
+        )
+      );
+  }
+
+  revalidatePath("/dashboard/tables");
+  revalidatePath("/dashboard/prenotazioni");
+}
+
 export async function deleteTable(formData: FormData): Promise<void> {
   const tenantId = await requireTenantId();
   const id = String(formData.get("id") ?? "");

@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { orders, orderItems } from "@/lib/db/schema";
+import { orders, orderItems, reservations } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { formatPrice } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
-import { IconOrders, IconBill, IconMenu, IconQr } from "@/components/icons";
+import { getAvvio } from "@/lib/avvio";
+import { STATI_ATTIVI } from "@/lib/prenotazioni";
+import ChecklistAvvio from "@/components/ChecklistAvvio";
+import {
+  IconOrders,
+  IconBill,
+  IconMenu,
+  IconQr,
+  IconCalendar,
+} from "@/components/icons";
 
 function Stat({
   label,
@@ -76,6 +85,33 @@ export default async function DashboardHome() {
 
   // Le scorciatoie seguono i moduli attivi, come le voci del menu laterale.
   const modules = await getTenantModules(session.tenantId);
+
+  // Chi ha prenotato per oggi. Sta accanto agli ordini perche' e' la stessa
+  // domanda del turno che comincia: quanta gente aspettiamo stasera.
+  const domani = new Date(start);
+  domani.setDate(domani.getDate() + 1);
+  const prenotazioniOggi = modules.reservations
+    ? await db
+        .select({ partySize: reservations.partySize })
+        .from(reservations)
+        .where(
+          and(
+            eq(reservations.tenantId, session.tenantId),
+            gte(reservations.startsAt, start),
+            lt(reservations.startsAt, domani),
+            inArray(reservations.status, STATI_ATTIVI)
+          )
+        )
+    : [];
+  const copertiPrenotati = prenotazioniOggi.reduce((s, r) => s + r.partySize, 0);
+
+  // Cosa manca per essere operativi. Riguarda chi il locale lo configura: a
+  // chi sta in sala non serve sapere che mancano gli orari di apertura.
+  const avvio =
+    session.role === "owner"
+      ? await getAvvio(session.tenantId, modules)
+      : null;
+
   const links = [
     {
       href: "/dashboard/orders",
@@ -90,6 +126,13 @@ export default async function DashboardHome() {
       desc: "Incassa e chiudi",
       Icon: IconBill,
       module: "split_bill" as const,
+    },
+    {
+      href: "/dashboard/prenotazioni",
+      label: "Prenotazioni",
+      desc: "Chi arriva stasera",
+      Icon: IconCalendar,
+      module: "reservations" as const,
     },
     { href: "/dashboard/menu", label: "Menu", desc: "Prodotti e foto", Icon: IconMenu },
     {
@@ -110,9 +153,24 @@ export default async function DashboardHome() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {avvio && <ChecklistAvvio avvio={avvio} />}
+
+      <div
+        className={
+          "grid grid-cols-2 gap-3 " +
+          (modules.reservations ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4")
+        }
+      >
         <Stat label="In coda adesso" value={inCoda} accent={inCoda > 0} />
         <Stat label="Tavoli aperti" value={tavoliAperti} />
+        {modules.reservations && (
+          <Stat
+            label="Coperti prenotati"
+            value={`${copertiPrenotati}${
+              prenotazioniOggi.length ? ` · ${prenotazioniOggi.length} tav.` : ""
+            }`}
+          />
+        )}
         <Stat label="Ordini oggi" value={ordersToday} />
         <Stat label="Incasso oggi" value={formatPrice(incassoToday)} />
       </div>

@@ -430,6 +430,12 @@ textarea:focus-visible {
 
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* Maiuscola sulla sola prima lettera. `capitalize` di Tailwind ne mette una
+   per parola, e una data italiana ne esce sbagliata: "Lunedì 17 Agosto"
+   invece di "Lunedì 17 agosto". */
+.cap-prima { display: inline-block; }
+.cap-prima::first-letter { text-transform: uppercase; }
+
 /* Sagoma di caricamento: un riflesso che scorre, abbastanza lento da
    leggersi come "sta arrivando" e non come un lampeggio. */
 .skeleton {

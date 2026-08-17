@@ -13,16 +13,18 @@ import {
   IconPlus,
   IconChart,
   IconCounter,
+  IconCalendar,
   IconSettings,
 } from "@/components/icons";
 
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
-// attivo, la voce sparisce. Le voci senza `module` ci sono sempre.
+// attivo, la voce sparisce. Con piu' moduli basta averne uno — i tavoli
+// servono sia al QR sia alla prenotazione. Le voci senza `module` ci sono sempre.
 const items: {
   href: string;
   label: string;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
-  module?: ModuleKey;
+  module?: ModuleKey | ModuleKey[];
 }[] = [
   { href: "/dashboard", label: "Dashboard", Icon: IconHome },
   {
@@ -49,13 +51,19 @@ const items: {
     Icon: IconBill,
     module: "split_bill",
   },
+  {
+    href: "/dashboard/prenotazioni",
+    label: "Prenotazioni",
+    Icon: IconCalendar,
+    module: "reservations",
+  },
   { href: "/dashboard/analytics", label: "Analytics", Icon: IconChart },
   { href: "/dashboard/menu", label: "Menu", Icon: IconMenu },
   {
     href: "/dashboard/tables",
     label: "Tavoli e QR",
     Icon: IconQr,
-    module: "qr_ordering",
+    module: ["qr_ordering", "reservations"],
   },
   { href: "/dashboard/staff", label: "Staff", Icon: IconUsers },
   { href: "/dashboard/impostazioni", label: "Impostazioni", Icon: IconSettings },
@@ -74,7 +82,13 @@ export default function DashboardNav({
 }) {
   const path = usePathname();
   const visible = items
-    .filter((i) => !i.module || modules[i.module])
+    .filter((i) =>
+      !i.module
+        ? true
+        : Array.isArray(i.module)
+          ? i.module.some((k) => modules[k])
+          : modules[i.module]
+    )
     .filter((i) => !soloCoda || i.href === "/dashboard/orders")
     .filter((i) => isOwner || i.href !== "/dashboard/impostazioni");
 

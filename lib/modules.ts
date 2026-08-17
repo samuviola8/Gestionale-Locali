@@ -11,6 +11,7 @@ export type ModuleKey =
   | "split_bill"
   | "waiter_call"
   | "counter_orders"
+  | "reservations"
   | "takeaway"
   | "delivery"
   | "payments"
@@ -61,6 +62,15 @@ export const MODULES: ModuleDef[] = [
     label: "Ordine al banco",
     description:
       "Cassa veloce da PC o tablet per chi ordina al bancone, senza tavolo e senza coperto.",
+    defaultEnabled: false,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "reservations",
+    label: "Prenotazione del tavolo",
+    description:
+      "Il cliente prenota dal sito del locale: sceglie giorno, ora e quante persone, e il tavolo viene assegnato da solo.",
     defaultEnabled: false,
     addon: false,
     comingSoon: false,

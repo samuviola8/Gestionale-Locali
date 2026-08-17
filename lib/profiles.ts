@@ -63,7 +63,9 @@ export const PROFILES: LocaleProfile[] = [
       "Bevande",
       "Carta dei vini",
     ],
-    moduleOverrides: {},
+    // Un ristorante che apre a cena lavora su prenotazione: e' la prima cosa
+    // che gli serve, non un extra da scoprire dopo.
+    moduleOverrides: { reservations: true },
   },
   {
     key: "vuoto",

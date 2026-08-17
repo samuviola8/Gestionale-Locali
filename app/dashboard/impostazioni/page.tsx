@@ -15,10 +15,17 @@ import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PostazioneStampa from "@/components/PostazioneStampa";
 import EditorOrari from "@/components/OrariApertura";
 import { leggiOrari } from "@/lib/orari";
+import Field from "@/components/Field";
+import ProvaPosta from "@/components/ProvaPosta";
+import { leggiImpostazioni } from "@/lib/prenotazioni";
+import { cifraturaDisponibile } from "@/lib/segreti";
 import {
   addReparto,
   deleteReparto,
+  provaPosta,
   salvaOrari,
+  salvaPosta,
+  salvaPrenotazioni,
   salvaStampa,
   setCategoriaReparto,
   setUtenteReparto,
@@ -66,6 +73,13 @@ export default async function ImpostazioniPage() {
   if (!locale) redirect("/login");
 
   const modules = await getTenantModules(session.tenantId);
+  const cfg = leggiImpostazioni(locale);
+  const segretiPronti = cifraturaDisponibile();
+  // L'indirizzo pubblico si mostra per intero: e' quello che il locale
+  // incolla su Google e sui social, e va letto senza doverlo ricostruire.
+  const indirizzoPubblico = `${session.tenantSlug}.${
+    process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000"
+  }/prenota`;
 
   const [elencoReparti, categorie, staff] = await Promise.all([
     db
@@ -281,14 +295,272 @@ export default async function ImpostazioniPage() {
       )}
 
       {/* --- Orari --- */}
-      {(modules.takeaway || modules.delivery) && (
+      {(modules.takeaway || modules.delivery || modules.reservations) && (
         <section className="card p-4">
           <div className="text-sm font-medium">Orari di apertura</div>
           <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
-            Da qui si calcolano le fasce di ritiro e consegna proposte in cassa.
-            Due intervalli per giorno, se chiudete nel pomeriggio.
+            {modules.reservations
+              ? "Da qui escono le fasce che il cliente vede quando prenota, e quelle di ritiro proposte in cassa. Due intervalli per giorno, se chiudete nel pomeriggio."
+              : "Da qui si calcolano le fasce di ritiro e consegna proposte in cassa. Due intervalli per giorno, se chiudete nel pomeriggio."}
           </p>
           <EditorOrari iniziali={leggiOrari(locale.openingHours)} salva={salvaOrari} />
+        </section>
+      )}
+
+      {/* --- Prenotazione online --- */}
+      {modules.reservations && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Prenotazione online</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            La pagina pubblica è{" "}
+            <a
+              href="/prenota"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              {indirizzoPubblico}
+            </a>
+            : è il link da mettere su Google, sui social e sul menu.
+          </p>
+
+          <form action={salvaPrenotazioni} className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Tavoli che si possono accostare"
+              hint="La sala non è fatta di posti fissi: cinque tavoli da due, accostati, diventano un tavolo da dieci. 1 = i tavoli non si uniscono."
+            >
+              <input
+                type="number"
+                name="maxTavoliUniti"
+                min={1}
+                max={8}
+                defaultValue={cfg.maxTavoliUniti}
+                className="input tnum"
+              />
+            </Field>
+            <Field
+              label="Sedie in più per tavolo"
+              hint="Un tavolo da due diventa da tre aggiungendo una sedia. 0 = si sta solo nei posti che ci sono."
+            >
+              <input
+                type="number"
+                name="sedieExtra"
+                min={0}
+                max={6}
+                defaultValue={cfg.sedieExtra}
+                className="input tnum"
+              />
+            </Field>
+
+            <Field
+              label="Persone: da"
+              hint="Sotto questo numero non si prenota online."
+            >
+              <input
+                type="number"
+                name="minPersone"
+                min={1}
+                max={20}
+                defaultValue={cfg.minPersone}
+                className="input tnum"
+              />
+            </Field>
+            <Field
+              label="Persone: fino a"
+              hint="I gruppi più grandi vengono mandati a chiamare il locale."
+            >
+              <input
+                type="number"
+                name="maxPersone"
+                min={1}
+                max={50}
+                defaultValue={cfg.maxPersone}
+                className="input tnum"
+              />
+            </Field>
+
+            <Field
+              label="Durata del tavolo (minuti)"
+              hint="Quanto resta occupato. È la cosa che decide quanti turni fate."
+            >
+              <input
+                type="number"
+                name="durata"
+                min={30}
+                max={360}
+                step={15}
+                defaultValue={cfg.durataMinuti}
+                className="input tnum"
+              />
+            </Field>
+            <Field
+              label="Passo delle fasce (minuti)"
+              hint="Ogni quanto si propone un orario: 30 è il passo con cui la gente ragiona."
+            >
+              <input
+                type="number"
+                name="passo"
+                min={10}
+                max={120}
+                step={5}
+                defaultValue={cfg.passoMinuti}
+                className="input tnum"
+              />
+            </Field>
+
+            <Field
+              label="Preavviso minimo (minuti)"
+              hint="Sotto questa soglia non si prenota più per oggi."
+            >
+              <input
+                type="number"
+                name="preavviso"
+                min={0}
+                max={2880}
+                step={15}
+                defaultValue={cfg.preavvisoMinuti}
+                className="input tnum"
+              />
+            </Field>
+            <Field
+              label="Quanti giorni in avanti"
+              hint="Oltre, il locale non prende impegni."
+            >
+              <input
+                type="number"
+                name="giorniAvanti"
+                min={1}
+                max={365}
+                defaultValue={cfg.giorniAvanti}
+                className="input tnum"
+              />
+            </Field>
+
+            <div className="divide-y sm:col-span-2" style={{ borderColor: "var(--border)" }}>
+              <Interruttore
+                nome="confermaAutomatica"
+                etichetta="Conferma e mail automatiche"
+                descrizione="Il tavolo è preso appena il cliente invia e la conferma parte da sola. Spenta, ogni prenotazione resta «da confermare»: siete voi ad accettarla, spostarla o rifiutarla — e in tutti e tre i casi al cliente arriva una mail."
+                acceso={cfg.confermaAutomatica}
+              />
+            </div>
+
+            <Field
+              label="Riga da mostrare a chi prenota"
+              hint="Una regola della casa: «il tavolo si tiene 15 minuti», «cucina fino alle 22:30»."
+              className="sm:col-span-2"
+            >
+              <input
+                name="nota"
+                maxLength={300}
+                defaultValue={cfg.nota ?? ""}
+                placeholder="Il tavolo viene tenuto 15 minuti oltre l'orario."
+                className="input"
+              />
+            </Field>
+
+            <button className="btn btn-primary btn-sm sm:col-span-2 sm:justify-self-start">
+              Salva le prenotazioni
+            </button>
+          </form>
+        </section>
+      )}
+
+      {/* --- Posta del locale --- */}
+      {modules.reservations && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Posta del locale</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Le conferme di prenotazione partono da questa casella, con il nome
+            del locale e il link per disdire. Serve una{" "}
+            <strong>password per applicazione</strong> — si genera dal pannello
+            della casella (Gmail, Aruba, Register) e non è la password con cui
+            leggete la posta: si revoca da sola, senza toccare l&apos;account.
+          </p>
+
+          {!segretiPronti ? (
+            <p
+              className="mt-3 rounded-xl px-3 py-2.5 text-xs"
+              style={{ background: "var(--warn-bg)", color: "var(--warn)" }}
+            >
+              Manca <code>APP_SECRET</code> nella configurazione del server:
+              senza, la password non si può cifrare e qui non si salva.
+              Aggiungetela al file <code>.env</code> (una frase lunga a caso) e
+              riavviate il servizio.
+            </p>
+          ) : (
+            <>
+              <div className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+                {locale.smtpUser ? (
+                  <>
+                    Configurata:{" "}
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                      {locale.smtpUser}
+                    </span>
+                  </>
+                ) : (
+                  "Non configurata: per ora nessuna mail parte, e chi prenota deve salvarsi il link."
+                )}
+              </div>
+
+              <form action={salvaPosta} className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field
+                  label="Indirizzo del locale"
+                  hint="Svuotalo e salva per spegnere le mail."
+                >
+                  <input
+                    name="user"
+                    type="email"
+                    maxLength={160}
+                    defaultValue={locale.smtpUser ?? ""}
+                    placeholder="prenotazioni@illocale.it"
+                    autoComplete="off"
+                    className="input"
+                  />
+                </Field>
+                <Field
+                  label="Password per applicazione"
+                  hint={
+                    locale.smtpPass
+                      ? "Ne è già salvata una: lascia vuoto per tenerla."
+                      : "Sedici caratteri generati dal pannello della casella."
+                  }
+                >
+                  <input
+                    name="pass"
+                    type="password"
+                    maxLength={200}
+                    placeholder={locale.smtpPass ? "••••••••••••" : ""}
+                    autoComplete="new-password"
+                    className="input"
+                  />
+                </Field>
+                <Field label="Server di posta">
+                  <input
+                    name="host"
+                    maxLength={120}
+                    defaultValue={locale.smtpHost ?? "smtp.gmail.com"}
+                    className="input"
+                  />
+                </Field>
+                <Field label="Porta" hint="465 con TLS diretto, 587 con STARTTLS.">
+                  <Select
+                    name="porta"
+                    defaultValue={String(locale.smtpPort)}
+                    options={[
+                      { value: "465", label: "465" },
+                      { value: "587", label: "587" },
+                    ]}
+                  />
+                </Field>
+                <button className="btn btn-primary btn-sm sm:col-span-2 sm:justify-self-start">
+                  Salva la posta
+                </button>
+              </form>
+
+              {locale.smtpUser && locale.smtpPass && <ProvaPosta prova={provaPosta} />}
+            </>
+          )}
         </section>
       )}
 
