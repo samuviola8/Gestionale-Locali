@@ -10,7 +10,7 @@ param(
   # Dove sta il clone servito. Non e' la cartella di lavoro del runner: li'
   # dentro ci sono anche .env.production.local e public\uploads, che non
   # devono sparire a ogni aggiornamento.
-  [string]$Repo = "D:\comanda\app",
+  [string]$Repo = "c:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\app",
   [string]$Servizio = "Comanda",
   [string]$Ramo = "main"
 )
