@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import { asc, gte, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants, users, orders, orderItems } from "@/lib/db/schema";
-import { getAdminUser } from "@/lib/admin-auth";
+import { richiediAdmin } from "@/lib/admin-auth";
 import { segnalazioniAperte } from "@/lib/segnalazioni-query";
 import { formatPrice } from "@/lib/menu";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -18,8 +17,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export default async function AdminPage() {
-  const admin = await getAdminUser();
-  if (!admin) redirect("/admin/login");
+  await richiediAdmin();
 
   const allTenants = await db.select().from(tenants).orderBy(asc(tenants.name));
 
@@ -76,6 +74,12 @@ export default async function AdminPage() {
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
+            <a
+              href="/admin/account"
+              className="text-sm text-neutral-500 hover:text-neutral-800"
+            >
+              Il tuo account
+            </a>
             <form action={adminLogout}>
               <button className="text-sm text-neutral-500 hover:text-neutral-800">
                 Esci

@@ -1,12 +1,18 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuCategories, tenants, users } from "@/lib/db/schema";
-import { hashPassword } from "@/lib/auth";
+import {
+  GIORNI_PASSWORD_TEMPORANEA,
+  hashPassword,
+  passwordTemporanea,
+  scadenzaPasswordTemporanea,
+} from "@/lib/auth";
+import { inviaInvito, linkAccesso, type EsitoInvio } from "@/lib/account-mail";
 import { seedTenantModules, type ModuleKey } from "@/lib/modules";
 import { createTables } from "@/lib/tables";
 import { getProfile } from "@/lib/profiles";
 import { getPreset } from "@/lib/themes";
-import { getSkin } from "@/components/skins";
+import { chiaveSkin } from "@/lib/skins";
 import { isValidTheme, safeColor } from "@/lib/branding";
 
 // Creazione completa di un locale: anagrafica, branding, moduli, tavoli,
@@ -37,11 +43,22 @@ export type NewLocaleInput = {
   tableCount?: number;
   modules?: Partial<Record<ModuleKey, boolean>>;
   ownerEmail: string;
-  ownerPassword: string;
+  /** Vuota: se ne genera una temporanea, che ha senso solo se parte l'invito. */
+  ownerPassword?: string;
+  /** Manda al titolare il link d'accesso con le sue credenziali. */
+  invita?: boolean;
 };
 
 export type NewLocaleResult =
-  | { ok: true; tenantId: string; slug: string; tables: number; categories: number }
+  | {
+      ok: true;
+      tenantId: string;
+      slug: string;
+      tables: number;
+      categories: number;
+      /** Com'è andato l'invito, se lo si è chiesto. */
+      invito?: EsitoInvio;
+    }
   | { ok: false; error: string };
 
 export function slugify(value: string): string {
@@ -81,7 +98,12 @@ export async function createLocaleWithSetup(
   const name = input.name.trim();
   const slug = slugify(input.slug || input.name);
   const email = input.ownerEmail.trim().toLowerCase();
-  const password = input.ownerPassword;
+
+  // Password lasciata vuota: se ne genera una temporanea, che il titolare
+  // cambia al primo accesso. Ha senso solo se gliela mandiamo — altrimenti
+  // sarebbe una porta murata con la chiave dentro.
+  const scelta = (input.ownerPassword ?? "").length > 0;
+  const password = scelta ? input.ownerPassword! : passwordTemporanea();
 
   if (!name) return { ok: false, error: "Il nome del locale e' obbligatorio." };
   if (!slug)
@@ -93,10 +115,16 @@ export async function createLocaleWithSetup(
     return { ok: false, error: `L'indirizzo «${slug}» e' riservato al sistema.` };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return { ok: false, error: "L'email del titolare non e' valida." };
-  if (password.length < 8)
+  if (scelta && password.length < 8)
     return {
       ok: false,
       error: "La password del titolare deve avere almeno 8 caratteri.",
+    };
+  if (!scelta && !input.invita)
+    return {
+      ok: false,
+      error:
+        "Senza password devi spuntare l'invito per mail: altrimenti il titolare non avrebbe modo di entrare.",
     };
 
   const taken = await db
@@ -133,7 +161,7 @@ export async function createLocaleWithSetup(
       contactEmail: clean(input.contactEmail),
       notes: clean(input.notes),
       themePreset,
-      menuSkin: getSkin(input.menuSkin).key,
+      menuSkin: chiaveSkin(input.menuSkin),
       brandColor: safeColor(input.brandColor),
       brandAccent: safeColor(input.brandAccent),
       logoUrl: clean(input.logoUrl),
@@ -159,6 +187,10 @@ export async function createLocaleWithSetup(
     email,
     passwordHash: await hashPassword(password),
     role: "owner",
+    // Una password che ha viaggiato per mail non resta la password del
+    // locale: al primo accesso se ne sceglie una vera.
+    mustChangePassword: !scelta,
+    tempPasswordUntil: scelta ? null : scadenzaPasswordTemporanea(),
   });
 
   await seedTenantModules(tenantId, {
@@ -184,11 +216,26 @@ export async function createLocaleWithSetup(
     );
   }
 
+  // L'invito parte per ultimo: si manda un locale che esiste davvero, con i
+  // tavoli e il menu gia' al loro posto.
+  const invito = input.invita
+    ? await inviaInvito({
+        a: email,
+        nome: name,
+        link: linkAccesso(slug),
+        utente: email,
+        passwordTemporanea: password,
+        giorni: GIORNI_PASSWORD_TEMPORANEA,
+        tenantId,
+      })
+    : undefined;
+
   return {
     ok: true,
     tenantId,
     slug,
     tables,
     categories: profile.menuCategories.length,
+    invito,
   };
 }

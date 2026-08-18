@@ -137,6 +137,34 @@ export async function provaMailLocale(cfg: ConfigMailLocale): Promise<void> {
   await trasportoLocale(cfg).verify();
 }
 
+/** Una mail dalla nostra casella a un destinatario qualsiasi.
+ *
+ *  `inviaMail` qui sotto scrive sempre e solo a noi: e' il modulo della
+ *  vetrina che ci recapita le richieste. Gli inviti e le password temporanee
+ *  vanno invece a chi gestisce il locale, e devono partire da noi anche
+ *  quando il locale la posta non ce l'ha ancora configurata — al primo
+ *  accesso non ce l'ha mai. */
+export async function inviaMailPiattaforma(m: {
+  a: string;
+  oggetto: string;
+  testo: string;
+  html?: string;
+}): Promise<void> {
+  const cfg = configSmtp();
+  if (!cfg) throw new Error("SMTP non configurato");
+
+  await creaTrasporto(cfg).sendMail({
+    from: { name: "Comanda", address: cfg.da },
+    to: unaRigaSola(m.a),
+    subject: unaRigaSola(m.oggetto),
+    text: m.testo,
+    html: m.html,
+    // Chi risponde a un invito scrive a noi: e' assistenza, non posta del
+    // locale.
+    replyTo: cfg.a,
+  });
+}
+
 export async function inviaMail(m: {
   oggetto: string;
   testo: string;

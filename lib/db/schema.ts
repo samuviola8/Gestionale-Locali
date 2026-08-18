@@ -154,6 +154,11 @@ export const tenants = pgTable("tenants", {
   // "il tavolo si tiene 15 minuti". Ogni locale ha la sua.
   reservationNote: text("reservation_note"),
 
+  // Secondo fattore obbligatorio per chi entra in questa dashboard. Lo decide
+  // il super-admin: il titolare puo' attivarselo da solo, ma non puo'
+  // toglierselo se il locale lo richiede.
+  twofaRequired: boolean("twofa_required").notNull().default(false),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -357,6 +362,22 @@ export const users = pgTable(
     repartoId: uuid("reparto_id").references(() => reparti.id, {
       onDelete: "set null",
     }),
+
+    // Password temporanea: quella che arriva per mail dopo un invito o un
+    // reset. Vale per entrare una volta e basta — al primo accesso la
+    // dashboard non si apre finche' non ne viene scelta una nuova, cosi' la
+    // password che ha viaggiato in chiaro nella posta non resta quella vera.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    // Oltre questa data la temporanea non entra piu': una mail di reset letta
+    // sei mesi dopo non deve essere ancora una chiave buona.
+    tempPasswordUntil: timestamp("temp_password_until", { withTimezone: true }),
+
+    // Secondo fattore: null = spento, "totp" = app di autenticazione,
+    // "email" = codice mandato alla casella. Il segreto serve solo al TOTP e
+    // sta cifrato (lib/segreti.ts): a database e' inservibile da solo.
+    twofaMethod: text("twofa_method"),
+    twofaSecret: text("twofa_secret"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [unique().on(table.tenantId, table.email)]
@@ -517,6 +538,59 @@ export const platformAdmins = pgTable("platform_admins", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  // Stessa storia degli account dei locali, vedi `users`. Qui pesa di piu':
+  // questo account vede tutti i locali insieme.
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  tempPasswordUntil: timestamp("temp_password_until", { withTimezone: true }),
+  twofaMethod: text("twofa_method"),
+  twofaSecret: text("twofa_secret"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// "Ho perso la password": la richiesta, non ancora la nuova password.
+//
+// Chiedere il recupero non deve cambiare niente. Se bastasse la richiesta a
+// far ripartire la password, chiunque conosca l'indirizzo del titolare
+// potrebbe buttarlo fuori dal suo locale a ripetizione, di sabato sera. Qui si
+// segna solo che qualcuno ha chiesto: la password cambia quando si apre il
+// link, e allora si sa che chi ha chiesto e' chi legge quella casella.
+//
+// Del link resta l'impronta e non il link: chi si porta via il database non
+// deve trovarci dentro delle chiavi ancora buone.
+export const passwordResets = pgTable("password_resets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // "user" | "admin", come per le sfide qui sotto.
+  scope: text("scope").notNull(),
+  subjectId: uuid("subject_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Quando e' stato speso. Un link vale una volta sola: la mail resta in
+  // casella per anni, e una casella si perde.
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Il login superato a meta': password giusta, secondo fattore ancora da dare.
+// Sta a database e non in un cookie firmato perche' cosi' il codice mandato
+// per mail si puo' consumare una volta sola e i tentativi si contano davvero.
+//
+// `subjectId` non ha una chiave esterna: punta a `users` o a `platform_admins`
+// a seconda di `scope`, e Postgres non sa fare un vincolo verso due tabelle.
+// Le righe orfane non fanno danno — scadono in pochi minuti e la verifica
+// ricarica sempre l'account dal suo tavolo.
+export const loginChallenges = pgTable("login_challenges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // "user" | "admin"
+  scope: text("scope").notNull(),
+  subjectId: uuid("subject_id").notNull(),
+  token: text("token").notNull().unique(),
+  // "totp" | "email"
+  method: text("method").notNull(),
+  // Solo per i codici via mail, e sotto hash: chi legge il database non deve
+  // poter leggere il codice che sta arrivando alla casella di qualcun altro.
+  codeHash: text("code_hash"),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

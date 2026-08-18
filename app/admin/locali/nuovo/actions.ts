@@ -59,10 +59,18 @@ export async function submitNewLocale(
     modules,
     ownerEmail: text(formData, "ownerEmail"),
     ownerPassword: String(formData.get("ownerPassword") ?? ""),
+    invita: formData.get("invita") === "on",
   });
 
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/admin");
-  redirect(`/admin/locali/${result.tenantId}?creato=1`);
+  // L'esito dell'invito viaggia nell'indirizzo, la password no: quella la si
+  // rigenera dalla scheda del locale se la mail non e' partita. Le password
+  // negli indirizzi finiscono nella cronologia e nei log del server.
+  redirect(
+    `/admin/locali/${result.tenantId}?creato=1${
+      result.invito ? `&invito=${result.invito}` : ""
+    }`
+  );
 }

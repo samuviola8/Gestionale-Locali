@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { getAdminUser } from "@/lib/admin-auth";
+import { richiediAdmin } from "@/lib/admin-auth";
 import {
   STATI,
   badgeStato,
@@ -65,8 +64,7 @@ export default async function SegnalazioniAdminPage({
 }: {
   searchParams: Promise<{ stato?: string }>;
 }) {
-  const admin = await getAdminUser();
-  if (!admin) redirect("/admin/login");
+  await richiediAdmin();
 
   const { stato } = await searchParams;
   const filtro: FiltroSegnalazioni = FILTRI.some((f) => f.key === stato)

@@ -1,4 +1,4 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -9,12 +9,13 @@ import {
   menuProducts,
   restaurantTables,
 } from "@/lib/db/schema";
-import { getAdminUser } from "@/lib/admin-auth";
+import { richiediAdmin } from "@/lib/admin-auth";
 import { formatPrice } from "@/lib/menu";
 import { MODULES, getTenantModules } from "@/lib/modules";
 import { THEME_PRESETS } from "@/lib/themes";
-import { SKINS } from "@/components/skins";
+import { SKIN_CATALOGO } from "@/lib/skins";
 import DeleteLocaleButton from "@/components/DeleteLocaleButton";
+import AccessiLocale from "@/components/AccessiLocale";
 import {
   renameLocale,
   toggleSuspend,
@@ -22,6 +23,9 @@ import {
   saveModules,
   saveBranding,
   saveService,
+  toggleDueFattori,
+  resettaAccesso,
+  azzeraAccessoDueFattori,
 } from "./actions";
 
 const input = "input";
@@ -40,13 +44,12 @@ export default async function LocaleDetail({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ creato?: string }>;
+  searchParams: Promise<{ creato?: string; invito?: string }>;
 }) {
-  const admin = await getAdminUser();
-  if (!admin) redirect("/admin/login");
+  await richiediAdmin();
 
   const { id } = await params;
-  const { creato } = await searchParams;
+  const { creato, invito } = await searchParams;
   const t = (
     await db.select().from(tenants).where(eq(tenants.id, id)).limit(1)
   )[0];
@@ -70,7 +73,13 @@ export default async function LocaleDetail({
     .filter((i) => i.paid)
     .reduce((s, i) => s + i.priceCents * i.quantity, 0);
   const staff = await db
-    .select({ email: users.email, role: users.role })
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      metodo: users.twofaMethod,
+      daCambiare: users.mustChangePassword,
+    })
     .from(users)
     .where(eq(users.tenantId, id));
   const prodCount = (
@@ -103,6 +112,26 @@ export default async function LocaleDetail({
             <strong>Locale creato.</strong> Restano da fare: caricare il menu
             reale (prodotti e prezzi) e stampare i QR dei tavoli dalla dashboard
             del locale.
+            {invito === "inviata" && (
+              <span className="mt-1 block">
+                L&apos;invito è partito: il titolare ha in casella il link e la
+                sua password temporanea.
+              </span>
+            )}
+          </div>
+        )}
+
+        {creato && invito && invito !== "inviata" && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: "var(--warn-bg)", color: "var(--warn)" }}
+          >
+            <strong>L&apos;invito non è partito</strong>{" "}
+            {invito === "senza-posta"
+              ? "perché non c'è nessuna casella configurata per mandarlo."
+              : "per un errore della posta."}{" "}
+            Il locale c&apos;è: qui sotto, in <em>Account</em>, fai «Reset e
+            mostrala qui» e detta tu le credenziali al titolare.
           </div>
         )}
 
@@ -161,19 +190,31 @@ export default async function LocaleDetail({
 
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Account</h2>
-          <ul className="card divide-y">
-            {staff.length === 0 && (
-              <li className="px-4 py-3 text-sm text-neutral-400">Nessun account.</li>
-            )}
-            {staff.map((u, i) => (
-              <li key={i} className="flex justify-between px-4 py-3 text-sm">
-                <span>{u.email}</span>
-                <span className="text-neutral-500">
-                  {u.role === "owner" ? "Titolare" : "Staff"}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <AccessiLocale
+            utenti={staff}
+            resetta={resettaAccesso}
+            azzera={azzeraAccessoDueFattori}
+          />
+
+          <form
+            action={toggleDueFattori}
+            className="card mt-3 flex flex-wrap items-center justify-between gap-3 p-4"
+          >
+            <input type="hidden" name="id" value={t.id} />
+            <span className="text-sm">
+              <span className="block font-medium">
+                Verifica in due passaggi obbligatoria
+              </span>
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
+                {t.twofaRequired
+                  ? "Chi non ce l'ha se la configura al primo accesso, e non può toglierla."
+                  : "Ognuno decide per sé dalle proprie impostazioni."}
+              </span>
+            </span>
+            <button className="btn btn-sm">
+              {t.twofaRequired ? "Rendi facoltativa" : "Rendila obbligatoria"}
+            </button>
+          </form>
         </section>
 
         <section>
@@ -291,7 +332,7 @@ export default async function LocaleDetail({
                 defaultValue={t.menuSkin}
                 className={input + " w-full"}
               >
-                {SKINS.map((s) => (
+                {SKIN_CATALOGO.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.label}
                   </option>

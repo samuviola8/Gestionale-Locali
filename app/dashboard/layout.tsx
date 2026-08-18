@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { getSessionUser, repartoAttivo } from "@/lib/auth";
+import { accessoDaCompletare, getSessionUser, repartoAttivo } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getTenantModules } from "@/lib/modules";
 import { ultimeDelLocale } from "@/lib/segnalazioni-query";
 import DashboardNav from "@/components/DashboardNav";
 import ThemeToggle from "@/components/ThemeToggle";
 import CallsBell from "@/components/CallsBell";
-import { IconLogout } from "@/components/icons";
+import { IconLogout, IconUsers } from "@/components/icons";
 import Stampante from "@/components/Stampante";
 import Segnalazioni from "@/components/Segnalazioni";
 import Firma from "@/components/Firma";
@@ -30,6 +30,12 @@ export default async function DashboardLayout({
   ) {
     redirect("/login");
   }
+
+  // Password temporanea da cambiare, o secondo fattore che il locale pretende:
+  // finche' c'e' qualcosa in sospeso la dashboard non si apre. La pagina che
+  // lo risolve sta fuori di qui, altrimenti questo controllo la rimanderebbe a
+  // se' stessa all'infinito.
+  if (accessoDaCompletare(session)) redirect("/primo-accesso");
 
   const modules = await getTenantModules(session.tenantId);
 
@@ -92,6 +98,18 @@ export default async function DashboardLayout({
               elenco={segnalazioni}
               daLeggere={risposteDaLeggere}
             />
+
+            {/* Fuori dal menu principale: ci deve arrivare anche chi sta a
+                una postazione e vede solo la coda. La password e' di chi
+                lavora, non del ruolo che ha. */}
+            <a
+              href="/dashboard/account"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+              style={{ color: "var(--muted)" }}
+            >
+              <IconUsers />
+              Il tuo accesso
+            </a>
 
             <form action={logout}>
               <button

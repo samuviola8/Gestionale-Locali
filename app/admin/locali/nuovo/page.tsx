@@ -1,15 +1,13 @@
-import { redirect } from "next/navigation";
-import { getAdminUser } from "@/lib/admin-auth";
+import { richiediAdmin } from "@/lib/admin-auth";
 import { THEME_PRESETS } from "@/lib/themes";
 import { PROFILES } from "@/lib/profiles";
 import { MODULES } from "@/lib/modules";
-import { SKINS } from "@/components/skins";
+import { SKIN_CATALOGO } from "@/lib/skins";
 import NewLocaleForm from "@/components/NewLocaleForm";
 import { submitNewLocale } from "./actions";
 
 export default async function NuovoLocalePage() {
-  const admin = await getAdminUser();
-  if (!admin) redirect("/admin/login");
+  await richiediAdmin();
 
   const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
 
@@ -31,7 +29,7 @@ export default async function NuovoLocalePage() {
           action={submitNewLocale}
           profiles={PROFILES}
           presets={THEME_PRESETS}
-          skins={SKINS}
+          skins={SKIN_CATALOGO}
           modules={MODULES}
           rootDomain={rootDomain}
         />

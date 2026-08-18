@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import type { ThemePreset } from "@/lib/themes";
 import type { LocaleProfile } from "@/lib/profiles";
 import type { ModuleDef } from "@/lib/modules";
-import type { Skin } from "@/components/skins/types";
+import type { SkinInfo } from "@/lib/skins";
 import type { NewLocaleState } from "@/app/admin/locali/nuovo/actions";
 
 const field =
@@ -66,7 +66,7 @@ export default function NewLocaleForm({
   ) => Promise<NewLocaleState>;
   profiles: LocaleProfile[];
   presets: ThemePreset[];
-  skins: Skin[];
+  skins: SkinInfo[];
   modules: ModuleDef[];
   rootDomain: string;
 }) {
@@ -461,16 +461,31 @@ export default function NewLocaleForm({
             <input name="ownerEmail" type="email" required className={field} />
           </div>
           <div>
-            <label className={label}>Password * (min 8)</label>
+            <label className={label}>Password (min 8)</label>
             <input
               name="ownerPassword"
               type="password"
-              required
               minLength={8}
               className={field}
             />
+            <p className="mt-1 text-xs text-neutral-500">
+              Lasciala vuota e ne generiamo una temporanea: arriva nella mail
+              d&apos;invito e si cambia al primo accesso.
+            </p>
           </div>
         </div>
+
+        <label className="mt-3 flex cursor-pointer items-start gap-2.5">
+          <input type="checkbox" name="invita" defaultChecked className="mt-1" />
+          <span>
+            <span className="block text-sm font-medium">Invia mail con invito</span>
+            <span className="block text-xs text-neutral-500">
+              Al titolare arriva il link della sua dashboard con email e
+              password temporanea. Senza spunta, la password gliela comunichi
+              tu.
+            </span>
+          </span>
+        </label>
       </Step>
 
       <div className="flex items-center gap-3">

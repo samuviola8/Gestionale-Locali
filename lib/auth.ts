@@ -31,6 +31,34 @@ export async function verifyPassword(
   return keyBuf.length === buf.length && timingSafeEqual(keyBuf, buf);
 }
 
+// Le parole della password temporanea. Sono corte, italiane e senza lettere
+// che si confondono al telefono: quella password viene letta ad alta voce o
+// ricopiata da una mail, e "l" e "1" nella stessa riga fanno perdere mezz'ora
+// a tutti e due.
+const PAROLE = [
+  "mare", "sole", "vela", "corda", "pino", "rosa", "neve", "vento",
+  "porto", "monte", "prato", "fuoco", "sabbia", "onda", "fiume", "bosco",
+  "grano", "menta", "ombra", "pietra", "riva", "sale", "tetto", "voce",
+];
+
+/** Una password temporanea da mandare per mail: due parole e due cifre.
+ *  Si detta al telefono senza sbagliare, e vive il tempo di un accesso —
+ *  chi entra con questa non va da nessuna parte finche' non la cambia. */
+export function passwordTemporanea(): string {
+  const p = () => PAROLE[randomBytes(1)[0] % PAROLE.length];
+  const cifre = String(randomBytes(2).readUInt16BE(0) % 100).padStart(2, "0");
+  return `${p()}-${p()}-${cifre}`;
+}
+
+/** Quanto vale una password temporanea prima di scadere. */
+export const GIORNI_PASSWORD_TEMPORANEA = 7;
+
+export function scadenzaPasswordTemporanea(): Date {
+  return new Date(
+    Date.now() + GIORNI_PASSWORD_TEMPORANEA * 24 * 60 * 60 * 1000
+  );
+}
+
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
@@ -54,6 +82,11 @@ export type SessionUser = {
   role: string;
   // Postazione di preparazione a cui e' assegnato, se ne ha una.
   repartoId: string | null;
+  // Sta usando una password arrivata per mail: va cambiata prima di lavorare.
+  daCambiare: boolean;
+  // "totp" | "email" | null, e se il locale pretende che ce ne sia uno.
+  metodo2fa: string | null;
+  twofaRichiesta: boolean;
 };
 
 // Il reparto che restringe cosa vede. Il titolare non si restringe mai, anche
@@ -76,6 +109,9 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       tenantName: tenants.name,
       role: users.role,
       repartoId: users.repartoId,
+      daCambiare: users.mustChangePassword,
+      metodo2fa: users.twofaMethod,
+      twofaRichiesta: tenants.twofaRequired,
       expiresAt: sessions.expiresAt,
     })
     .from(sessions)
@@ -96,7 +132,19 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     tenantName: row.tenantName,
     role: row.role,
     repartoId: row.repartoId,
+    daCambiare: row.daCambiare,
+    metodo2fa: row.metodo2fa,
+    twofaRichiesta: row.twofaRichiesta,
   };
+}
+
+/** Cosa manca a questa persona prima di poter lavorare. Null = niente. */
+export function accessoDaCompletare(
+  s: SessionUser
+): "password" | "due-fattori" | null {
+  if (s.daCambiare) return "password";
+  if (s.twofaRichiesta && !s.metodo2fa) return "due-fattori";
+  return null;
 }
 
 export async function destroySession(): Promise<void> {

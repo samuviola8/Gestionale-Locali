@@ -232,6 +232,20 @@
       "when": 1787062086368,
       "tag": "0032_magenta_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787068526050,
+      "tag": "0033_strong_rocket_raccoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787077159810,
+      "tag": "0034_married_beyonder",
+      "breakpoints": true
     }
   ]
 }
