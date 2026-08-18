@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { redirect } from "next/navigation";
 import { accessoDaCompletare, getSessionUser, repartoAttivo } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
@@ -11,10 +12,24 @@ import { IconLogout, IconUsers } from "@/components/icons";
 import Stampante from "@/components/Stampante";
 import Segnalazioni from "@/components/Segnalazioni";
 import Firma from "@/components/Firma";
+import SenzaZoom from "@/components/SenzaZoom";
 import { logout } from "./actions";
 import { resolveCall } from "./calls-actions";
 import { segnaStampati } from "./stampa-actions";
 import { inviaSegnalazione, segnaRisposteViste } from "./segnalazioni-actions";
+
+// Come la pagina del tavolo: la dashboard non si ingrandisce. Chi la usa la
+// tiene in mano durante il servizio, e una pizzicata partita mentre si scorre
+// la coda lascia la pagina storta a meta' schermo — col menu che sbuca da un
+// angolo e nessun modo ovvio di rimettere le cose a posto. Questo vale per
+// Android e per chi rispetta il viewport; su iPhone ci pensa <SenzaZoom>,
+// che Safari il "user-scalable=no" lo ignora dal 2016.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export default async function DashboardLayout({
   children,
@@ -51,6 +66,7 @@ export default async function DashboardLayout({
   return (
     <>
       <Stampante segnaStampati={segnaStampati} />
+      <SenzaZoom />
       <DashboardShell
         barraLaterale={
           <>
