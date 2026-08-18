@@ -163,15 +163,28 @@ async function main() {
       continue;
     }
 
+    // Qualunque sia il motivo del fallimento, una foto sbagliata gia' agganciata
+    // va staccata. Prima lo si faceva solo per quelle scartate dalle
+    // proporzioni, e "Gran Cabaret" e' rimasto in carta con la pubblicita' del
+    // rivenditore: era fallito prima, sul reindirizzamento, e quel ramo usciva
+    // senza toccare il database.
+    const fallita = async () => {
+      if (p.url?.includes("/bottiglia-")) {
+        await db.update(menuProducts).set({ imageUrl: null }).where(eq(menuProducts.id, p.id));
+        console.log("   staccata dal prodotto");
+      }
+      mancanti.push(v.prodotto);
+    };
+
     const indirizzo = sembraImmagine(v.url) ? v.url : await immagineDellaPagina(v.url);
     if (!indirizzo) {
-      mancanti.push(v.prodotto);
+      await fallita();
       continue;
     }
 
     const dati = await scarica(piuGrande(indirizzo));
     if (!dati) {
-      mancanti.push(v.prodotto);
+      await fallita();
       continue;
     }
 
@@ -184,13 +197,7 @@ async function main() {
     const largo = meta.width ?? 0;
     if (alt < largo * 1.2) {
       console.log(`   ! scartata: ${largo}x${alt}, non e' una bottiglia in piedi`);
-      // Se una foto sbagliata era gia' finita in carta da un giro precedente,
-      // qui la si stacca: lasciarla sarebbe peggio che il segnaposto.
-      if (p.url?.includes("/bottiglia-")) {
-        await db.update(menuProducts).set({ imageUrl: null }).where(eq(menuProducts.id, p.id));
-        console.log("   staccata dal prodotto");
-      }
-      mancanti.push(v.prodotto);
+      await fallita();
       continue;
     }
 

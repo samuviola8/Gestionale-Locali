@@ -17,6 +17,7 @@ export type ModuleKey =
   | "customers"
   | "payments"
   | "ai_suggestions"
+  | "ai_phone"
   | "loyalty";
 
 export type ModuleDef = {
@@ -117,6 +118,15 @@ export const MODULES: ModuleDef[] = [
     label: "Agent AI consiglio drink",
     description:
       "Suggerisce cocktail in base a gusti e budget. Add-on ad abbonamento mensile.",
+    defaultEnabled: false,
+    addon: true,
+    comingSoon: true,
+  },
+  {
+    key: "ai_phone",
+    label: "Agent AI che risponde al telefono",
+    description:
+      "Prende le prenotazioni al telefono mentre siete in sala: controlla i posti veri e le scrive in agenda. Add-on ad abbonamento mensile.",
     defaultEnabled: false,
     addon: true,
     comingSoon: true,

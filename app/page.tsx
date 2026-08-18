@@ -485,6 +485,20 @@ export default async function Home() {
               bio e sul menu — e si accende come tutto il resto: se non vi
               serve, non esiste.
             </p>
+
+            <div className="lp-vetro mt-8 p-5" style={{ borderStyle: "dashed" }}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">E chi telefona lo stesso?</span>
+                <span className="badge badge-muted">in arrivo</span>
+              </div>
+              <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+                Un agent AI risponderà al posto vostro mentre siete in sala:
+                chiede per quando e in quanti, guarda gli stessi posti che vede
+                il sito e scrive la prenotazione in agenda. Chi al telefono ci
+                tiene continua a chiamare, e il telefono smette di suonare nel
+                mezzo del servizio.
+              </p>
+            </div>
           </Rivela>
         </div>
       </section>
