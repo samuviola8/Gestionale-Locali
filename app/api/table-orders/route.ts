@@ -56,6 +56,13 @@ export async function GET(req: Request) {
       })),
   }));
 
+  // Se i calici sono gia' arrivati, la seconda bottiglia non ne chiede altri:
+  // e' la risposta giusta quasi sempre, e proporla evita di far ricontare i
+  // bicchieri a chi e' gia' a meta' cena.
+  const caliciInTavola = its.some(
+    (i) => i.voidedAt === null && (i.glasses ?? 0) > 0
+  );
+
   // Stesso calcolo che vede il cassiere, non un conteggio parallelo: se lo
   // staff corregge le persone al tavolo, qui cambia di conseguenza.
   const conto = (await loadOpenTables(tenant.id, table))[0] ?? null;
@@ -80,5 +87,11 @@ export async function GET(req: Request) {
     ),
   ];
 
-  return NextResponse.json({ orders: result, conto, personeDichiarate, persone });
+  return NextResponse.json({
+    orders: result,
+    conto,
+    personeDichiarate,
+    persone,
+    caliciInTavola,
+  });
 }

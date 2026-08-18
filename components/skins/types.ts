@@ -27,6 +27,8 @@ export type SkinProduct = {
   variants: SkinVariant[];
   // Prodotto "su richiesta": il cliente scrive cosa desidera.
   acceptsNote: boolean;
+  // Si serve in bottiglia: prima di ordinarlo si chiede quanti calici portare.
+  requiresGlasses: boolean;
 };
 
 export type SkinCategory = {

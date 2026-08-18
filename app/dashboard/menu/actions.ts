@@ -94,6 +94,7 @@ export async function addProduct(formData: FormData): Promise<void> {
     allergens,
     priceCents,
     acceptsNote: formData.get("acceptsNote") === "on",
+    requiresGlasses: formData.get("requiresGlasses") === "on",
   });
   revalidatePath("/dashboard/menu");
 }
@@ -177,6 +178,30 @@ export async function togglePinned(formData: FormData): Promise<void> {
   await db
     .update(menuProducts)
     .set({ pinned: !rows[0].pinned })
+    .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)));
+  revalidatePath("/dashboard/menu");
+}
+
+// Il vino si porta in bottiglia, e la bottiglia da sola non si beve: qui si
+// dice quali prodotti devono chiedere i calici prima di finire nel carrello.
+// E' un interruttore e non un dato di creazione perche' le bottiglie a menu ci
+// sono gia' tutte: chiedere di rifarle una per una per una spunta nuova non
+// avrebbe senso.
+export async function toggleRequiresGlasses(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const rows = await db
+    .select({ requiresGlasses: menuProducts.requiresGlasses })
+    .from(menuProducts)
+    .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)))
+    .limit(1);
+  if (!rows[0]) return;
+
+  await db
+    .update(menuProducts)
+    .set({ requiresGlasses: !rows[0].requiresGlasses })
     .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)));
   revalidatePath("/dashboard/menu");
 }

@@ -8,6 +8,7 @@ import { STILE_LANDING } from "@/components/landing/stile";
 import Scena from "@/components/landing/Scena";
 import Rivela from "@/components/landing/Rivela";
 import ModuloContatto from "@/components/landing/ModuloContatto";
+import Firma from "@/components/Firma";
 import { configSmtp, indirizzoContatto } from "@/lib/mail";
 import {
   MiniQr,
@@ -702,6 +703,19 @@ export default async function Home() {
           </p>
         </div>
       </section>
+
+      {/* ---------- Firma ---------- */}
+      <footer
+        className="lp-sezione lp-bordo-sopra"
+        style={{ paddingTop: "40px", paddingBottom: "40px" }}
+      >
+        <div className="lp-contenuto flex flex-col items-center gap-1.5 text-center">
+          <Firma />
+          <p className="text-xs" style={{ color: "var(--muted)" }}>
+            Comanda · {new Date().getFullYear()}
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

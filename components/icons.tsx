@@ -180,3 +180,13 @@ export function IconUsers(p: Props) {
     </Base>
   );
 }
+
+export function IconSegnalazione(p: Props) {
+  return (
+    <Base {...p}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="7.5" x2="12" y2="11.5" />
+      <path d="M12 14.2h.01" />
+    </Base>
+  );
+}

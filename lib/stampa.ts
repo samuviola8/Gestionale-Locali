@@ -25,7 +25,15 @@ export type ComandaPayload = {
   indirizzo: string | null;
   telefono: string | null;
   quando: string;
-  voci: { quantity: number; name: string; note: string | null; alias: string | null }[];
+  voci: {
+    quantity: number;
+    name: string;
+    note: string | null;
+    // Quanti calici portare con la bottiglia. Nullo o 0 = non se ne porta
+    // nessuno: o il prodotto non li chiede, o li hanno gia' in tavolo.
+    calici?: number | null;
+    alias: string | null;
+  }[];
 };
 
 export type ContoPayload = {
@@ -171,6 +179,7 @@ export async function creaComande(
         quantity: r.quantity,
         name: r.name,
         note: r.note,
+        calici: r.glasses,
         alias: o.channel === "tavolo" ? r.alias : null,
       })),
     } satisfies ComandaPayload,

@@ -4,6 +4,16 @@ import { useEffect, useRef, useState } from "react";
 
 export type Option = { value: string; label: string };
 
+// Quanto puo' essere alta la lista. Sette voci circa: piu' in la' non si legge
+// piu' niente, si scorre e basta — e scorrere dentro una lista alta come mezzo
+// schermo vuol dire coprire quello che si stava guardando.
+const ALTEZZA_MAX = 176;
+// Sotto questa altezza la lista non si apre in giu': tre voci mezze tagliate
+// non sono una scelta.
+const ALTEZZA_MIN = 96;
+// Un dito di aria dai bordi della finestra, per non farla finire attaccata.
+const MARGINE = 12;
+
 export default function Select({
   options,
   name,
@@ -31,6 +41,15 @@ export default function Select({
   // "salva" per riga sarebbe un clic in piu' per ognuna.
   submitOnChange?: boolean;
 }) {
+  // Quanto e' alta la lista e da che parte si apre. Si decide nel momento in
+  // cui si apre, guardando quanto spazio c'e' davvero: una lista che sborda
+  // sotto al bordo dello schermo allunga il contenitore che la ospita — dentro
+  // al carrello faceva comparire la barra di scorrimento — e le voci in fondo
+  // restano irraggiungibili.
+  const [apertura, setApertura] = useState<{
+    verso: "giu" | "su";
+    altezza: number;
+  }>({ verso: "giu", altezza: ALTEZZA_MAX });
   const [open, setOpen] = useState(false);
   const [internal, setInternal] = useState(
     defaultValue ?? options[0]?.value ?? ""
@@ -61,6 +80,24 @@ export default function Select({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  // Da che parte aprirsi e quanto alta, guardando lo spazio libero sopra e
+  // sotto al pulsante. Si calcola qui e non in un effetto perche' la lista
+  // deve nascere gia' della misura giusta: misurarla dopo vorrebbe dire
+  // vederla sbordare per un fotogramma.
+  function apri() {
+    const box = ref.current?.getBoundingClientRect();
+    if (box) {
+      const sotto = window.innerHeight - box.bottom - MARGINE;
+      const sopra = box.top - MARGINE;
+      const giu = sotto >= ALTEZZA_MIN || sotto >= sopra;
+      setApertura({
+        verso: giu ? "giu" : "su",
+        altezza: Math.max(ALTEZZA_MIN, Math.min(ALTEZZA_MAX, giu ? sotto : sopra)),
+      });
+    }
+    setOpen(true);
+  }
+
   function pick(v: string) {
     setInternal(v);
     onChange?.(v);
@@ -81,7 +118,7 @@ export default function Select({
 
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : apri())}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
@@ -112,10 +149,19 @@ export default function Select({
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 z-50 mt-1.5 overflow-hidden rounded-xl border bd shadow-lg"
-          style={{ background: "var(--surface)" }}
+          className="absolute left-0 right-0 z-50 overflow-hidden rounded-xl border bd shadow-lg"
+          style={{
+            background: "var(--surface)",
+            ...(apertura.verso === "giu"
+              ? { top: "100%", marginTop: 6 }
+              : { bottom: "100%", marginBottom: 6 }),
+          }}
         >
-          <ul ref={lista} className="max-h-60 overflow-auto p-1">
+          <ul
+            ref={lista}
+            className="overflow-auto p-1"
+            style={{ maxHeight: apertura.altezza }}
+          >
             {options.map((o) => {
               const isSel = o.value === selected;
               return (

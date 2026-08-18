@@ -2,14 +2,18 @@ import { redirect } from "next/navigation";
 import { getSessionUser, repartoAttivo } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getTenantModules } from "@/lib/modules";
+import { ultimeDelLocale } from "@/lib/segnalazioni-query";
 import DashboardNav from "@/components/DashboardNav";
 import ThemeToggle from "@/components/ThemeToggle";
 import CallsBell from "@/components/CallsBell";
 import { IconLogout } from "@/components/icons";
 import Stampante from "@/components/Stampante";
+import Segnalazioni from "@/components/Segnalazioni";
+import Firma from "@/components/Firma";
 import { logout } from "./actions";
 import { resolveCall } from "./calls-actions";
 import { segnaStampati } from "./stampa-actions";
+import { inviaSegnalazione, segnaRisposteViste } from "./segnalazioni-actions";
 
 export default async function DashboardLayout({
   children,
@@ -28,6 +32,14 @@ export default async function DashboardLayout({
   }
 
   const modules = await getTenantModules(session.tenantId);
+
+  // Le segnalazioni del locale viaggiano col layout: sono poche righe su un
+  // indice, e cosi' il pannello si apre gia' pieno invece di far aspettare
+  // chi lo apre solo per rileggere la risposta di ieri.
+  const segnalazioni = await ultimeDelLocale(session.tenantId);
+  const risposteDaLeggere = segnalazioni.filter(
+    (s) => s.reply && !s.replySeenAt
+  ).length;
 
   return (
     <>
@@ -73,15 +85,26 @@ export default async function DashboardLayout({
             isOwner={session.role === "owner"}
           />
 
-          <form action={logout} className="mt-auto">
-            <button
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              style={{ color: "var(--muted)" }}
-            >
-              <IconLogout />
-              Esci
-            </button>
-          </form>
+          <div className="mt-auto space-y-1 pt-4">
+            <Segnalazioni
+              invia={inviaSegnalazione}
+              segnaViste={segnaRisposteViste}
+              elenco={segnalazioni}
+              daLeggere={risposteDaLeggere}
+            />
+
+            <form action={logout}>
+              <button
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+                style={{ color: "var(--muted)" }}
+              >
+                <IconLogout />
+                Esci
+              </button>
+            </form>
+
+            <Firma compatta />
+          </div>
         </aside>
 
         {/* min-w-0: senza, questo figlio flex non si restringe sotto la

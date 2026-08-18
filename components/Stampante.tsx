@@ -46,6 +46,13 @@ function Comanda({ p }: { p: Extract<Payload, { kind: "comanda" }> }) {
             <span>{v.name}</span>
           </div>
           {v.note && <div className="foglio-nota">» {v.note}</div>}
+          {/* I calici stanno con la bottiglia e non in fondo al foglio: chi
+              la prende in mano deve leggerli li', non ricordarseli. */}
+          {!!v.calici && (
+            <div className="foglio-nota">
+              » {v.calici} {v.calici === 1 ? "calice" : "calici"}
+            </div>
+          )}
           {v.alias && <div className="foglio-riga-piccola">{v.alias}</div>}
         </div>
       ))}

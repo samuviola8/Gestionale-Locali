@@ -181,6 +181,16 @@ account Google → Sicurezza → Verifica in due passaggi → Password per le ap
 si revoca da lì se finisce dove non deve. Finché quelle due variabili sono
 vuote il modulo non compare e la landing mostra solo l'indirizzo da copiare.
 
+**Le segnalazioni dello staff** nascono dal pulsante in fondo alla barra della
+dashboard e si leggono da `/admin/segnalazioni`, dove si risponde: la risposta
+torna nello stesso pannello, con il pallino acceso finche' qualcuno del locale
+non l'ha letta. L'avviso immediato passa da un bot Telegram
+(`TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`): il token lo da' @BotFather, il
+chat id si legge da `https://api.telegram.org/bot<TOKEN>/getUpdates` dopo aver
+scritto un messaggio al bot. Senza quelle due variabili l'avviso parte per
+mail sulla casella SMTP; se non c'e' neanche quella, la segnalazione resta
+comunque salvata e si vede in `/admin/segnalazioni`.
+
 **Le conferme di prenotazione** partono invece dalla casella del *locale*, che
 il titolare configura da Impostazioni → Posta del locale (anche lì serve una
 password per applicazione). Quella password viene salvata cifrata, e la chiave

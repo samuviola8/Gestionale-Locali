@@ -304,6 +304,11 @@ export const menuProducts = pgTable("menu_products", {
   // richiesta". Il prezzo qui e' quello di partenza, il barman puo' correggerlo
   // sulla singola riga d'ordine.
   acceptsNote: boolean("accepts_note").notNull().default(false),
+  // Si serve in bottiglia: prima di metterlo nel carrello si chiede quanti
+  // calici portare. "In quanti siete" non e' la risposta — al tavolo da sei il
+  // vino magari lo bevono in due, e chi ha gia' il calice davanti non ne vuole
+  // un altro.
+  requiresGlasses: boolean("requires_glasses").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -407,6 +412,12 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull().default(1),
   // Cosa ha chiesto il cliente a parole, per i prodotti su richiesta.
   note: text("note"),
+  // Quanti calici servono con questa riga. Nullo = il prodotto non li chiede,
+  // 0 = li hanno gia' in tavolo. Sta qui e non dentro la nota perche' non e'
+  // una richiesta del cliente ma una quantita' di servizio: nella nota
+  // finirebbe tra le richieste vere, quelle che il locale rilegge per capire
+  // cosa manca a menu.
+  glasses: integer("glasses"),
   // Segnato quando il barman corregge il prezzo di questa riga: serve a
   // dirlo al cliente invece di cambiargli il conto in silenzio.
   priceAdjusted: boolean("price_adjusted").notNull().default(false),
@@ -591,5 +602,52 @@ export const customers = pgTable(
     // due "Marco" senza recapito possono benissimo essere due persone.
     unique().on(table.tenantId, table.phoneKey),
     index("customers_tenant_name_idx").on(table.tenantId, table.name),
+  ]
+);
+
+
+// Segnalazioni dello staff: "questo non funziona", "questo e' scomodo",
+// "si potrebbe fare cosi'". Nascono in fondo alla barra della dashboard, dove
+// c'e' la firma di chi mantiene il software.
+//
+// Restano qui e non solo nella notifica che mi arriva: un avviso si perde, si
+// legge di corsa, arriva mentre guido. La riga in tabella e' quella che tiene
+// aperto il conto finche' qualcuno non risponde.
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // Se l'account di chi ha segnalato viene cancellato, la segnalazione
+    // resta: il problema che raccontava non se ne va insieme a lui.
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    // L'indirizzo copiato al momento dell'invio, per sapere con chi si stava
+    // parlando anche quando l'utente non c'e' piu'.
+    userEmail: text("user_email").notNull(),
+    // blocco | fastidio | idea. Tre bottoni e non una scala da 1 a 5: durante
+    // il servizio nessuno si ferma a scegliere la gravita' giusta.
+    kind: text("kind").notNull().default("fastidio"),
+    message: text("message").notNull(),
+    // Contesto raccolto da solo. Chiedere "in che pagina eri?" vuol dire
+    // scoprirlo tre messaggi dopo, quando chi segnala e' tornato al lavoro.
+    page: text("page"),
+    userAgent: text("user_agent"),
+    // aperta | presa | risolta
+    status: text("status").notNull().default("aperta"),
+    reply: text("reply"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    // Quando chi ha segnalato ha letto la risposta. Finche' e' nullo, la
+    // dashboard tiene acceso il pallino.
+    replySeenAt: timestamp("reply_seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // La dashboard legge le ultime di un locale, l'admin le apre tutte per
+    // stato: sono le due letture che esistono.
+    index("support_tickets_tenant_idx").on(table.tenantId, table.createdAt),
+    index("support_tickets_status_idx").on(table.status),
   ]
 );

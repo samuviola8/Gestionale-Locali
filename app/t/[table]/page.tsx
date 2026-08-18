@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { getTenantFromHost } from "@/lib/tenant-host";
@@ -6,10 +7,22 @@ import { getTableSession } from "@/lib/table-session";
 import { getTenantModules } from "@/lib/modules";
 import { cookieNome, marcaSessione, nomeRicordato } from "@/lib/nome-tavolo";
 import OrderClient from "@/components/OrderClient";
+import SenzaZoom from "@/components/SenzaZoom";
 import TableStatus from "@/components/TableStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import GuidaTavolo from "@/components/GuidaTavolo";
 import { createOrder, callWaiter, chiudiCondiviso } from "./order-actions";
+
+// La pagina del tavolo non si ingrandisce: e' gia' fatta per il telefono, e
+// una pizzicata mentre si scorre lascia il menu storto a meta' schermo. Vale
+// per Android e per i browser che rispettano il viewport; su iPhone ci pensa
+// <SenzaZoom>, che Safari il "user-scalable=no" lo ignora dal 2016.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 function Avviso({
   titolo,
@@ -97,7 +110,13 @@ export default async function TablePage({
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 py-5 pb-36">
+    // touch-action: doppio tocco per ingrandire spento a monte, senza aspettare
+    // che sia il codice a intercettarlo.
+    <main
+      className="mx-auto max-w-md px-4 py-5 pb-36"
+      style={{ touchAction: "pan-x pan-y" }}
+    >
+      <SenzaZoom />
       <div className="mb-3 flex items-center justify-between gap-2">
         <GuidaTavolo
           tenantId={t.id}

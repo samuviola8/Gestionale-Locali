@@ -228,6 +228,20 @@ export default async function MenuAdmin({
                     </span>
                   </span>
                 </label>
+                <label className="flex items-start gap-2.5 text-sm sm:col-span-2">
+                  <input type="checkbox" name="requiresGlasses" className="mt-px" />
+                  <span>
+                    <span className="font-medium">Chiedi i calici</span>
+                    <span
+                      className="mt-0.5 block text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      Per le bottiglie: prima di aggiungerlo al carrello il
+                      cliente dice quanti calici servono, o che li ha già in
+                      tavolo. Il numero finisce sulla comanda.
+                    </span>
+                  </span>
+                </label>
                 <button className="btn btn-primary sm:col-span-2">
                   Aggiungi prodotto
                 </button>

@@ -10,6 +10,7 @@ import {
   addIngredient,
   deleteIngredient,
   togglePinned,
+  toggleRequiresGlasses,
 } from "./actions";
 
 // I prodotti di una categoria. Carica i propri dati da solo: e' quello che
@@ -85,6 +86,9 @@ export default async function ElencoProdotti({
               )}
               {p.acceptsNote && (
                 <span className="badge badge-brand ml-2">su richiesta</span>
+              )}
+              {p.requiresGlasses && (
+                <span className="badge badge-brand ml-2">chiede i calici</span>
               )}
               {p.pinned && (
                 <span className="badge badge-brand ml-2">★ preferito</span>
@@ -226,6 +230,20 @@ export default async function ElencoProdotti({
                 style={p.pinned ? { color: "var(--brand-text)" } : undefined}
               >
                 {p.pinned ? "★ Preferito" : "☆ Preferito"}
+              </button>
+            </form>
+            <form action={toggleRequiresGlasses}>
+              <input type="hidden" name="id" value={p.id} />
+              <button
+                className="btn btn-sm"
+                aria-label={
+                  p.requiresGlasses
+                    ? `Non chiedere piu' i calici per ${p.name}`
+                    : `Chiedi i calici quando ordinano ${p.name}`
+                }
+                style={p.requiresGlasses ? { color: "var(--brand-text)" } : undefined}
+              >
+                {p.requiresGlasses ? "Chiede i calici" : "Chiedi i calici"}
               </button>
             </form>
             <form action={toggleAvailable}>

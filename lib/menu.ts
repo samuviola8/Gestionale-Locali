@@ -26,6 +26,8 @@ export type MenuProduct = {
   variants: MenuVariant[];
   // Il cliente scrive cosa desidera invece di scegliere una variante.
   acceptsNote: boolean;
+  // Si serve in bottiglia: prima di ordinarlo si chiede quanti calici portare.
+  requiresGlasses: boolean;
   // In cima alla cassa al banco. Non cambia niente lato cliente.
   pinned: boolean;
   // Valorizzata solo dalla ricerca: fuori dalla propria sezione, una riga
@@ -87,6 +89,7 @@ export async function getMenu(tenantId: string): Promise<MenuCategory[]> {
         available: p.available,
         variants: byProduct.get(p.id) ?? [],
         acceptsNote: p.acceptsNote,
+        requiresGlasses: p.requiresGlasses,
         pinned: p.pinned,
       })),
   }));
@@ -243,6 +246,7 @@ async function conVarianti(
     available: p.available,
     variants: byProduct.get(p.id) ?? [],
     acceptsNote: p.acceptsNote,
+    requiresGlasses: p.requiresGlasses,
     pinned: p.pinned,
   }));
 }

@@ -16,6 +16,9 @@ export type IncomingItem = {
   alias: string;
   quantity: number;
   note?: string;
+  // Quanti calici portare con questa riga, sui prodotti che li chiedono.
+  // 0 = li hanno gia' in tavolo.
+  glasses?: number;
 };
 
 // Chi ritira o a chi si consegna, quando l'ordine non ha un tavolo.
@@ -33,6 +36,9 @@ export type DatiCliente = {
 
 const MAX_NOTA = 200;
 const MAX_TESTO = 120;
+// Piu' calici di cosi' non e' un tavolo, e' un errore di battitura o un dito
+// rimasto sul pulsante.
+const MAX_CALICI = 30;
 
 function pulisci(v: string | undefined, max = MAX_TESTO): string | null {
   return (v ?? "").trim().slice(0, max) || null;
@@ -64,6 +70,7 @@ export async function createOrderRows(
       priceCents: menuProducts.priceCents,
       available: menuProducts.available,
       acceptsNote: menuProducts.acceptsNote,
+      requiresGlasses: menuProducts.requiresGlasses,
     })
     .from(menuProducts)
     .where(and(eq(menuProducts.tenantId, tenantId), inArray(menuProducts.id, ids)));
@@ -103,6 +110,17 @@ export async function createOrderRows(
       const nota = (i.note ?? "").trim().slice(0, MAX_NOTA) || null;
       if (p.acceptsNote && !nota) return null;
 
+      // I calici li tiene solo chi li chiede: su un prodotto qualunque
+      // sarebbero un numero che nessuno ha scelto e che il cameriere leggerebbe
+      // sulla comanda come una richiesta vera.
+      const calici =
+        p.requiresGlasses &&
+        Number.isInteger(i.glasses) &&
+        i.glasses! >= 0 &&
+        i.glasses! <= MAX_CALICI
+          ? i.glasses!
+          : null;
+
       const quantity = Math.min(i.quantity, 99);
       // Senza il modulo sotto-conti, e fuori dalla sala, tutto finisce su un
       // conto solo: al banco o in consegna non c'e' niente da dividere.
@@ -121,6 +139,7 @@ export async function createOrderRows(
           priceCents: v.priceCents,
           quantity,
           note: nota,
+          calici,
           alias,
         };
       }
@@ -132,6 +151,7 @@ export async function createOrderRows(
         priceCents: p.priceCents,
         quantity,
         note: nota,
+        calici,
         alias,
       };
     })
@@ -209,6 +229,7 @@ export async function createOrderRows(
       productId: r.productId,
       variantId: r.variantId,
       note: r.note,
+      glasses: r.calici,
       name: r.name,
       priceCents: r.priceCents,
       quantity: r.quantity,

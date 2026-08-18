@@ -10,6 +10,7 @@ type Item = {
   quantity: number;
   alias: string | null;
   note: string | null;
+  glasses: number | null;
   priceCents: number;
   priceAdjusted: boolean;
   voided: boolean;
@@ -405,6 +406,13 @@ export default function OrderQueue({
                       {it.name}
                     </span>
                     {it.voided && <span className="badge badge-muted">annullato</span>}
+                    {/* Portare la bottiglia senza i calici vuol dire tornare
+                        indietro: il numero sta accanto al nome, non in coda. */}
+                    {!!it.glasses && (
+                      <span className="badge badge-brand">
+                        {it.glasses} {it.glasses === 1 ? "calice" : "calici"}
+                      </span>
+                    )}
                     {/* Il nome della persona ha senso solo dove il conto si
                         divide: al banco "Tavolo" e' il valore interno, non
                         un'informazione. */}

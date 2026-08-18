@@ -3,6 +3,7 @@ import { asc, gte, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants, users, orders, orderItems } from "@/lib/db/schema";
 import { getAdminUser } from "@/lib/admin-auth";
+import { segnalazioniAperte } from "@/lib/segnalazioni-query";
 import { formatPrice } from "@/lib/menu";
 import ThemeToggle from "@/components/ThemeToggle";
 import { adminLogout } from "./actions";
@@ -34,6 +35,7 @@ export default async function AdminPage() {
     ? await db.select().from(orderItems).where(inArray(orderItems.orderId, todayIds))
     : [];
   const allUsers = await db.select({ tenantId: users.tenantId }).from(users);
+  const daVedere = await segnalazioniAperte();
 
   const orderTenant = new Map(todays.map((o) => [o.id, o.tenantId]));
   const ordersByTenant = new Map<string, number>();
@@ -161,6 +163,26 @@ export default async function AdminPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section>
+          <a
+            href="/admin/segnalazioni"
+            className="flex items-center justify-between gap-4 rounded-xl px-5 py-4 transition hover:border-[var(--brand)]"
+            style={{ border: "1px solid var(--border)" }}
+          >
+            <span>
+              <span className="block text-sm font-medium">Segnalazioni</span>
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
+                {daVedere === 0
+                  ? "Nessuna in attesa di risposta."
+                  : daVedere === 1
+                    ? "Una aspetta una risposta."
+                    : `${daVedere} aspettano una risposta.`}
+              </span>
+            </span>
+            {daVedere > 0 && <span className="badge badge-danger">{daVedere}</span>}
+          </a>
         </section>
 
         <section>

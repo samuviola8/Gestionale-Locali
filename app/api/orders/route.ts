@@ -47,6 +47,9 @@ export async function GET() {
         // Richiesta scritta dal cliente e prezzo, che il barman puo' correggere
         // proprio da qui: e' dove la legge.
         note: i.note,
+        // Quanti calici portare con la bottiglia: e' roba di sala, ma sta
+        // sulla riga perche' e' li' che si legge.
+        glasses: i.glasses,
         priceCents: i.priceCents,
         priceAdjusted: i.priceAdjusted,
         voided: i.voidedAt !== null,
