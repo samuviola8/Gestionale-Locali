@@ -16,7 +16,7 @@ param(
   # Dove sta il clone servito. Non e' la cartella di lavoro del runner: li'
   # dentro ci sono anche .env.production.local e public\uploads, che non
   # devono sparire a ogni aggiornamento.
-  [string]$Repo = "c:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\app",
+  [string]$Repo = "c:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali",
   [string]$Servizio = "Comanda",
   [string]$Ramo = "main",
   # I dump stanno fuori dal clone: dentro, il `git reset --hard` di ogni
@@ -65,7 +65,7 @@ function Trova-Strumento($nome) {
 # stesso database.
 function Leggi-DatabaseUrl {
   if ($env:DATABASE_URL) { return $env:DATABASE_URL }
-  foreach ($nome in @(".env.production.local", ".env.local")) {
+  foreach ($nome in @("C:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\.env.production.local", ".env.local")) {
     $file = Join-Path $Repo $nome
     if (-not (Test-Path $file)) { continue }
     foreach ($riga in Get-Content $file) {
