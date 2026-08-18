@@ -1,4 +1,4 @@
--- 153 foto, esportate da questo database.
+-- 153 foto e 1 loghi, esportati da questo database.
 -- Tocca solo i prodotti che una foto non ce l'hanno: quelle caricate
 -- sull'altra installazione non vengono sovrascritte.
 --
@@ -923,5 +923,9 @@ UPDATE menu_products p SET image_url = '/uploads/noya-lounge/menu-whiskey-wild-t
   WHERE p.category_id = c.id AND p.tenant_id = t.id
     AND t.slug = 'noya-lounge' AND c.name = 'Whiskey' AND p.name = 'Wild Turkey Rye'
     AND p.image_url IS NULL;
+
+UPDATE tenants SET logo_url = '/uploads/noya-lounge/noya-logo.svg'
+  WHERE slug = 'noya-lounge'
+    AND (logo_url IS NULL OR logo_url = '/uploads/noya-logo.svg');
 
 COMMIT;

@@ -50,8 +50,28 @@ async function main() {
       `    AND p.image_url IS NULL;`
   );
 
+  // Anche i loghi: stanno in tenants.logo_url e si sono spostati nella
+  // cartella del locale insieme a tutto il resto. Qui la condizione non puo'
+  // essere "solo se vuoto" come per i prodotti: in produzione il logo un
+  // indirizzo ce l'ha, ed e' proprio quello vecchio da correggere. Si tocca
+  // quindi o se manca, o se e' ancora quello piatto di prima.
+  const loghi = await db
+    .select({ slug: tenants.slug, url: tenants.logoUrl })
+    .from(tenants)
+    .where(isNotNull(tenants.logoUrl))
+    .orderBy(tenants.slug);
+
+  const righeLoghi = loghi.map((l) => {
+    const file = l.url!.split("/").pop()!;
+    return (
+      `UPDATE tenants SET logo_url = ${q(l.url!)}\n` +
+      `  WHERE slug = ${q(l.slug)}\n` +
+      `    AND (logo_url IS NULL OR logo_url = ${q("/uploads/" + file)});`
+    );
+  });
+
   const testa =
-    `-- ${righe.length} foto, esportate da questo database.\n` +
+    `-- ${righe.length} foto e ${loghi.length} loghi, esportati da questo database.\n` +
     `-- Tocca solo i prodotti che una foto non ce l'hanno: quelle caricate\n` +
     `-- sull'altra installazione non vengono sovrascritte.\n` +
     `--\n` +
@@ -59,9 +79,9 @@ async function main() {
     `BEGIN;\n\n`;
 
   const fuori = path.join(process.cwd(), "scripts", "foto-agganci.sql");
-  writeFileSync(fuori, testa + righeSql.join("\n\n") + "\n\nCOMMIT;\n");
+  writeFileSync(fuori, testa + [...righeSql, ...righeLoghi].join("\n\n") + "\n\nCOMMIT;\n");
 
-  console.log(`${righe.length} corrispondenze in ${fuori}`);
+  console.log(`${righe.length} foto e ${loghi.length} loghi in ${fuori}`);
   for (const r of righe.slice(0, 3)) console.log(`   ${r.locale} / ${r.categoria} / ${r.prodotto} -> ${r.url}`);
   process.exit(0);
 }
