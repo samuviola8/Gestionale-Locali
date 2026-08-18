@@ -12,6 +12,7 @@ import {
   type IncomingItem,
 } from "@/lib/order-create";
 import { creaScontrinoOrdine } from "@/lib/stampa";
+import { salvaClienteDaOrdine, spezzaIndirizzo } from "@/lib/rubrica";
 
 // Ordine battuto alla cassa: al banco, in asporto o da consegnare. Nessun
 // tavolo sotto, quindi il conto e' l'ordine stesso.
@@ -25,8 +26,17 @@ export async function createCounterOrder(
   saldaSubito: boolean,
   // Le spunte dell'operatore, che partono dalle impostazioni ma valgono solo
   // per questo ordine: chi paga un caffe' lo scontrino non lo vuole.
-  stampa: { comanda: boolean; scontrino: boolean }
-): Promise<{ ok: boolean; comande?: number; scontrino?: boolean }> {
+  stampa: { comanda: boolean; scontrino: boolean },
+  // Se chi ha ordinato finisce in rubrica. La spunta parte accesa, ma
+  // l'ultima parola ce l'ha chi sta alla cassa: davanti ha una persona che
+  // puo' benissimo non voler lasciare nome e indirizzo da nessuna parte.
+  salvaCliente = false
+): Promise<{
+  ok: boolean;
+  comande?: number;
+  scontrino?: boolean;
+  cliente?: boolean;
+}> {
   const session = await getSessionUser();
   if (!session) return { ok: false };
   if (!isChannel(channel) || channel === "tavolo") return { ok: false };
@@ -56,8 +66,32 @@ export async function createCounterOrder(
     await creaScontrinoOrdine(session.tenantId, esito.orderId);
   }
 
+  // La rubrica si riempie lavorando: e' l'unico modo perche' si riempia.
+  // Al banco non c'e' niente da scrivere — il cliente e' chi sta davanti
+  // alla cassa e non lascia ne' nome ne' numero.
+  let inRubrica = false;
+  if (salvaCliente && modules.customers && canale.chiedeNome) {
+    // L'indirizzo torna nei suoi pezzi: alla cassa viaggia come riga
+    // unica, ma in rubrica il civico sta in un campo suo, perche' e'
+    // quello che si perde e quello senza cui il fattorino gira a vuoto.
+    const dove = spezzaIndirizzo(cliente.indirizzo ?? "");
+    const scheda = await salvaClienteDaOrdine(session.tenantId, {
+      nome: cliente.nome,
+      telefono: cliente.telefono,
+      via: dove.via,
+      civico: dove.civico,
+      dettaglio: dove.dettaglio,
+    });
+    inRubrica = !!scheda;
+  }
+
   if (!saldaSubito) {
-    return { ok: true, comande: esito.comande, scontrino: stampa.scontrino };
+    return {
+      ok: true,
+      comande: esito.comande,
+      scontrino: stampa.scontrino,
+      cliente: inRubrica,
+    };
   }
 
   // Incassato e archiviato, ma NON servito: lo status resta "new" perche' il
@@ -72,5 +106,10 @@ export async function createCounterOrder(
     .set({ closedAt: new Date() })
     .where(eq(orders.id, esito.orderId));
 
-  return { ok: true, comande: esito.comande, scontrino: stampa.scontrino };
+  return {
+    ok: true,
+    comande: esito.comande,
+    scontrino: stampa.scontrino,
+    cliente: inRubrica,
+  };
 }

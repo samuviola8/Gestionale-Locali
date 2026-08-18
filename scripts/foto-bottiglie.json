@@ -1,0 +1,193 @@
+[
+  {
+    "prodotto": "Grey Goose",
+    "url": "https://www.greygoose.com/products/grey-goose-vodka.html",
+    "nota": "sito ufficiale del produttore"
+  },
+  {
+    "prodotto": "Monkey 47",
+    "url": "https://www.callmewine.com/en/gin-monkey-47-dry-P6199.htm"
+  },
+  {
+    "prodotto": "Hendrick's",
+    "url": "https://www.callmewine.com/en/gin-hendrick-P6197.htm"
+  },
+  {
+    "prodotto": "Belvedere",
+    "url": "https://www.callmewine.com/en/vodka-belvedere-100cl-P6510.htm"
+  },
+  {
+    "prodotto": "Beluga",
+    "url": "https://www.callmewine.com/en/vodka-beluga-70cl-P6620.htm"
+  },
+  {
+    "prodotto": "Bulldog",
+    "url": "https://www.callmewine.com/en/gin-bulldog-P11031.htm"
+  },
+  {
+    "prodotto": "Elephant",
+    "url": "https://www.callmewine.com/en/gin-london-dry-elephant-P6623.htm"
+  },
+  {
+    "prodotto": "Nordes",
+    "url": "https://www.callmewine.com/en/gin-nordes-P6465.htm"
+  },
+  {
+    "prodotto": "Etsu",
+    "url": "https://www.callmewine.com/en/gin-etsu-P23961.htm"
+  },
+  {
+    "prodotto": "Sabatini",
+    "url": "https://www.callmewine.com/en/gin-sabatini-P6596.htm"
+  },
+  {
+    "prodotto": "Saigon Baigur",
+    "url": "https://www.callmewine.com/en/gin-premium-dry-saigon-baigur-P60211.htm"
+  },
+  {
+    "prodotto": "Portofino",
+    "url": "https://www.callmewine.com/en/gin-dry-portofino-P27178.htm"
+  },
+  {
+    "prodotto": "Professore Madame",
+    "url": "https://www.callmewine.com/en/gin-madame-del-professore-P6488.htm"
+  },
+  {
+    "prodotto": "Nikka Gin",
+    "url": "https://www.callmewine.com/en/gin-coffey-nikka-P9311.htm"
+  },
+  {
+    "prodotto": "Diplomatico",
+    "url": "https://www.callmewine.com/en/rum-diplomatico-reserva-exclusiva-P32110.htm"
+  },
+  {
+    "prodotto": "Zacapa 23",
+    "url": "https://www.callmewine.com/en/rum-zacapa-23-anni-100-cl-P6167.htm"
+  },
+  {
+    "prodotto": "Don Papa Baroko",
+    "url": "https://www.callmewine.com/en/rum-baroko-don-papa-P29886.htm"
+  },
+  {
+    "prodotto": "J. Bally Agricole",
+    "url": "https://www.callmewine.com/rum-ambre-bally-P23552.htm",
+    "nota": "in carta senza indicazione: preso l'Ambre"
+  },
+  {
+    "prodotto": "Abuelo XII",
+    "url": "https://www.callmewine.com/en/rum-abuelo-12-anni-confezione-P8805.htm"
+  },
+  {
+    "prodotto": "Laphroaig",
+    "url": "https://www.callmewine.com/en/whisky-laphroaig-10-anni-confezione-P6368.htm"
+  },
+  {
+    "prodotto": "Oban",
+    "url": "https://www.callmewine.com/en/whisky-oban-14-anni-P6370.htm"
+  },
+  {
+    "prodotto": "Bushmills",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/38943_a702aff7-8a90-4a76-9f20-24c46ad37d39.jpg?v=1783347039&width=300&height=540",
+    "nota": "catalogo: Whisky Irish Single Malt Bushmills 10 Anni"
+  },
+  {
+    "prodotto": "Talisker",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/37415.jpg?v=1783414117&width=300&height=540",
+    "nota": "catalogo: Whisky Single Malt Talisker 10 Anni"
+  },
+  {
+    "prodotto": "Nikka Whiskey",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/sad06152-1_f76bcf98-31a7-425a-9e77-c84f3bb2b3cf.png?v=1785164228&width=300&height=540",
+    "nota": "catalogo: Whisky Coffey Malt Nikka"
+  },
+  {
+    "prodotto": "Espolon Reposado",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/tequila-reposado-espolon_54037.jpg?v=1757965507&width=300&height=540",
+    "nota": "catalogo: Tequila Reposado Espolon"
+  },
+  {
+    "prodotto": "Punt e Mes",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/27087.jpg?v=1757964063&width=300&height=540",
+    "nota": "catalogo: 'Punt e Mes' Carpano 100cl"
+  },
+  {
+    "prodotto": "Vermouth del Professore Rosso",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/6663_1acd71e2-9e0a-4f25-85bb-40b61ec87204.jpg?v=1757942613&width=300&height=540",
+    "nota": "catalogo: Vermouth Rosso Del Professore - 75cl"
+  },
+  {
+    "prodotto": "Vermouth del Professore Bianco",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/6662_11a355b4-84eb-46e5-b7b9-bd9e87b4b277.jpg?v=1757955789&width=300&height=540",
+    "nota": "catalogo: Vermouth Bianco Del Professore - 70cl"
+  },
+  {
+    "prodotto": "Montenegro",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/amaro-montenegro20251021181217.png?v=1761064149&width=300&height=540",
+    "nota": "catalogo: Amaro Montenegro"
+  },
+  {
+    "prodotto": "Cantine Fina — Kikè",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/kike-cantine-fina-202420251015172233_9269e1dd-01c0-4a6c-ba21-915b476b7e0c.png?v=1786963041&width=300&height=540",
+    "nota": "catalogo: Kikè' Cantine Fina 2025"
+  },
+  {
+    "prodotto": "Pietradolce — Etna Bianco",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/etna-bianco-pietradolce-202420251021180612_17348f25-9fde-480d-b6f1-f03f04718f21.png?v=1784905906&width=300&height=540",
+    "nota": "catalogo: Etna Bianco Pietradolce 2025"
+  },
+  {
+    "prodotto": "Pietradolce — Etna Rosso",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/etna-rosso-pietradolce-202420260722181855.png?v=1784738788&width=300&height=540",
+    "nota": "catalogo: Etna Rosso Pietradolce 2024"
+  },
+  {
+    "prodotto": "Pietradolce — Etna Rosato",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/etna-rosato-pietradolce-202420251021180610.png?v=1780587514&width=300&height=540",
+    "nota": "catalogo: Etna Rosato Pietradolce 2025"
+  },
+  {
+    "prodotto": "Champagne Bruno Paillard — Première Cuvée",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/champagne-rose-brut-premiere-cuvee-bruno-paillard20251203160606_d7d544ab-168d-45c6-ab78-c768ed0e353a.png?v=1780664225&width=300&height=540",
+    "nota": "catalogo: Champagne Rosé Brut 'Première Cuvée' Bruno Paillard"
+  },
+  {
+    "prodotto": "Feudo Montoni — Grillo",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/grillo-della-timpa-feudo-montoni-202420251114104941_13316f71-e003-48ce-b41f-91facfcfbba6.png?v=1780907501&width=300&height=540",
+    "nota": "catalogo: Grillo 'della Timpa' Feudo Montoni 2025"
+  },
+  {
+    "prodotto": "Feudo Montoni — Perricone",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/perricone-del-core-feudo-montoni-202220251114104346_6753073f-1a3a-40af-b3c7-c78c407a6a01.png?v=1784031496&width=300&height=540",
+    "nota": "catalogo: Perricone 'Del Core' Feudo Montoni 2023"
+  },
+  {
+    "prodotto": "Carpano",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/vermouth-rosso-carpano-100cl20251114105505.png?v=1763115069&width=300&height=540",
+    "nota": "catalogo: Vermouth Rosso Carpano - 100cl"
+  },
+  {
+    "prodotto": "Antica Formula",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/vermouth-antica-formula-carpano-100cl_53045_0cf544d6-292b-4a9c-ad6f-b8de8aed6a80.jpg?v=1757924314&width=300&height=540",
+    "nota": "catalogo: Vermouth 'Antica Formula' Carpano - 100cl"
+  },
+  {
+    "prodotto": "Martini Bianco Extra Dry",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/vermouth-bianco-extra-dry-laperitivo-martini-100cl-min.png?v=1783936641&width=300&height=540",
+    "nota": "catalogo: Vermouth Bianco Extra Dry 'L'Aperitivo' Martini - 100cl"
+  },
+  {
+    "prodotto": "Amaro Amara",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/amara-amaro-di-arancia-rossa-50cl20251021181205_b61baba4-4713-4c4c-b1d7-55694a0be477.png?v=1763411821&width=300&height=540",
+    "nota": "catalogo: 'Amara' Amaro di Arancia Rossa - 50cl"
+  },
+  {
+    "prodotto": "Jefferson",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/amaro-importante-jefferson-vecchio-magazzino-doganale20251015172515_87b1b2b1-f41c-4df6-8385-942bdcf70bd0.png?v=1783694404&width=300&height=540",
+    "nota": "catalogo: Amaro Importante 'Jefferson' Vecchio Magazzino Doganale"
+  },
+  {
+    "prodotto": "Saint Germain",
+    "url": "https://cdn.shopify.com/s/files/1/0650/4356/2708/files/23355.jpg?v=1781882416&width=300&height=540",
+    "nota": "catalogo: St-Germain Liquore Artigianale"
+  }
+]

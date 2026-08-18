@@ -233,6 +233,98 @@ export function PannelloPrenotazione() {
   );
 }
 
+// La rubrica come la incontra chi batte l'ordine: tre lettere nel nome e
+// l'elenco scende. Quello che va fatto vedere e' il dopo — i campi gia' pieni,
+// civico e citofono compresi — perche' e' li' che sta il tempo risparmiato e
+// il civico che non si sbaglia.
+export function PannelloRubrica() {
+  const trovati: [string, string, string][] = [
+    ["Marco Rinaldi", "333 1234567", "Via Roma 12, 95030 Nicolosi"],
+    ["Marta Grasso", "340 9876543", "Corso Italia 5, 95129 Catania"],
+  ];
+  const compilati: [string, string][] = [
+    ["Telefono", "333 1234567"],
+    ["Indirizzo", "Via Roma 12"],
+    ["CAP e comune", "95030 Nicolosi"],
+    ["Note", "Citofono rotto, 2° piano"],
+  ];
+
+  return (
+    <div className="lp-vetro w-full max-w-sm p-5">
+      <div className="flex items-baseline justify-between">
+        <span className="lp-occhiello">Rubrica</span>
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>
+          Cassa · domicilio
+        </span>
+      </div>
+
+      <div className="mt-3.5" style={{ fontSize: 11, color: "var(--muted)" }}>
+        Nome di chi ordina
+      </div>
+      <div
+        className="mt-1.5 rounded-xl px-3 py-2"
+        style={{
+          border: "1px solid var(--lp-accent)",
+          background: "var(--surface)",
+          fontSize: 12,
+        }}
+      >
+        mar<span className="lp-cursore" aria-hidden="true" />
+      </div>
+
+      <div
+        className="mt-1.5 overflow-hidden rounded-xl p-1"
+        style={{ border: "1px solid var(--border)", background: "var(--surface)" }}
+      >
+        {trovati.map(([nome, tel, dove], i) => (
+          <div
+            key={nome}
+            className="rounded-lg px-2.5 py-1.5"
+            style={i === 0 ? { background: "var(--lp-accent-soft)" } : undefined}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span style={{ fontSize: 11, fontWeight: 600 }}>{nome}</span>
+              <span style={{ fontSize: 10, color: "var(--muted)" }}>{tel}</span>
+            </div>
+            <div style={{ fontSize: 10, color: "var(--muted)" }}>{dove}</div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="mt-3.5 pt-3"
+        style={{ borderTop: "1px dashed var(--border)" }}
+      >
+        <div style={{ fontSize: 10, color: "var(--muted)" }}>
+          Si compila da solo
+        </div>
+        <div className="mt-1.5 space-y-1">
+          {compilati.map(([voce, valore]) => (
+            <div key={voce} className="flex items-baseline justify-between gap-3">
+              <span style={{ fontSize: 10, color: "var(--muted)" }}>{voce}</span>
+              <span style={{ fontSize: 11, fontWeight: 600 }}>{valore}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="mt-3 flex items-center gap-2 rounded-lg px-2.5 py-2"
+        style={{ background: "var(--surface-2)" }}
+      >
+        <span
+          className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded"
+          style={{ background: "var(--lp-accent)", color: "var(--surface)", fontSize: 9 }}
+          aria-hidden="true"
+        >
+          ✓
+        </span>
+        <span style={{ fontSize: 11 }}>Salva in rubrica</span>
+      </div>
+    </div>
+  );
+}
+
 // Mockup piu' piccoli, per le sezioni esplicative.
 export function MiniQr() {
   return (

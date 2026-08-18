@@ -1,4 +1,4 @@
-import { getCategoryProducts, formatPrice } from "@/lib/menu";
+import { getCategoryProducts, searchProducts, formatPrice } from "@/lib/menu";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PhotoUpload from "@/components/PhotoUpload";
 import {
@@ -18,17 +18,27 @@ import {
 export default async function ElencoProdotti({
   tenantId,
   categoryId,
+  cerca,
 }: {
   tenantId: string;
-  categoryId: string;
+  categoryId?: string;
+  // Con un testo da cercare l'elenco guarda tutto il menu invece della sola
+  // categoria: le righe sono le stesse, cambia solo cosa le riempie.
+  cerca?: string;
 }) {
-  const prodotti = await getCategoryProducts(tenantId, categoryId);
+  const prodotti = cerca
+    ? await searchProducts(tenantId, cerca)
+    : categoryId
+      ? await getCategoryProducts(tenantId, categoryId)
+      : [];
 
   if (prodotti.length === 0) {
     return (
       <div className="card" style={{ borderColor: "var(--border)" }}>
         <p className="p-4 text-sm" style={{ color: "var(--muted)" }}>
-          Nessun prodotto in questa categoria.
+          {cerca
+            ? `Nessun prodotto per «${cerca}».`
+            : "Nessun prodotto in questa categoria."}
         </p>
       </div>
     );
@@ -78,6 +88,11 @@ export default async function ElencoProdotti({
               )}
               {p.pinned && (
                 <span className="badge badge-brand ml-2">★ preferito</span>
+              )}
+              {/* Solo fra i risultati di ricerca: qui le righe arrivano da
+                  sezioni diverse e senza l'etichetta non si sa da quale. */}
+              {p.categoria && (
+                <span className="badge ml-2">{p.categoria}</span>
               )}
               {p.description && (
                 <div className="text-sm" style={{ color: "var(--muted)" }}>

@@ -192,6 +192,22 @@ export const STILE_LANDING = `
   font-weight: 600;
 }
 
+/* Il cursore fermo a meta' parola nel mockup della rubrica: e' quello che dice
+   "sta scrivendo adesso", senza il quale il campo sembra gia' compilato e
+   l'elenco sotto non si capisce da dove esca. */
+.lp-cursore {
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin-left: 1px;
+  vertical-align: -2px;
+  background: var(--lp-accent);
+  animation: lp-batte 1.1s step-end infinite;
+}
+@keyframes lp-batte {
+  50% { opacity: 0; }
+}
+
 /* --- Modulo di contatto --- */
 .lp-campo {
   display: grid;
@@ -315,5 +331,6 @@ export const STILE_LANDING = `
   .lp-palco { transform: none; transition: none; }
   .lp-vetro-attiva { transition: none; }
   .lp-vetro-attiva:hover { transform: none; }
+  .lp-cursore { animation: none; }
 }
 `;

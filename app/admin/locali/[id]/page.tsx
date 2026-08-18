@@ -190,7 +190,7 @@ export default async function LocaleDetail({
                   name={`modulo_${m.key}`}
                   defaultChecked={modules[m.key]}
                   disabled={m.comingSoon}
-                  className="mt-1"
+                  className="mt-px"
                 />
                 <span>
                   <span className="font-medium">{m.label}</span>

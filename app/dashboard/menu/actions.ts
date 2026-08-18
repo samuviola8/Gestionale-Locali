@@ -19,6 +19,14 @@ async function requireTenantId(): Promise<string> {
   return s.tenantId;
 }
 
+// Chi carica una foto ha bisogno anche dello slug: le immagini si salvano
+// nella cartella del locale, non in un mucchio comune a tutti i clienti.
+async function requireLocale(): Promise<{ tenantId: string; slug: string }> {
+  const s = await getSessionUser();
+  if (!s) redirect("/login");
+  return { tenantId: s.tenantId, slug: s.tenantSlug };
+}
+
 function splitList(v: FormDataEntryValue | null): string[] {
   return String(v ?? "")
     .split(",")
@@ -55,7 +63,7 @@ export async function addCategory(formData: FormData): Promise<void> {
 }
 
 export async function addProduct(formData: FormData): Promise<void> {
-  const tenantId = await requireTenantId();
+  const { tenantId, slug } = await requireLocale();
   const categoryId = String(formData.get("categoryId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
@@ -74,7 +82,7 @@ export async function addProduct(formData: FormData): Promise<void> {
     .limit(1);
   if (!cat[0]) return;
 
-  const imageUrl = await saveImage(formData.get("image"));
+  const imageUrl = await saveImage(formData.get("image"), slug);
 
   await db.insert(menuProducts).values({
     tenantId,
@@ -91,9 +99,9 @@ export async function addProduct(formData: FormData): Promise<void> {
 }
 
 export async function setProductImage(formData: FormData): Promise<void> {
-  const tenantId = await requireTenantId();
+  const { tenantId, slug } = await requireLocale();
   const id = String(formData.get("id") ?? "");
-  const url = await saveImage(formData.get("image"));
+  const url = await saveImage(formData.get("image"), slug);
   if (!id || !url) return;
   await db
     .update(menuProducts)

@@ -189,7 +189,6 @@ export default async function TablesAdmin() {
                         type="checkbox"
                         name={`prenotabile_${t.id}`}
                         defaultChecked={t.bookable}
-                        className="h-4 w-4 accent-[var(--brand)]"
                       />
                       prenotabile
                     </label>

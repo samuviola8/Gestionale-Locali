@@ -30,11 +30,12 @@ import {
 export default async function MenuAdmin({
   searchParams,
 }: {
-  searchParams: Promise<{ cat?: string }>;
+  searchParams: Promise<{ cat?: string; q?: string }>;
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/login");
-  const { cat } = await searchParams;
+  const { cat, q } = await searchParams;
+  const cerca = (q ?? "").trim();
 
   // Il guscio non aspetta i prodotti: gli bastano i nomi delle categorie e
   // due conteggi. L'elenco arriva dopo, dentro un <Suspense>.
@@ -66,8 +67,30 @@ export default async function MenuAdmin({
         </p>
       </div>
 
+      {/* Un modulo GET, non un campo che filtra mentre si scrive: la pagina
+          carica una categoria per volta apposta, e per filtrare dal vivo
+          dovrebbe tenersi in memoria tutti i prodotti - cioe' rinunciare
+          proprio a quello che la rende leggera. Cosi' invece la ricerca e' un
+          indirizzo: si puo' ricaricare, mettere fra i preferiti e passare a
+          qualcuno, e funziona anche senza JavaScript. */}
+      {totale > 0 && (
+        <form method="get" className="flex gap-2">
+          <input
+            type="search"
+            name="q"
+            defaultValue={cerca}
+            placeholder="Cerca un prodotto in tutto il menu…"
+            aria-label="Cerca un prodotto in tutto il menu"
+            className="input h-11 w-full"
+          />
+          <button type="submit" className="btn btn-brand h-11 px-4">
+            Cerca
+          </button>
+        </form>
+      )}
+
       {/* Con molte categorie scorrere fino in fondo e' una perdita di tempo. */}
-      {menu.length > 1 && (
+      {!cerca && menu.length > 1 && (
         <div
           className="sticky top-[57px] z-20 -mx-6 px-6 py-2.5 backdrop-blur lg:-mx-8 lg:px-8"
           style={{
@@ -192,7 +215,7 @@ export default async function MenuAdmin({
                   <PhotoUpload label="Scegli una foto" />
                 </Field>
                 <label className="flex items-start gap-2.5 text-sm sm:col-span-2">
-                  <input type="checkbox" name="acceptsNote" className="mt-1" />
+                  <input type="checkbox" name="acceptsNote" className="mt-px" />
                   <span>
                     <span className="font-medium">Su richiesta</span>
                     <span
@@ -221,6 +244,25 @@ export default async function MenuAdmin({
             Crea la prima categoria qui sopra, poi aggiungi i prodotti.
           </p>
         </div>
+      ) : cerca ? (
+        <section className="scroll-mt-32">
+          <div className="mb-2 flex items-baseline gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider">
+              Risultati per «{cerca}»
+            </h2>
+            <Link
+              href="/dashboard/menu"
+              className="text-xs underline"
+              style={{ color: "var(--muted)" }}
+            >
+              annulla
+            </Link>
+          </div>
+
+          <Suspense key={cerca} fallback={<MenuSkeleton righe={3} />}>
+            <ElencoProdotti tenantId={session.tenantId} cerca={cerca} />
+          </Suspense>
+        </section>
       ) : categoriaAttiva ? (
         <section className="scroll-mt-32">
           <div className="mb-2 flex items-baseline gap-2">

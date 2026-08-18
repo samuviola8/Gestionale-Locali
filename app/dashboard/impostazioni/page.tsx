@@ -52,7 +52,7 @@ function Interruttore({
         type="checkbox"
         name={nome}
         defaultChecked={acceso}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)]"
+        className="mt-px"
       />
       <span className="min-w-0">
         <span className="block text-sm font-medium">{etichetta}</span>

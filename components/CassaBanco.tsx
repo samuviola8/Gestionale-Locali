@@ -5,8 +5,10 @@ import { formatPrice as fmt } from "@/lib/format";
 import { CHANNELS, getChannel, type Channel } from "@/lib/channels";
 import OraRitiro from "@/components/OraRitiro";
 import IndirizzoAuto from "@/components/IndirizzoAuto";
+import ClienteAuto from "@/components/ClienteAuto";
 import type { Calendario } from "@/lib/orari";
 import type { DatiCliente, IncomingItem } from "@/lib/order-create";
+import type { ClienteRubrica } from "@/lib/rubrica";
 
 // Cassa del banco. Non e' il menu del cliente rimpicciolito: qui l'operatore ha
 // una tastiera davanti e le mani occupate, quindi tutto e' un tocco solo —
@@ -42,6 +44,7 @@ export default function CassaBanco({
   canaliAttivi,
   orari,
   stampaPredefinita,
+  rubricaAttiva,
   invia,
 }: {
   prodotti: ProdottoCassa[];
@@ -52,13 +55,22 @@ export default function CassaBanco({
     comanda: Record<string, boolean>;
     scontrino: boolean;
   };
+  // Modulo rubrica acceso: senza, i campi restano quelli di sempre e la
+  // spunta non compare.
+  rubricaAttiva: boolean;
   invia: (
     channel: Channel,
     items: IncomingItem[],
     cliente: DatiCliente,
     saldaSubito: boolean,
-    stampa: { comanda: boolean; scontrino: boolean }
-  ) => Promise<{ ok: boolean; comande?: number; scontrino?: boolean }>;
+    stampa: { comanda: boolean; scontrino: boolean },
+    salvaCliente: boolean
+  ) => Promise<{
+    ok: boolean;
+    comande?: number;
+    scontrino?: boolean;
+    cliente?: boolean;
+  }>;
 }) {
   const [channel, setChannel] = useState<Channel>(canaliAttivi[0] ?? "banco");
   const [categoria, setCategoria] = useState<string>("Preferiti");
@@ -69,6 +81,22 @@ export default function CassaBanco({
   const [indirizzo, setIndirizzo] = useState("");
   const [consegna, setConsegna] = useState("");
   const [oraRitiro, setOraRitiro] = useState("");
+  // Quello che si sa del cliente scelto dalla rubrica: i pezzi
+  // dell'indirizzo, che il campo si ricompone da solo, e la nota di
+  // consegna, che serve sotto gli occhi di chi sta prendendo l'ordine.
+  const [daRubrica, setDaRubrica] = useState<{
+    via: string;
+    civico: string;
+    dettaglio: string;
+  } | null>(null);
+  const [notaCliente, setNotaCliente] = useState("");
+  // Rimonta il campo indirizzo quando arriva un cliente nuovo: e' l'unico
+  // modo perche' riparta pulito invece di mescolare i pezzi di due schede.
+  const [rimonta, setRimonta] = useState(0);
+  // La spunta parte accesa: la rubrica si riempie lavorando, che e' l'unico
+  // modo perche' si riempia davvero. Si spegne per chi non vuole essere
+  // schedato e per l'ordine di passaggio che non tornera' mai piu'.
+  const [salvaCliente, setSalvaCliente] = useState(true);
   // Le spunte partono dalle impostazioni e si ritarano cambiando canale, ma
   // una volta toccate restano come le ha messe l'operatore: se le ha spente
   // apposta, riaccenderle da sole sarebbe un dispetto.
@@ -176,7 +204,30 @@ export default function CassaBanco({
     setIndirizzo("");
     setConsegna("");
     setOraRitiro("");
+    setDaRubrica(null);
+    setNotaCliente("");
+    setRimonta((n) => n + 1);
+    // La spunta torna accesa a ogni ordine nuovo, al contrario di quelle di
+    // stampa: quelle sono un'abitudine del locale, questa e' una scelta del
+    // singolo cliente. Lasciarla spenta vorrebbe dire che il "no" di uno
+    // spegne la rubrica per tutti quelli che vengono dopo.
+    setSalvaCliente(true);
     setErrore(null);
+  }
+
+  // Cliente preso dalla rubrica: si compila tutto, che e' il motivo per cui
+  // la rubrica esiste. Resta tutto correggibile — l'indirizzo di stasera
+  // puo' essere quello dell'ufficio invece che quello di casa.
+  function prendiCliente(c: ClienteRubrica) {
+    setNome(c.nome);
+    setTelefono(c.telefono);
+    setNotaCliente(c.note);
+    // L'indirizzo si tiene da parte anche in asporto: se l'ordine diventa una
+    // consegna a meta' telefonata — succede — il campo si trova gia' pieno
+    // invece di far ridettare tutto.
+    setDaRubrica({ via: c.via, civico: c.civico, dettaglio: c.dettaglio });
+    setRimonta((n) => n + 1);
+    if (canale.chiedeIndirizzo) setIndirizzo(c.indirizzo);
   }
 
   const consegnaCents = (() => {
@@ -221,7 +272,8 @@ export default function CassaBanco({
         // Al banco si paga subito; asporto e domicilio si incassano al ritiro
         // o alla consegna, quindi restano fra i conti aperti.
         channel === "banco",
-        { comanda: comandaOn, scontrino: scontrinoOn }
+        { comanda: comandaOn, scontrino: scontrinoOn },
+        rubricaAttiva && salvaCliente
       );
       if (!r.ok) {
         setErrore("Non sono riuscito a registrare l'ordine. Riprova.");
@@ -242,7 +294,9 @@ export default function CassaBanco({
       setEsito(
         (channel === "banco"
           ? `Incassato ${fmt(totale)}. È in coda per la preparazione.`
-          : `${canale.singolare} registrato. Si incassa al ritiro.`) + stampa
+          : `${canale.singolare} registrato. Si incassa al ritiro.`) +
+          stampa +
+          (r.cliente ? " Cliente in rubrica." : "")
       );
       svuota();
     } finally {
@@ -444,21 +498,27 @@ export default function CassaBanco({
 
           {canale.chiedeNome && (
             <div className="mt-3 space-y-2">
-              <input
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Nome di chi ritira"
-                aria-label="Nome di chi ritira"
-                className="input h-10 w-full"
+              <ClienteAuto
+                attiva={rubricaAttiva}
+                nome={nome}
+                telefono={telefono}
+                onNome={setNome}
+                onTelefono={setTelefono}
+                onScegli={prendiCliente}
               />
-              <input
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                placeholder="Telefono"
-                aria-label="Telefono"
-                inputMode="tel"
-                className="input h-10 w-full"
-              />
+              {/* Il citofono rotto, il cane, il secondo piano: sta scritto
+                  in rubrica proprio perche' nessuno se lo ricorda. */}
+              {notaCliente && (
+                <p
+                  className="rounded-lg px-2.5 py-1.5 text-xs"
+                  style={{
+                    background: "var(--surface-2)",
+                    color: "var(--muted)",
+                  }}
+                >
+                  {notaCliente}
+                </p>
+              )}
               {/* Al telefono l'ora concordata e' la prima cosa che dicono:
                   senza, la cucina parte subito e il cliente ritira freddo. */}
               <OraRitiro
@@ -473,7 +533,12 @@ export default function CassaBanco({
               />
               {canale.chiedeIndirizzo && (
                 <>
-                  <IndirizzoAuto value={indirizzo} onChange={setIndirizzo} />
+                  <IndirizzoAuto
+                    key={rimonta}
+                    value={indirizzo}
+                    onChange={setIndirizzo}
+                    iniziale={daRubrica ?? undefined}
+                  />
                   <input
                     value={consegna}
                     onChange={(e) => setConsegna(e.target.value)}
@@ -524,11 +589,28 @@ export default function CassaBanco({
                   type="checkbox"
                   checked={s.on}
                   onChange={(e) => s.set(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[var(--brand)]"
                 />
                 Stampa {s.etichetta.toLowerCase()}
               </label>
             ))}
+
+            {/* Accesa di suo: una rubrica che si riempie solo quando
+                qualcuno si ricorda di spuntare una casella resta vuota. */}
+            {rubricaAttiva && canale.chiedeNome && (
+              <label
+                className="flex cursor-pointer items-center gap-1.5"
+                style={{
+                  color: salvaCliente ? "var(--text)" : "var(--muted)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={salvaCliente}
+                  onChange={(e) => setSalvaCliente(e.target.checked)}
+                />
+                Salva in rubrica
+              </label>
+            )}
           </div>
 
           <div

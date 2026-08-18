@@ -27,6 +27,10 @@
      il colore glielo da' il tema, quindi sta qui una volta sola e vale anche
      al buio. Stesso tratto degli altri simboli del gestionale. */
   --icona-giorno: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='3'/%3E%3Cpath d='M8 3v4M16 3v4M3 10h18'/%3E%3C/svg%3E");
+
+  /* La spunta dentro le caselle. Stesso tratto tondo delle altre icone del
+     gestionale, disegnata bianca: sta sempre sopra il pieno del brand. */
+  --icona-spunta: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ffffff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.6l3 3 6-6.6'/%3E%3C/svg%3E");
 }
 
 .dark {
@@ -77,8 +81,8 @@ h2 {
 /* Ogni elemento cliccabile si comporta da tale. */
 button:not(:disabled),
 [role="button"]:not([aria-disabled="true"]),
-label:has(input[type="checkbox"]),
-label:has(input[type="radio"]) {
+label:has(input[type="checkbox"]:not(:disabled)),
+label:has(input[type="radio"]:not(:disabled)) {
   cursor: pointer;
 }
 
@@ -535,6 +539,125 @@ input[type="date"]:hover::-webkit-calendar-picker-indicator {
   font-size: 14px;
 }
 .input::placeholder { color: var(--muted); }
+
+/* Le caselle da spuntare.
+   Quella di sistema e' un quadretto azzurro uguale su ogni sito, che del tema
+   del locale non sa niente. Questa e' disegnata: angoli smussati come le altre
+   primitive, bordo sfumato che vira verso il brand nell'angolo alto, e la
+   spunta che entra con un piccolo scatto invece di comparire e basta.
+   Il segno di spunta e' bianco perche' sul pieno del brand si legge come si
+   legge quello dei pulsanti primari.
+   Il pallino di scelta e' la stessa casella, tonda: nei moduli dove stanno
+   uno sotto l'altro devono sembrare parenti. */
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border: 1.5px solid transparent;
+  border-radius: 7px;
+  background:
+    linear-gradient(155deg, var(--surface), var(--surface-2)) padding-box,
+    linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--brand) 45%, var(--border)),
+        var(--border) 55%,
+        color-mix(in srgb, var(--brand) 20%, var(--border))
+      )
+      border-box;
+  box-shadow: inset 0 1px 1px color-mix(in srgb, var(--text) 7%, transparent);
+  transition: background 0.18s ease, box-shadow 0.18s ease, filter 0.15s ease;
+}
+
+input[type="radio"] {
+  border-radius: 999px;
+}
+
+/* Sotto il dito il bordo si accende: si capisce che e' un comando prima
+   ancora di premerlo. */
+input[type="checkbox"]:not(:disabled, :checked):hover,
+input[type="radio"]:not(:disabled, :checked):hover {
+  background:
+    linear-gradient(155deg, var(--surface), var(--surface-2)) padding-box,
+    linear-gradient(
+        145deg,
+        var(--brand),
+        color-mix(in srgb, var(--brand) 30%, var(--border))
+      )
+      border-box;
+}
+
+input[type="checkbox"]:checked {
+  background:
+    var(--icona-spunta) center / 68% no-repeat border-box,
+    linear-gradient(
+        150deg,
+        color-mix(in srgb, var(--brand) 75%, white),
+        var(--brand) 55%,
+        color-mix(in srgb, var(--brand) 88%, black)
+      )
+      padding-box,
+    linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--brand) 60%, white),
+        var(--brand)
+      )
+      border-box;
+}
+
+input[type="radio"]:checked {
+  background:
+    radial-gradient(circle at center, #fff 0 3px, transparent 3.5px) border-box,
+    linear-gradient(
+        150deg,
+        color-mix(in srgb, var(--brand) 75%, white),
+        var(--brand) 55%,
+        color-mix(in srgb, var(--brand) 88%, black)
+      )
+      padding-box,
+    linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--brand) 60%, white),
+        var(--brand)
+      )
+      border-box;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--brand) 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent);
+  animation: casella-scatto 0.22s ease;
+}
+
+input[type="checkbox"]:checked:not(:disabled):hover,
+input[type="radio"]:checked:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+/* Il riquadro del focus segue gli angoli della casella invece di squadrarli. */
+input[type="checkbox"]:focus-visible {
+  outline-offset: 3px;
+  border-radius: 7px;
+}
+input[type="radio"]:focus-visible {
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes casella-scatto {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+}
 
 /* Blocco richiudibile: i moduli di inserimento restano fuori dai piedi
    finche' non servono. */

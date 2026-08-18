@@ -157,6 +157,19 @@ export function IconBell(p: Props) {
   );
 }
 
+export function IconRubrica(p: Props) {
+  return (
+    <Base {...p}>
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v18H5.5A1.5 1.5 0 0 1 4 19.5z" />
+      <path d="M2 8h2" />
+      <path d="M2 12h2" />
+      <path d="M2 16h2" />
+      <circle cx="12" cy="10" r="2.2" />
+      <path d="M8.7 16a3.6 3.6 0 0 1 6.6 0" />
+    </Base>
+  );
+}
+
 export function IconUsers(p: Props) {
   return (
     <Base {...p}>

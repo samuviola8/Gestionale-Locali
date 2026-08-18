@@ -145,7 +145,7 @@ export default function NewLocaleForm({
                 value={p.key}
                 checked={profileKey === p.key}
                 onChange={() => pickProfile(p.key)}
-                className="mt-0.5"
+                className="mt-px"
               />
               <span>
                 <span className="font-medium">{p.label}</span>
@@ -388,7 +388,7 @@ export default function NewLocaleForm({
                 name={`modulo_${m.key}`}
                 defaultChecked={m.defaultEnabled}
                 disabled={m.comingSoon}
-                className="mt-0.5"
+                className="mt-px"
               />
               <span className="min-w-0">
                 <span className="font-medium">{m.label}</span>

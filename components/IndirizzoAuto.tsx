@@ -21,13 +21,19 @@ import {
 export default function IndirizzoAuto({
   value,
   onChange,
+  iniziale,
 }: {
   value: string;
   onChange: (v: string) => void;
+  // L'indirizzo che arriva gia' scritto, dalla rubrica. Vale al montaggio e
+  // basta: chi lo passa rimonta il componente con una `key` nuova, cosi' lo
+  // stato interno riparte pulito invece di mescolare i pezzi del cliente
+  // scelto adesso con quelli di quello di prima.
+  iniziale?: { via: string; civico: string; dettaglio: string };
 }) {
-  const [via, setVia] = useState("");
-  const [civico, setCivico] = useState("");
-  const [dettaglio, setDettaglio] = useState("");
+  const [via, setVia] = useState(iniziale?.via ?? "");
+  const [civico, setCivico] = useState(iniziale?.civico ?? "");
+  const [dettaglio, setDettaglio] = useState(iniziale?.dettaglio ?? "");
   const [suggerimenti, setSuggerimenti] = useState<Suggerimento[]>([]);
   const [aperto, setAperto] = useState(false);
   const [evidenziato, setEvidenziato] = useState(-1);
@@ -35,8 +41,9 @@ export default function IndirizzoAuto({
   const box = useRef<HTMLDivElement>(null);
   const campoCivico = useRef<HTMLInputElement>(null);
   // Cosa e' arrivato dall'elenco: serve a non ricercare subito dopo, o
-  // scegliendo un indirizzo il pannello si riaprirebbe da solo.
-  const scelto = useRef("");
+  // scegliendo un indirizzo il pannello si riaprirebbe da solo. Un indirizzo
+  // preso dalla rubrica conta come scelto: e' gia' quello giusto.
+  const scelto = useRef(iniziale?.via ?? "");
   // Se il numero nel campo l'ha battuto una persona nel suo campo. Quello che
   // arriva dall'elenco o dalla riga della via appartiene all'indirizzo scelto e
   // decade insieme a lui; quello scritto a mano no, e cancellarlo vorrebbe dire

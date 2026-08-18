@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   menuCategories,
@@ -28,6 +28,9 @@ export type MenuProduct = {
   acceptsNote: boolean;
   // In cima alla cassa al banco. Non cambia niente lato cliente.
   pinned: boolean;
+  // Valorizzata solo dalla ricerca: fuori dalla propria sezione, una riga
+  // senza categoria non dice dove si trova il prodotto.
+  categoria?: string;
 };
 
 export type MenuCategory = {
@@ -157,6 +160,58 @@ export async function getCategoryProducts(
     )
     .orderBy(asc(menuProducts.sortOrder), asc(menuProducts.name));
 
+  return conVarianti(tenantId, prods);
+}
+
+// Cerca in tutto il menu, non nella categoria aperta: chi cerca "negroni" non
+// sa in quale sezione sta, ed e' il motivo per cui sta cercando. Il nome della
+// categoria torna insieme al prodotto, altrimenti i risultati sono righe senza
+// contesto.
+//
+// Il tetto a 50 non e' cautela: e' il patto della pagina, che carica una
+// categoria per volta perche' centocinquanta prodotti insieme pesavano
+// megabyte. Una ricerca che riportasse tutto lo romperebbe.
+export async function searchProducts(
+  tenantId: string,
+  testo: string
+): Promise<MenuProduct[]> {
+  const q = testo.trim();
+  if (!q) return [];
+
+  // Si cerca dall'inizio di una parola, non ovunque dentro il nome: con la
+  // sottostringa secca "gin" pescava anche lo Champagne "Brut Ori-gin-e".
+  // \m e' il confine di parola di Postgres, e tiene conto anche dei trattini,
+  // cosi' "germain" trova "St-Germain".
+  const inizioParola = `\\m${q.replace(/[.^$*+?()[\]{}|\\-]/g, "\\$&")}`;
+
+  const righe = await db
+    .select({ prodotto: menuProducts, categoria: menuCategories.name })
+    .from(menuProducts)
+    .innerJoin(menuCategories, eq(menuCategories.id, menuProducts.categoryId))
+    .where(
+      and(
+        eq(menuProducts.tenantId, tenantId),
+        sql`${menuProducts.name} ~* ${inizioParola}`
+      )
+    )
+    .orderBy(asc(menuProducts.name))
+    .limit(50);
+
+  const conFormati = await conVarianti(
+    tenantId,
+    righe.map((r) => r.prodotto)
+  );
+  const categoriaDi = new Map(righe.map((r) => [r.prodotto.id, r.categoria]));
+  return conFormati.map((p) => ({ ...p, categoria: categoriaDi.get(p.id) }));
+}
+
+// Attacca a ogni prodotto i suoi formati. Le varianti si leggono in una query
+// sola per tutto il locale: sono poche, e una query per prodotto su un elenco
+// di cinquanta sarebbe cinquanta viaggi al database.
+async function conVarianti(
+  tenantId: string,
+  prods: (typeof menuProducts.$inferSelect)[]
+): Promise<MenuProduct[]> {
   if (!prods.length) return [];
 
   const variants = await db

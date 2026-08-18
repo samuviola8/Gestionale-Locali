@@ -14,6 +14,7 @@ export type ModuleKey =
   | "reservations"
   | "takeaway"
   | "delivery"
+  | "customers"
   | "payments"
   | "ai_suggestions"
   | "loyalty";
@@ -89,6 +90,15 @@ export const MODULES: ModuleDef[] = [
     label: "Consegna a domicilio",
     description:
       "Come l'asporto, più indirizzo, telefono e costo di consegna.",
+    defaultEnabled: false,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "customers",
+    label: "Rubrica clienti",
+    description:
+      "Nome, telefono e indirizzo di chi ordina: alla cassa basta scrivere il nome e l'anagrafica si compila da sola.",
     defaultEnabled: false,
     addon: false,
     comingSoon: false,

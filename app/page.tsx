@@ -15,6 +15,7 @@ import {
   PannelloConto,
   PannelloCoda,
   PannelloPrenotazione,
+  PannelloRubrica,
   SchermoCliente,
 } from "@/components/landing/Mockup";
 
@@ -360,6 +361,67 @@ export default async function Home() {
               </Rivela>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---------- Rubrica ---------- */}
+      <section className="lp-sezione lp-bordo-sopra">
+        <div className="lp-contenuto grid items-center gap-14 lg:grid-cols-[1fr_0.9fr]">
+          <Rivela>
+            <Titolo occhiello="Chi ordina da casa">
+              Scrivi tre lettere del nome,
+              <br />
+              l&apos;indirizzo lo sa già
+            </Titolo>
+
+            <ul className="mt-8 space-y-5">
+              {[
+                [
+                  "Un cliente, una scheda",
+                  "Nome, telefono, via, civico, CAP e la nota di consegna — «citofono rotto, secondo piano» — si compilano tutti insieme scegliendo dall'elenco. Chi ordina ogni giovedì non ridetta niente, e il civico non si sbaglia perché nessuno lo sta ribattendo.",
+                ],
+                [
+                  "Riconosce il numero, non come è scritto",
+                  "«+39 333 1234567» e «3331234567» sono la stessa persona: la scheda si aggiorna invece di diventare la terza uguale alle altre due. Al telefono si cerca dal nome o dal numero, quello che arriva prima.",
+                ],
+                [
+                  "Si riempie lavorando",
+                  "A ogni ordine la spunta «salva in rubrica» è già accesa: la rubrica si costruisce da sola battendo le comande. Si spegne per il cliente di passaggio o per chi non vuole lasciare i propri dati, e torna accesa all'ordine dopo.",
+                ],
+                [
+                  "Quella che avete già si importa",
+                  "Il foglio Excel, l'export del gestionale vecchio, la lista incollata: virgole o punti e virgola, intestazioni scritte come vi pare. Chi c'è già viene aggiornato e non duplicato — reimportare lo stesso file non fa danni.",
+                ],
+              ].map(([t, p]) => (
+                <li key={t} className="flex gap-4">
+                  <span
+                    className="mt-1.5 h-2 w-2 flex-none rounded-full"
+                    style={{ background: "var(--lp-accent)" }}
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <div className="font-semibold">{t}</div>
+                    <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+                      {p}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-8 text-sm" style={{ color: "var(--muted)" }}>
+              Serve soprattutto a chi consegna, ma vale anche all&apos;asporto:
+              chi passa a ritirare tutte le settimane si riconosce dal nome. Come
+              tutto il resto si accende quando serve — un locale di sola sala non
+              se la porta dietro.
+            </p>
+          </Rivela>
+
+          <Rivela ritardo={120}>
+            <div className="flex justify-center lg:justify-end">
+              <PannelloRubrica />
+            </div>
+          </Rivela>
         </div>
       </section>
 

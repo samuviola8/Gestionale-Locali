@@ -55,6 +55,18 @@ try {
   Passo "Migrazioni"
   npx drizzle-kit migrate
 
+  # Le immagini caricate prima di questo cambio stanno tutte in public\uploads
+  # alla rinfusa: questo le smista nella cartella del loro locale e riscrive
+  # gli indirizzi nel database. A regime non trova niente da fare e stampa
+  # "Spostati 0", quindi puo' restare qui a ogni aggiornamento.
+  #
+  # Sta dentro il try perche' se fallisce l'aggiornamento va fermato, ma non
+  # e' un passo da annullare: se la build cade dopo, il codice vecchio continua
+  # a mostrare le foto agli indirizzi nuovi, che legge dal database senza
+  # sapere che forma abbiano.
+  Passo "Immagini per locale"
+  npx tsx scripts/raggruppa-uploads.ts
+
   Passo "Build"
   npm run build
 }

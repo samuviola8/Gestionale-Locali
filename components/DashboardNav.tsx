@@ -14,6 +14,7 @@ import {
   IconChart,
   IconCounter,
   IconCalendar,
+  IconRubrica,
   IconSettings,
 } from "@/components/icons";
 
@@ -56,6 +57,12 @@ const items: {
     label: "Prenotazioni",
     Icon: IconCalendar,
     module: "reservations",
+  },
+  {
+    href: "/dashboard/rubrica",
+    label: "Rubrica",
+    Icon: IconRubrica,
+    module: "customers",
   },
   { href: "/dashboard/analytics", label: "Analytics", Icon: IconChart },
   { href: "/dashboard/menu", label: "Menu", Icon: IconMenu },

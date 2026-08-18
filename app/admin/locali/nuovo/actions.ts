@@ -26,7 +26,7 @@ export async function submitNewLocale(
     modules[m.key] = formData.get(`modulo_${m.key}`) === "on";
   }
 
-  const logoUrl = await saveImage(formData.get("logo"));
+  const logoUrl = await saveImage(formData.get("logo"), text(formData, "slug"));
   const minutes = parseInt(text(formData, "tableSessionMinutes"), 10);
   // Il coperto si scrive in euro ("2,00"), si conserva in centesimi.
   const coperto = parseFloat(

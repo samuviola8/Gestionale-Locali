@@ -120,6 +120,7 @@ export default async function BancoPage() {
           },
           scontrino: locale?.scontrino ?? false,
         }}
+        rubricaAttiva={modules.customers}
         invia={createCounterOrder}
       />
     </div>

@@ -545,3 +545,51 @@ export const waiterCalls = pgTable("waiter_calls", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Rubrica dei clienti del locale. Nasce per il domicilio: l'indirizzo di chi
+// ordina la cena e' sempre lo stesso, e farlo ridettare ogni volta al telefono
+// e' il momento in cui si sbaglia il civico. Vale anche per l'asporto, dove
+// basta il nome per riconoscere chi passa a ritirare tutte le settimane.
+//
+// Non e' un account: il cliente non entra da nessuna parte e non ha una
+// password. E' l'agenda di carta accanto al telefono, scritta una volta sola.
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    // Il telefono ridotto alle sole cifre. E' la chiave con cui si riconosce
+    // chi ha gia' ordinato: la stessa persona lo detta ogni volta in un modo
+    // diverso ("+39 333...", "333 123 45 67"), e confrontare le stringhe cosi'
+    // come sono creerebbe tre schede per lo stesso cliente.
+    phoneKey: text("phone_key"),
+    email: text("email"),
+    // L'indirizzo sta a pezzi come alla cassa: il civico e' la cosa che si
+    // perde piu' facilmente, ed e' quella senza cui il fattorino gira a vuoto.
+    street: text("street"),
+    streetNumber: text("street_number"),
+    // Seconda riga: CAP e comune.
+    area: text("area"),
+    // La riga intera, gia' composta. Si salva invece di ricomporla ogni volta
+    // perche' e' quella che finisce stampata sulla comanda e cercata a mano.
+    address: text("address"),
+    // Il citofono rotto, il cane, "suonare al secondo piano". Chi consegna lo
+    // legge sulla comanda, e non ha modo di saperlo altrimenti.
+    notes: text("notes"),
+    ordersCount: integer("orders_count").notNull().default(0),
+    lastOrderAt: timestamp("last_order_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Un numero, un cliente. I NULL in Postgres non si scontrano fra loro:
+    // le schede senza telefono restano tutte valide, ed e' giusto cosi' —
+    // due "Marco" senza recapito possono benissimo essere due persone.
+    unique().on(table.tenantId, table.phoneKey),
+    index("customers_tenant_name_idx").on(table.tenantId, table.name),
+  ]
+);

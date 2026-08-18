@@ -86,7 +86,15 @@ export async function saveBranding(formData: FormData): Promise<void> {
   if (!id) return;
 
   const defaultTheme = String(formData.get("defaultTheme") ?? "");
-  const logoUrl = await saveImage(formData.get("logo"));
+
+  // Il logo va nella cartella del locale, e qui abbiamo solo il suo id.
+  const locale = await db
+    .select({ slug: tenants.slug })
+    .from(tenants)
+    .where(eq(tenants.id, id))
+    .limit(1);
+  if (!locale[0]) return;
+  const logoUrl = await saveImage(formData.get("logo"), locale[0].slug);
 
   await db
     .update(tenants)

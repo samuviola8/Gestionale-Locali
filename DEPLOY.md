@@ -132,8 +132,8 @@ sc.exe sdset Comanda "D:(A;;RPWPCR;;;S-1-5-32-544)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A
 
 Da qui in poi **ogni push su `main` aggiorna la produzione**: il workflow
 `.github/workflows/deploy.yml` lancia `scripts/deploy.ps1`, che scarica,
-installa le dipendenze, ferma il servizio, migra il database, ricostruisce e
-riavvia.
+installa le dipendenze, ferma il servizio, migra il database, smista le
+immagini nella cartella del loro locale, ricostruisce e riavvia.
 
 Lo stesso script si lancia a mano quando serve:
 
@@ -155,9 +155,18 @@ locale chiuso.
 migrazioni già applicate non si annullano. Se il guasto era lì va sistemato a
 mano: il database non torna indietro perché il codice sì.
 
-**`public\uploads` non è in git.** Ci sono i loghi e le foto dei prodotti, e
-sparirebbero con un clone pulito. Il deploy non li tocca, ma nel backup vanno
-messi insieme al database.
+**`public\uploads` ha una cartella per locale**, col nome dello slug:
+`public\uploads\noya-lounge\`. Così ogni menu espone soltanto i propri
+indirizzi, e quando un cliente se ne va la sua roba si cancella in un colpo
+solo. Lo smistamento lo fa `scripts\raggruppa-uploads.ts`, che il deploy lancia
+a ogni aggiornamento: sposta i file rimasti nel mucchio e riscrive gli
+indirizzi nel database, e quando non c'è più niente da spostare non fa nulla.
+
+**Le immagini sono in git**, cartelle comprese. Vuol dire che il `git reset
+--hard` dell'aggiornamento rimette quelle versionate: le foto caricate in
+produzione dopo l'ultimo commit non sono tracciate e restano, ma se una foto
+versionata viene sostituita sul server, il primo aggiornamento la riporta a
+com'era nel repo. Nel backup vanno comunque messe insieme al database.
 
 **Da salvare regolarmente**: il dump di Postgres e la cartella
 `public\uploads`. Il resto si ricostruisce da GitHub.
