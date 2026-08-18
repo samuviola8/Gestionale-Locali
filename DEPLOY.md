@@ -132,8 +132,8 @@ sc.exe sdset Comanda "D:(A;;RPWPCR;;;S-1-5-32-544)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A
 
 Da qui in poi **ogni push su `main` aggiorna la produzione**: il workflow
 `.github/workflows/deploy.yml` lancia `scripts/deploy.ps1`, che scarica,
-installa le dipendenze, ferma il servizio, migra il database, smista le
-immagini nella cartella del loro locale, ricostruisce e riavvia.
+installa le dipendenze, ferma il servizio, salva il database, lo migra, smista
+le immagini nella cartella del loro locale, ricostruisce e riavvia.
 
 Lo stesso script si lancia a mano quando serve:
 
@@ -151,9 +151,25 @@ una migrazione che toglie una colonna sotto al codice vecchio lo fa cadere.
 Meglio un fermo dichiarato che qualche minuto di errori a caso. Aggiorna a
 locale chiuso.
 
+**Prima di ogni migrazione lo script fa un dump del database**, con `pg_dump`
+in formato custom, in `D:\comanda\backup-db` (fuori dal clone, che a ogni
+aggiornamento viene resettato). Tiene le ultime dieci copie e butta le più
+vecchie. Se `pg_dump` non si trova l'aggiornamento si ferma **prima** di
+toccare il database, col servizio ancora acceso: i client Postgres devono
+essere installati sul server, nel PATH oppure sotto `Program Files\PostgreSQL`.
+
+**Le migrazioni si applicano anche quando non c'è codice nuovo.** Lo script
+confronta le migrazioni scritte in `drizzle\meta\_journal.json` con quelle
+registrate nel database e applica le mancanti: se un aggiornamento si è
+fermato a metà, rilanciarlo rimette in pari il database senza bisogno di un
+commit finto. Quando non c'è niente da fare — codice fermo e database in pari
+— esce subito senza toccare nulla.
+
 **Se la build fallisce lo script torna al commit precedente da solo**, ma le
-migrazioni già applicate non si annullano. Se il guasto era lì va sistemato a
-mano: il database non torna indietro perché il codice sì.
+migrazioni già applicate non si annullano: il codice torna indietro, il
+database no. Per quello c'è il dump, e in coda all'errore lo script stampa il
+percorso della copia e il comando `pg_restore` per rimetterla (a servizio
+fermo, perché cancella e riscrive tutto).
 
 **`public\uploads` ha una cartella per locale**, col nome dello slug:
 `public\uploads\noya-lounge\`. Così ogni menu espone soltanto i propri
@@ -169,7 +185,9 @@ versionata viene sostituita sul server, il primo aggiornamento la riporta a
 com'era nel repo. Nel backup vanno comunque messe insieme al database.
 
 **Da salvare regolarmente**: il dump di Postgres e la cartella
-`public\uploads`. Il resto si ricostruisce da GitHub.
+`public\uploads`. Il resto si ricostruisce da GitHub. I dump del deploy sono
+solo una rete per gli aggiornamenti: stanno sulla stessa macchina, quindi non
+sostituiscono un backup portato altrove.
 
 **Il super-admin è sotto `/admin`**, raggiungibile da qualunque sottodominio.
 Prima di aprire il server a internet controlla che la sua password sia solida.
