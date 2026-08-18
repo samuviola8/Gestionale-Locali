@@ -1,9 +1,12 @@
 import { getCategoryProducts, searchProducts, formatPrice } from "@/lib/menu";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PhotoUpload from "@/components/PhotoUpload";
+import Field from "@/components/Field";
+import Select from "@/components/Select";
 import {
   toggleAvailable,
   deleteProduct,
+  updateProduct,
   setProductImage,
   addVariant,
   deleteVariant,
@@ -20,12 +23,16 @@ export default async function ElencoProdotti({
   tenantId,
   categoryId,
   cerca,
+  categorie,
 }: {
   tenantId: string;
   categoryId?: string;
   // Con un testo da cercare l'elenco guarda tutto il menu invece della sola
   // categoria: le righe sono le stesse, cambia solo cosa le riempie.
   cerca?: string;
+  // Le sezioni del menu, per poter spostare un prodotto da una all'altra. Le
+  // passa la pagina, che le ha gia' caricate per le pillole in cima.
+  categorie: { id: string; name: string }[];
 }) {
   const prodotti = cerca
     ? await searchProducts(tenantId, cerca)
@@ -257,6 +264,96 @@ export default async function ElencoProdotti({
               <ConfirmSubmit label="Elimina" ariaLabel={`Elimina ${p.name}`} />
             </form>
           </div>
+
+          {/* Prima di questo, correggere un prezzo voleva dire cancellare il
+              prodotto e rifarlo: e rifarlo perdeva formati, ingredienti e foto.
+              Chiuso di suo, perche' la riga si legge molto piu' spesso di
+              quanto si corregga. */}
+          <details className="disclosure w-full">
+            <summary>Modifica</summary>
+            <div className="disclosure-body">
+              <form action={updateProduct} className="grid gap-3 sm:grid-cols-2">
+                <input type="hidden" name="id" value={p.id} />
+                <Field label="Categoria">
+                  <Select
+                    name="categoryId"
+                    ariaLabel={`Categoria di ${p.name}`}
+                    defaultValue={p.categoryId}
+                    options={categorie.map((c) => ({
+                      value: c.id,
+                      label: c.name,
+                    }))}
+                  />
+                </Field>
+                <Field label="Nome *">
+                  <input
+                    name="name"
+                    required
+                    defaultValue={p.name}
+                    aria-label={`Nome di ${p.name}`}
+                    className="input"
+                  />
+                </Field>
+                <Field label="Prezzo *" hint="In euro, es. 12,00">
+                  <input
+                    name="price"
+                    required
+                    inputMode="decimal"
+                    defaultValue={(p.priceCents / 100).toFixed(2).replace(".", ",")}
+                    aria-label={`Prezzo di ${p.name}`}
+                    className="input"
+                  />
+                </Field>
+                <Field label="Descrizione">
+                  <input
+                    name="description"
+                    defaultValue={p.description ?? ""}
+                    aria-label={`Descrizione di ${p.name}`}
+                    className="input"
+                  />
+                </Field>
+                {/* Gli allergeni si scrivono solo qui: in creazione erano un
+                    campo, e poi non c'era piu' modo di rimetterci mano. */}
+                <Field
+                  label="Allergeni"
+                  hint="Separati da virgola"
+                  className="sm:col-span-2"
+                >
+                  <input
+                    name="allergens"
+                    defaultValue={p.allergens.join(", ")}
+                    aria-label={`Allergeni di ${p.name}`}
+                    className="input"
+                  />
+                </Field>
+                <label className="flex items-start gap-2.5 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    name="acceptsNote"
+                    defaultChecked={p.acceptsNote}
+                    className="mt-px"
+                  />
+                  <span>
+                    <span className="font-medium">Su richiesta</span>
+                    <span
+                      className="mt-0.5 block text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      Il cliente scrive cosa desidera invece di scegliere. Il
+                      prezzo qui sopra è quello di partenza.
+                    </span>
+                  </span>
+                </label>
+                <div className="flex items-center gap-3 sm:col-span-2">
+                  <button className="btn btn-primary">Salva</button>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>
+                    Formati, ingredienti, foto ed esaurito si cambiano dalla riga
+                    qui sopra.
+                  </span>
+                </div>
+              </form>
+            </div>
+          </details>
         </div>
       ))}
     </div>

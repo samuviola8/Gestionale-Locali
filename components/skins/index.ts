@@ -11,10 +11,23 @@ export const SKINS: Skin[] = [baseSkin, noyaSkin];
 
 export const DEFAULT_SKIN_KEY = "base";
 
-export function getSkin(key: string | null | undefined): Skin {
+// Una skin con tutti i pezzi al loro posto: i facoltativi sono gia' riempiti
+// col corrispondente della skin base, cosi' chi la usa non deve chiederselo.
+type SkinCompleta = Skin & {
+  ProductSheet: NonNullable<Skin["ProductSheet"]>;
+};
+
+// Riempita una volta sola all'avvio: farlo a ogni render vorrebbe dire un
+// oggetto nuovo per fotogramma, e con lui il rimontaggio di tutte le card.
+const COMPLETE: SkinCompleta[] = SKINS.map((s) => ({
+  ...s,
+  ProductSheet: s.ProductSheet ?? baseSkin.ProductSheet!,
+}));
+
+export function getSkin(key: string | null | undefined): SkinCompleta {
   return (
-    SKINS.find((s) => s.key === key) ??
-    SKINS.find((s) => s.key === DEFAULT_SKIN_KEY)!
+    COMPLETE.find((s) => s.key === key) ??
+    COMPLETE.find((s) => s.key === DEFAULT_SKIN_KEY)!
   );
 }
 

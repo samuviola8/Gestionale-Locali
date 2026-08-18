@@ -64,6 +64,23 @@ export type ProductCardProps = {
   // Etichetta gia' formattata ("€12,00" oppure "da €5,00").
   priceLabel: string;
   onAdd: () => void;
+  // Apre il dettaglio. La card resta la riga corta da scorrere: quello che non
+  // ci sta (foto grande, ingredienti, allergeni per esteso) sta li' dentro.
+  onOpen: () => void;
+};
+
+// Il dettaglio di un prodotto. La skin disegna solo il pannello: sfondo,
+// chiusura al tocco fuori, Escape e tasto indietro li mette OrderClient, come
+// per tutti gli altri fogli.
+export type ProductSheetProps = {
+  product: SkinProduct;
+  // Indice della categoria a cui appartiene: serve alle skin che colorano per
+  // sezione, cosi' il foglio resta in tinta con la card da cui si e' aperto.
+  categoryIndex: number;
+  priceLabel: string;
+  // Senza variante sui prodotti a prezzo unico. Chiude il foglio da solo.
+  onAdd: (variant?: SkinVariant) => void;
+  onClose: () => void;
 };
 
 export type Skin = {
@@ -78,4 +95,6 @@ export type Skin = {
   CategoryNav: (props: CategoryNavProps) => React.ReactElement;
   CategorySection: (props: CategorySectionProps) => React.ReactElement;
   ProductCard: (props: ProductCardProps) => React.ReactElement;
+  // Facoltativo: chi non lo disegna eredita il dettaglio della skin base.
+  ProductSheet?: (props: ProductSheetProps) => React.ReactElement;
 };

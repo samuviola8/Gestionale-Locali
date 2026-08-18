@@ -33,6 +33,10 @@ export type MenuProduct = {
   // Valorizzata solo dalla ricerca: fuori dalla propria sezione, una riga
   // senza categoria non dice dove si trova il prodotto.
   categoria?: string;
+  // Valorizzata solo dal backoffice, dove si puo' spostare un prodotto di
+  // sezione. Al cliente non serve, e su centocinquanta prodotti sarebbero
+  // cinque chilobyte di identificativi mandati al telefono per niente.
+  categoryId?: string;
 };
 
 export type MenuCategory = {
@@ -248,6 +252,7 @@ async function conVarianti(
     acceptsNote: p.acceptsNote,
     requiresGlasses: p.requiresGlasses,
     pinned: p.pinned,
+    categoryId: p.categoryId,
   }));
 }
 

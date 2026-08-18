@@ -274,7 +274,11 @@ export default async function MenuAdmin({
           </div>
 
           <Suspense key={cerca} fallback={<MenuSkeleton righe={3} />}>
-            <ElencoProdotti tenantId={session.tenantId} cerca={cerca} />
+            <ElencoProdotti
+              tenantId={session.tenantId}
+              cerca={cerca}
+              categorie={menu}
+            />
           </Suspense>
         </section>
       ) : categoriaAttiva ? (
@@ -302,6 +306,7 @@ export default async function MenuAdmin({
             <ElencoProdotti
               tenantId={session.tenantId}
               categoryId={categoriaAttiva.id}
+              categorie={menu}
             />
           </Suspense>
         </section>

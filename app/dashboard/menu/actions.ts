@@ -99,6 +99,51 @@ export async function addProduct(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/menu");
 }
 
+// Correggere quello che c'e' gia': un prezzo che cambia, un nome scritto male,
+// un allergene dimenticato. Prima si poteva solo cancellare il prodotto e
+// rifarlo da capo — e rifarlo voleva dire perdere formati, ingredienti e foto,
+// che stanno tutti attaccati alla riga vecchia.
+//
+// Restano fuori le cose che hanno gia' un interruttore loro: esaurito,
+// preferito, calici, ingredienti e formati si toccano dalla riga.
+export async function updateProduct(formData: FormData): Promise<void> {
+  const tenantId = await requireTenantId();
+  const id = String(formData.get("id") ?? "");
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const allergens = splitList(formData.get("allergens"));
+  const priceCents = euroToCents(String(formData.get("price") ?? ""));
+
+  // Stessi paletti della creazione: un prodotto senza nome o a prezzo zero
+  // sarebbe una riga che al banco nessuno sa battere.
+  if (!id || !name || !categoryId || priceCents <= 0) return;
+
+  // La categoria arriva dal modulo: senza questo controllo si potrebbe
+  // spostare un prodotto dentro la sezione di un altro locale.
+  const cat = await db
+    .select({ id: menuCategories.id })
+    .from(menuCategories)
+    .where(
+      and(eq(menuCategories.id, categoryId), eq(menuCategories.tenantId, tenantId))
+    )
+    .limit(1);
+  if (!cat[0]) return;
+
+  await db
+    .update(menuProducts)
+    .set({
+      categoryId,
+      name,
+      description,
+      allergens,
+      priceCents,
+      acceptsNote: formData.get("acceptsNote") === "on",
+    })
+    .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)));
+  revalidatePath("/dashboard/menu");
+}
+
 export async function setProductImage(formData: FormData): Promise<void> {
   const { tenantId, slug } = await requireLocale();
   const id = String(formData.get("id") ?? "");
