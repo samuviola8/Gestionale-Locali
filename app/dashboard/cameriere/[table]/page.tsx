@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -9,6 +10,7 @@ import { getMenu } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
 import { requireModule } from "@/lib/module-guard";
 import OrderClient from "@/components/OrderClient";
+import SenzaZoom from "@/components/SenzaZoom";
 import {
   createStaffOrder,
   noopCallWaiter,
@@ -18,6 +20,17 @@ import {
 // La stessa pagina che vede il cliente, aperta dal cameriere. Non e' una copia:
 // e' proprio OrderClient, cosi' una modifica al menu o alle note vale per
 // entrambi e non si finisce con due interfacce che divergono.
+
+// E come per il cliente, qui non si ingrandisce: il cameriere prende l'ordine
+// col telefono in mano mentre parla, ed e' li' che la pizzicata parte da sola.
+// Vale solo per questa pagina: il resto della dashboard si lavora anche da
+// schermo grande, e togliere lo zoom a chi legge il conto sarebbe un dispetto.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 export default async function OrdinaPerTavolo({
   params,
 }: {
@@ -49,7 +62,8 @@ export default async function OrdinaPerTavolo({
   ]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ touchAction: "pan-x pan-y" }}>
+      <SenzaZoom />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Tavolo {tableNumber}</h1>

@@ -10,6 +10,7 @@ import OrderClient from "@/components/OrderClient";
 import SenzaZoom from "@/components/SenzaZoom";
 import TableStatus from "@/components/TableStatus";
 import ThemeToggle from "@/components/ThemeToggle";
+import { MarchioMenu } from "@/components/Firma";
 import GuidaTavolo from "@/components/GuidaTavolo";
 import { createOrder, callWaiter, chiudiCondiviso } from "./order-actions";
 
@@ -142,6 +143,8 @@ export default async function TablePage({
         ricordo={ricordo}
       />
       <TableStatus tableNumber={tableNumber} splitBill={modules.split_bill} />
+
+      {t.menuBranding && <MarchioMenu />}
     </main>
   );
 }

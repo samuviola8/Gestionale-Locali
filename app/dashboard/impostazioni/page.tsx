@@ -27,6 +27,7 @@ import {
   provaPosta,
   salvaChiamate,
   salvaChiusure,
+  salvaMenuAlTavolo,
   salvaOrari,
   salvaPosta,
   salvaPrenotazioni,
@@ -580,6 +581,31 @@ export default async function ImpostazioniPage() {
               {locale.smtpUser && locale.smtpPass && <ProvaPosta prova={provaPosta} />}
             </>
           )}
+        </section>
+      )}
+
+      {/* --- Menu al tavolo --- */}
+      {modules.qr_ordering && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Menu al tavolo</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Come si chiude la pagina che vedono i vostri clienti.
+          </p>
+
+          <form action={salvaMenuAlTavolo} className="mt-3">
+            <div
+              className="divide-y"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <Interruttore
+                nome="marchio"
+                etichetta="Firma in fondo al menu"
+                descrizione="Una riga piccola sotto l’ultima categoria: “Menu con Comanda”. Non compare nel carrello né nella conferma dell’ordine."
+                acceso={locale.menuBranding}
+              />
+            </div>
+            <button className="btn btn-primary btn-sm mt-3">Salva</button>
+          </form>
         </section>
       )}
 

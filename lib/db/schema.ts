@@ -50,6 +50,13 @@ export const tenants = pgTable("tenants", {
   // animazioni, accenti). La logica di ordine e carrello e' la stessa per tutti.
   menuSkin: text("menu_skin").notNull().default("base"),
 
+  // La riga "Menu con Comanda" in fondo alla pagina del cliente. Accesa
+  // dappertutto: quel menu e' l'unico posto con del passaggio vero, ed e' li'
+  // che il titolare del locale di fronte scopre che il prodotto esiste. Si
+  // spegne per chi non la vuole, ed e' una cosa che si concede, non che si
+  // regala al primo sopracciglio alzato.
+  menuBranding: boolean("menu_branding").notNull().default(true),
+
   // Durata della sessione tavolo aperta scansionando il QR.
   tableSessionMinutes: integer("table_session_minutes").notNull().default(120),
 

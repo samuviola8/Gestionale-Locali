@@ -225,6 +225,13 @@
       "when": 1787056363710,
       "tag": "0031_abnormal_wiccan",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787062086368,
+      "tag": "0032_magenta_pyro",
+      "breakpoints": true
     }
   ]
 }

@@ -101,6 +101,7 @@ export async function saveBranding(formData: FormData): Promise<void> {
     .set({
       themePreset: getPreset(String(formData.get("themePreset") ?? "")).key,
       menuSkin: getSkin(String(formData.get("menuSkin") ?? "")).key,
+      menuBranding: formData.get("menuBranding") === "on",
       defaultTheme: isValidTheme(defaultTheme) ? defaultTheme : "system",
       brandColor: safeColor(String(formData.get("brandColor") ?? "")),
       brandAccent: safeColor(String(formData.get("brandAccent") ?? "")),

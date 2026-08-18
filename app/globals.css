@@ -688,3 +688,15 @@ input[type="radio"]:disabled {
 .disclosure > summary:hover { background: var(--surface-2); }
 .disclosure-body { padding: 4px 16px 16px; }
 }
+
+/* Il "Comanda" in fondo al menu del cliente. Blu da collegamento e
+   sottolineato: in una riga piccola e grigia, in coda alla pagina, senza i due
+   segni che tutti riconoscono nessuno prova a toccarlo.
+   Il blu e' fisso e non quello del locale: e' l'unica riga di quella pagina
+   che non parla del locale, e prendere il suo colore la farebbe sembrare sua. */
+.marchio-link {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .marchio-link { color: #7db3ff; }

@@ -302,6 +302,24 @@ export default async function LocaleDetail({
               </p>
             </div>
             <div>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  name="menuBranding"
+                  defaultChecked={t.menuBranding}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm">Firma in fondo al menu</span>
+                  <span className="block text-xs text-neutral-400">
+                    La riga &quot;Menu con Comanda&quot; sotto l&apos;ultima
+                    categoria, che porta alla vetrina. Si toglie a chi non la
+                    vuole.
+                  </span>
+                </span>
+              </label>
+            </div>
+            <div>
               <div className="mb-1 text-xs text-neutral-500">Tema di default</div>
               <select
                 name="defaultTheme"

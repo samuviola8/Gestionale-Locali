@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "menu_branding" boolean DEFAULT true NOT NULL;

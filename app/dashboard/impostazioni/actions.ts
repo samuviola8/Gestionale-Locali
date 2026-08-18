@@ -249,6 +249,17 @@ export async function provaPosta(): Promise<EsitoProva> {
 
 // Come si annuncia una chiamata dal tavolo. Un suono che non esiste non si
 // scrive: resta quello di prima, che almeno si sente.
+// La firma in fondo al menu del cliente. La decisione e' del locale: quella
+// pagina la presenta come sua.
+export async function salvaMenuAlTavolo(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  await db
+    .update(tenants)
+    .set({ menuBranding: formData.get("marchio") === "on" })
+    .where(eq(tenants.id, tenantId));
+  revalidatePath("/dashboard/impostazioni");
+}
+
 export async function salvaChiamate(formData: FormData): Promise<void> {
   const tenantId = await requireOwner();
   const suono = String(formData.get("suono") ?? "");
