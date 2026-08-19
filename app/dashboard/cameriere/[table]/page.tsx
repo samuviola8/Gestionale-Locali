@@ -8,6 +8,7 @@ import { getSessionUser } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getMenu } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
+import { personeAlTavolo } from "@/lib/bill-query";
 import { requireModule } from "@/lib/module-guard";
 import OrderClient from "@/components/OrderClient";
 import SenzaZoom from "@/components/SenzaZoom";
@@ -61,6 +62,13 @@ export default async function OrdinaPerTavolo({
     getTenantModules(session.tenantId),
   ]);
 
+  // Chi e' gia' seduto: il cameriere li tocca invece di riscriverli. Si legge
+  // qui e non dal client perche' la lettura del tavolo vuole la sessione del
+  // QR, che lui non ha.
+  const persone = modules.split_bill
+    ? await personeAlTavolo(session.tenantId, tableNumber)
+    : [];
+
   return (
     <div className="space-y-4" style={{ touchAction: "pan-x pan-y" }}>
       <SenzaZoom />
@@ -86,6 +94,7 @@ export default async function OrdinaPerTavolo({
           splitBill={modules.split_bill}
           waiterCall={false}
           staffMode
+          personeAlTavolo={persone}
           submitOrder={createStaffOrder}
           callWaiter={noopCallWaiter}
           chiudiCondiviso={chiudiCondivisoStaff}

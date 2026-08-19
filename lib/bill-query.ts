@@ -1,7 +1,14 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { billSettlements, orderItems, orders, tenants } from "@/lib/db/schema";
-import { buildTable, type BillLine, type BillTable } from "@/lib/bill";
+import {
+  ALIAS_CONDIVISO,
+  buildTable,
+  eGruppo,
+  membriDi,
+  type BillLine,
+  type BillTable,
+} from "@/lib/bill";
 import { getChannel } from "@/lib/channels";
 
 // Carica i conti aperti di un locale. Sta a parte dalla route perche' lo usa
@@ -196,4 +203,49 @@ export async function loadOpenTables(
       }
       return a.tableNumber - b.tableNumber || a.label.localeCompare(b.label);
     });
+}
+
+// Chi e' seduto adesso a un tavolo, cioe' i nomi che compaiono sugli ordini
+// ancora aperti. Non c'e' un elenco dei presenti da nessuna parte: al tavolo
+// nessuno fa l'appello, e l'unica traccia di chi c'e' e' quello che ha
+// ordinato. Un alias di gruppo vale per le persone che nomina.
+//
+// La usano la pagina del cliente — che senza non saprebbe dei nomi scritti
+// sugli altri telefoni — e quella del cameriere, che li propone da toccare
+// invece di farglieli riscrivere.
+export async function personeAlTavolo(
+  tenantId: string,
+  tableNumber: number
+): Promise<string[]> {
+  const os = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.tenantId, tenantId),
+        eq(orders.tableNumber, tableNumber),
+        isNull(orders.closedAt)
+      )
+    );
+  if (!os.length) return [];
+
+  const its = await db
+    .select({ alias: orderItems.alias })
+    .from(orderItems)
+    .where(
+      inArray(
+        orderItems.orderId,
+        os.map((o) => o.id)
+      )
+    );
+
+  return [
+    ...new Set(
+      its.flatMap((i) => {
+        const a = i.alias ?? "";
+        if (!a || a === "Tavolo" || a === ALIAS_CONDIVISO) return [];
+        return eGruppo(a) ? membriDi(a) : [a];
+      })
+    ),
+  ];
 }

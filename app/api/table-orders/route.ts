@@ -4,8 +4,7 @@ import { db } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { requireTableSession } from "@/lib/table-session";
-import { loadOpenTables } from "@/lib/bill-query";
-import { ALIAS_CONDIVISO, eGruppo, membriDi } from "@/lib/bill";
+import { loadOpenTables, personeAlTavolo } from "@/lib/bill-query";
 
 // Usato dalla pagina cliente per lo stato del proprio tavolo: richiede la
 // sessione aperta col QR, altrimenti si leggerebbero gli ordini altrui.
@@ -76,16 +75,7 @@ export async function GET(req: Request) {
   // I nomi gia' in uso al tavolo, da qualunque telefono siano stati scritti.
   // Senza, ogni telefono conosce solo chi ci ha digitato sopra, e dividere con
   // chi ha ordinato dall'altro telefono e' impossibile: per lui non esiste.
-  // Un alias di gruppo vale per le persone che nomina.
-  const persone = [
-    ...new Set(
-      its.flatMap((i) => {
-        const a = i.alias ?? "";
-        if (!a || a === "Tavolo" || a === ALIAS_CONDIVISO) return [];
-        return eGruppo(a) ? membriDi(a) : [a];
-      })
-    ),
-  ];
+  const persone = await personeAlTavolo(tenant.id, table);
 
   return NextResponse.json({
     orders: result,
