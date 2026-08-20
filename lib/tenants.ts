@@ -8,6 +8,10 @@ export type Tenant = {
   slug: string;
   name: string;
   suspended: boolean;
+  // Servizio spento perche' il conto non torna. Diverso da `suspended`:
+  // vedi lib/billing/blocco.ts.
+  serviceBlocked: boolean;
+  blockedReason: string | null;
   logoUrl: string | null;
   tableSessionMinutes: number;
   // Coperto per persona: serve anche alla pagina del tavolo, per dire al
@@ -27,6 +31,8 @@ const columns = {
   slug: tenants.slug,
   name: tenants.name,
   suspended: tenants.suspended,
+  serviceBlocked: tenants.serviceBlocked,
+  blockedReason: tenants.blockedReason,
   themePreset: tenants.themePreset,
   brandColor: tenants.brandColor,
   brandAccent: tenants.brandAccent,
@@ -41,11 +47,15 @@ const columns = {
 };
 
 type Row = {
-  [K in keyof typeof columns]: K extends "suspended" | "callBlink" | "menuBranding"
+  [K in keyof typeof columns]: K extends
+    | "suspended"
+    | "serviceBlocked"
+    | "callBlink"
+    | "menuBranding"
     ? boolean
     : K extends "tableSessionMinutes" | "coverChargeCents"
       ? number
-      : K extends "brandColor" | "brandAccent" | "logoUrl"
+      : K extends "brandColor" | "brandAccent" | "logoUrl" | "blockedReason"
         ? string | null
         : string;
 };
@@ -56,6 +66,8 @@ function toTenant(row: Row): Tenant {
     slug: row.slug,
     name: row.name,
     suspended: row.suspended,
+    serviceBlocked: row.serviceBlocked,
+    blockedReason: row.blockedReason,
     logoUrl: row.logoUrl,
     tableSessionMinutes: row.tableSessionMinutes,
     coverChargeCents: row.coverChargeCents,

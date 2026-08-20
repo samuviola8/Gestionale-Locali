@@ -21,6 +21,14 @@ export const tenants = pgTable("tenants", {
   customDomain: text("custom_domain").unique(),
   suspended: boolean("suspended").notNull().default(false),
 
+  // Servizio spento perche' il conto non torna: fattura scaduta oltre la
+  // tolleranza, o prova finita. Sta a parte da `suspended` — quello e' la mia
+  // mano sull'interruttore e chiude tutto, login compreso. Questo lascia
+  // entrare il titolare, che deve poter vedere cosa deve e pagarlo.
+  serviceBlocked: boolean("service_blocked").notNull().default(false),
+  // morosita | prova_scaduta
+  blockedReason: text("blocked_reason"),
+
   // Anagrafica del locale: serve in fase di onboarding e sui documenti.
   legalName: text("legal_name"),
   address: text("address"),
@@ -30,6 +38,18 @@ export const tenants = pgTable("tenants", {
   phone: text("phone"),
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
+
+  // Dati che servono a fatturare l'abbonamento al locale. Restano vuoti
+  // finche' non si firma: un locale in prova non ha ancora niente da pagare.
+  // Il codice destinatario e la PEC sono alternativi — lo SDI si accontenta
+  // di uno dei due — ma qui stanno tutti e due perche' il commercialista del
+  // locale dara' quello che gli viene comodo, e chiederglielo due volte no.
+  vatNumber: text("vat_number"),
+  taxCode: text("tax_code"),
+  sdiCode: text("sdi_code"),
+  pecEmail: text("pec_email"),
+  // Dove arrivano i documenti. Spesso non e' la mail di chi lavora in sala.
+  billingEmail: text("billing_email"),
   notes: text("notes"),
   // Dove sta il locale, ricavate una volta sola dall'indirizzo. Servono a
   // cercare gli indirizzi di consegna intorno a lui: una consegna e' quasi
@@ -731,4 +751,279 @@ export const supportTickets = pgTable(
     index("support_tickets_tenant_idx").on(table.tenantId, table.createdAt),
     index("support_tickets_status_idx").on(table.status),
   ]
+);
+
+// Il contratto di un locale: una riga sola, che dice cosa paga e quando.
+//
+// Il prezzo sta qui e non nel listino di lib/billing/listino.ts perche' e' un
+// patto gia' fatto: il listino cambia, quello che il locale ha accettato no.
+// Vale anche per i primi venti, che hanno un prezzo bloccato a vita e che
+// nessun ritocco al listino deve poter toccare per sbaglio.
+export const tenantBilling = pgTable("tenant_billing", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .unique()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+
+  // "abbonamento": canone e basta, si rinnova finche' non disdice.
+  // "impianto": attivazione pagata una volta all'inizio, poi assistenza.
+  model: text("model").notNull().default("abbonamento"),
+  // sala | locale | tutto | su_misura
+  pack: text("pack").notNull().default("sala"),
+  // mensile | annuale. Sull'impianto l'assistenza e' sempre mensile.
+  period: text("period").notNull().default("mensile"),
+
+  // Quanto si paga a ogni scadenza, gia' scelto fra mese e anno: chi legge
+  // questa riga non deve rifare il conto per sapere cosa addebitare.
+  recurringCents: integer("recurring_cents").notNull().default(0),
+  // Attivazione una tantum: si fattura alla firma e poi non si tocca piu'.
+  activationCents: integer("activation_cents").notNull().default(0),
+  activationInvoicedAt: timestamp("activation_invoiced_at", { withTimezone: true }),
+  // Quota piattaforma sul transato, in punti base (40 = 0,40%).
+  transactionBps: integer("transaction_bps").notNull().default(0),
+
+  // prova | attivo | sospeso | chiuso. "sospeso" e' il non pagante: il locale
+  // resta, i dati restano, la dashboard no. Diverso da tenants.suspended, che
+  // e' la mano dell'admin — qui e' il conto che non torna.
+  status: text("status").notNull().default("prova"),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  // La prossima scadenza da fatturare. E' il campo che fa girare tutto:
+  // "chi va fatturato oggi" e' una sola riga di query su questa colonna.
+  nextInvoiceAt: timestamp("next_invoice_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+
+  // stripe | paypal | manuale. Con "manuale" si segna a mano l'incasso.
+  provider: text("provider").notNull().default("manuale"),
+  // Gli identificativi di la': il cliente e l'abbonamento aperti da Stripe o
+  // da PayPal. Restano nulli finche' il locale non mette un metodo.
+  providerCustomerId: text("provider_customer_id"),
+  providerSubscriptionId: text("provider_subscription_id"),
+
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// I documenti emessi al locale.
+//
+// Emittente e destinatario sono copiati dentro, non letti per riferimento:
+// una fattura racconta com'erano le cose il giorno in cui e' stata emessa, e
+// se il locale cambia ragione sociale a settembre quelle di marzo devono
+// restare come sono. Stessa regola dei prezzi negli ordini.
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+
+    // Numerazione per anno, senza buchi: 2026/1, 2026/2. Il numero si assegna
+    // all'emissione, mai alla bozza — una bozza cancellata non deve lasciare
+    // un vuoto in mezzo alla serie.
+    year: integer("year").notNull(),
+    number: integer("number"),
+    // proforma | fattura | nota_credito
+    kind: text("kind").notNull().default("fattura"),
+
+    // bozza | emesso | pagato | scaduto | annullato
+    status: text("status").notNull().default("bozza"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    // Il periodo che il documento copre: "marzo", "dal 1 al 31". Serve al
+    // locale per capire cosa sta pagando piu' del numero progressivo.
+    periodStart: timestamp("period_start", { withTimezone: true }),
+    periodEnd: timestamp("period_end", { withTimezone: true }),
+
+    subtotalCents: integer("subtotal_cents").notNull().default(0),
+    vatRateBps: integer("vat_rate_bps").notNull().default(0),
+    vatCents: integer("vat_cents").notNull().default(0),
+    // Marca da bollo: due euro sopra i 77,47 quando l'IVA non c'e'. Sta a
+    // parte perche' non e' imponibile e non e' imposta, e sommarla dentro uno
+    // dei due farebbe tornare i conti sbagliati al commercialista.
+    stampCents: integer("stamp_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+
+    // Emittente e destinatario congelati al momento dell'emissione.
+    sellerSnapshot: jsonb("seller_snapshot"),
+    buyerSnapshot: jsonb("buyer_snapshot"),
+    // La riga di legge sotto il totale: il regime forfettario ne pretende
+    // una, e cambia se cambia il regime.
+    vatNote: text("vat_note"),
+
+    // Lo Sistema di Interscambio arrivera' dopo, quando il provider sara'
+    // scelto. Le colonne ci sono da subito perche' aggiungerle a fatture gia'
+    // emesse vuol dire non sapere piu' quali erano partite davvero.
+    // da_inviare | inviata | consegnata | scartata
+    sdiStatus: text("sdi_status"),
+    sdiId: text("sdi_id"),
+    sdiSentAt: timestamp("sdi_sent_at", { withTimezone: true }),
+    sdiError: text("sdi_error"),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Due sole letture: i documenti di un locale, e quelli da incassare.
+    index("invoices_tenant_idx").on(table.tenantId, table.createdAt),
+    index("invoices_status_idx").on(table.status, table.dueAt),
+    // Il progressivo e' unico dentro l'anno. Le bozze hanno numero nullo e
+    // Postgres non le conta: e' esattamente quello che serve.
+    unique("invoices_numero_anno").on(table.year, table.number),
+  ]
+);
+
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    // canone | attivazione | modulo | consumo | commissione | sconto
+    kind: text("kind").notNull().default("canone"),
+    description: text("description").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    unitCents: integer("unit_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => [index("invoice_lines_invoice_idx").on(table.invoiceId, table.position)]
+);
+
+// Gli incassi. Una fattura puo' averne piu' di uno — l'acconto e il saldo di
+// un impianto — quindi non basta una data sul documento.
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    // Un incasso senza documento esiste: l'acconto arrivato prima che la
+    // fattura fosse pronta. Si aggancia dopo.
+    invoiceId: uuid("invoice_id").references(() => invoices.id, {
+      onDelete: "set null",
+    }),
+    amountCents: integer("amount_cents").notNull(),
+    // stripe | paypal | bonifico | contanti | altro
+    method: text("method").notNull().default("bonifico"),
+    // L'identificativo di la': il PaymentIntent di Stripe, l'ordine PayPal.
+    // Unico, cosi' lo stesso avviso ricevuto due volte non incassa due volte.
+    providerRef: text("provider_ref"),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("payments_tenant_idx").on(table.tenantId, table.paidAt),
+    unique("payments_provider_ref").on(table.providerRef),
+  ]
+);
+
+// Le impostazioni commerciali della piattaforma: una riga sola.
+//
+// Stanno a database e non nell'ambiente — al contrario dei dati fiscali in
+// FATTURAZIONE_* — perche' sono decisioni che si cambiano provando: la durata
+// della prova la si allunga perche' i pilota ci mettono di piu', la tolleranza
+// sui pagamenti la si accorcia dopo il primo che sparisce. Roba da pannello,
+// non da riavvio del server.
+export const billingSettings = pgTable("billing_settings", {
+  // Chiave fissa: la riga e' una e deve restare una.
+  id: text("id").primaryKey().default("unico"),
+
+  // Quanto dura la prova di un locale nuovo, in giorni.
+  trialDays: integer("trial_days").notNull().default(30),
+  // Quota sul transato proposta ai contratti nuovi, in punti base.
+  transactionBps: integer("transaction_bps").notNull().default(40),
+  // Giorni di tolleranza dopo la scadenza di una fattura prima di spegnere il
+  // servizio. Zero vorrebbe dire chiudere il rubinetto la mattina dopo, che
+  // con un locale che paga da due anni non si fa.
+  graceDays: integer("grace_days").notNull().default(10),
+  // Il blocco automatico si puo' spegnere del tutto: nei primi mesi conviene
+  // guardare in faccia chi non paga invece di lasciar decidere a un job.
+  autoSuspend: boolean("auto_suspend").notNull().default(false),
+  // Anche la prova scaduta blocca, o resta aperta finche' non decido io.
+  suspendExpiredTrials: boolean("suspend_expired_trials").notNull().default(true),
+
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Il listino modificabile dal pannello. Le righe che mancano ricadono sul
+// catalogo in lib/billing/listino.ts: stessa regola dei moduli, cosi' un
+// pacchetto aggiunto nel codice funziona subito senza doverlo prima
+// prezzare a mano.
+export const billingPrices = pgTable(
+  "billing_prices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // pacco | modulo
+    scope: text("scope").notNull(),
+    key: text("key").notNull(),
+    // Sui moduli conta solo `mensileCents`: un singolo add-on non ha un
+    // prezzo di impianto ne' un annuale suo.
+    mensileCents: integer("mensile_cents").notNull().default(0),
+    annualeCents: integer("annuale_cents").notNull().default(0),
+    attivazioneCents: integer("attivazione_cents").notNull().default(0),
+    assistenzaCents: integer("assistenza_cents").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [unique("billing_prices_scope_key").on(table.scope, table.key)]
+);
+
+// Gli add-on di un locale: i moduli che paga a parte, fuori dal pacchetto.
+// Il prezzo sta qui e non nel listino perche' e' quello concordato con lui —
+// il listino dice 79, a questo l'ho fatto a 59 e deve restare 59.
+export const tenantAddons = pgTable(
+  "tenant_addons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    moduleKey: text("module_key").notNull(),
+    priceCents: integer("price_cents").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [unique("tenant_addons_tenant_module").on(table.tenantId, table.moduleKey)]
+);
+
+// I documenti che carico io per un locale: il contratto firmato, un preventivo,
+// la visura, la copia di un bonifico.
+//
+// Il file NON sta sotto public/: un contratto firmato con dentro la partita
+// IVA e la firma del titolare non deve essere scaricabile da chiunque indovini
+// l'indirizzo. Sta in una cartella fuori dal servito, e si passa da una rotta
+// che prima guarda chi sta chiedendo.
+export const tenantFiles = pgTable(
+  "tenant_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // contratto | preventivo | documento | altro
+    kind: text("kind").notNull().default("documento"),
+    // Come lo chiamo io nell'elenco. Il nome del file caricato spesso e'
+    // "scan_0012.pdf" e fra sei mesi non dice piu' niente a nessuno.
+    title: text("title").notNull(),
+    // Il nome originale, per ridarglielo uguale quando lo si scarica.
+    fileName: text("file_name").notNull(),
+    // Il nome su disco: casuale, cosi' due "contratto.pdf" non si pestano i
+    // piedi e nessuno indovina un percorso.
+    storedName: text("stored_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    // Se il locale lo vede dalla sua dashboard. Il contratto si': e' suo, e
+    // farglielo chiedere per mail ogni volta e' lavoro per tutti e due. Gli
+    // appunti miei no.
+    visibleToTenant: boolean("visible_to_tenant").notNull().default(true),
+    notes: text("notes"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("tenant_files_tenant_idx").on(table.tenantId, table.uploadedAt)]
 );

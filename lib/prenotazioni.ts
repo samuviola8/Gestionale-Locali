@@ -529,7 +529,7 @@ export type ContestoPrenotazione = {
 
 export async function contestoPrenotazione(): Promise<ContestoPrenotazione | null> {
   const tenant = await getTenantFromHost();
-  if (!tenant || tenant.suspended) return null;
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) return null;
   if (!(await hasModule(tenant.id, "reservations"))) return null;
 
   const [row] = await db

@@ -10,3 +10,7 @@ next-env.d.ts
 
 # cache incrementale di TypeScript: si rigenera, non va versionata
 tsconfig.tsbuildinfo
+
+# Documenti caricati per i locali (contratti, preventivi): stanno fuori da
+# public/ apposta, e non vanno versionati.
+/archivio/

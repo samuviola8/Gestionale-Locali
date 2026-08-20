@@ -3,6 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { richiediServizio } from "@/lib/billing/blocco";
 import Select from "@/components/Select";
 import Field from "@/components/Field";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
@@ -11,6 +12,7 @@ import { addUser, deleteUser, resetPassword } from "./actions";
 export default async function StaffPage() {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await richiediServizio();
 
   const isOwner = session.role === "owner";
   const list = await db

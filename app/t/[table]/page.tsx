@@ -59,7 +59,9 @@ export default async function TablePage({
   // sull'endpoint di apertura, cosi' i codici gia' stampati restano validi.
   if (k) redirect(`/t/${table}/apri?k=${encodeURIComponent(k)}`);
 
-  if (t.suspended) {
+  // Sospeso da me, o servizio spento perche' il conto non torna: al cliente
+  // al tavolo cambia niente, e non e' affare suo sapere quale dei due.
+  if (t.suspended || t.serviceBlocked) {
     return (
       <Avviso
         nome={t.name}

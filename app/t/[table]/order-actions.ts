@@ -15,7 +15,7 @@ export async function createOrder(
   partySize?: number
 ): Promise<{ ok: boolean }> {
   const tenant = await getTenantFromHost();
-  if (!tenant || tenant.suspended) return { ok: false };
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) return { ok: false };
   if (!Number.isInteger(tableNumber) || tableNumber <= 0) return { ok: false };
 
   // Serve una sessione aperta scansionando il QR di questo tavolo.
@@ -34,7 +34,7 @@ export async function chiudiCondiviso(
   tableNumber: number
 ): Promise<{ ok: boolean }> {
   const tenant = await getTenantFromHost();
-  if (!tenant || tenant.suspended) return { ok: false };
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) return { ok: false };
   if (!Number.isInteger(tableNumber) || tableNumber <= 0) return { ok: false };
 
   if (!(await requireTableSession(tenant.id, tableNumber))) return { ok: false };
@@ -50,7 +50,7 @@ export async function callWaiter(
   tableNumber: number
 ): Promise<{ ok: boolean }> {
   const tenant = await getTenantFromHost();
-  if (!tenant || tenant.suspended) return { ok: false };
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) return { ok: false };
   if (!Number.isInteger(tableNumber) || tableNumber <= 0) return { ok: false };
 
   if (!(await requireTableSession(tenant.id, tableNumber))) return { ok: false };

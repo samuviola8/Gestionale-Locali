@@ -53,6 +53,7 @@ usata dal pannello.
 | `lib/themes.ts` | preset di tema versionati nel codice |
 | `lib/branding.ts` | preset + scostamenti del locale -> variabili CSS |
 | `lib/modules.ts` | catalogo dei moduli e stato per locale |
+| `lib/billing/` | listino, contratti, fatture e incassi verso i locali |
 | `lib/profiles.ts` | profili di locale (lounge, pub, ristorante) |
 | `lib/onboarding.ts` | creazione completa di un locale |
 | `lib/table-session.ts` | sessione tavolo a scadenza |
@@ -190,6 +191,163 @@ prenotazione vale lo stesso e in pannello si legge `mail non partita`.
 Lo staff vede la giornata in `Dashboard → Prenotazioni`: conferma, sposta,
 segna gli arrivati e i non presentati, cambia tavolo e scrive le prenotazioni
 prese al telefono, che occupano i tavoli come tutte le altre.
+
+## Fatturazione
+
+Due mestieri diversi, due posti diversi.
+
+**`/admin/fatturazione`** e' il registro: quanto entra al mese, cosa e' stato
+incassato, cosa e' scaduto, chi va fatturato oggi. Il contratto del singolo
+locale si scrive dalla sua scheda in `/admin/locali/<id>`, sezione _Contratto_.
+
+**`/dashboard/fatturazione`** e' quello che vede il locale: il suo piano col
+dettaglio canone piu' add-on, la data del prossimo rinnovo e le sue fatture.
+Da li' compila anche **i propri dati fiscali** — partita IVA, sede, codice
+destinatario — in un riquadro che sta chiuso finche' non manca qualcosa: sono
+suoi, ce li ha lui, e farmeli dettare al telefono per ricopiarli a mano vuol
+dire una cifra sbagliata ogni tanto e una fattura da rifare. Solo il titolare,
+e mai le bozze: finche' un documento non e' emesso, per lui non esiste.
+
+### Come e' fatto
+
+| Percorso | Cosa fa |
+| --- | --- |
+| `lib/billing/listino.ts` | i pacchetti e i prezzi dei moduli, versionati nel codice |
+| `lib/billing/contratti.ts` | il contratto di un locale e quando scade |
+| `lib/billing/documenti.ts` | bozze, emissione, incassi, giro dei rinnovi |
+| `lib/billing/emittente.ts` | i tuoi dati, IVA e marca da bollo |
+| `lib/billing/prezzi.ts` | il listino del codice piu' i ritocchi fatti dal pannello |
+| `lib/billing/impostazioni.ts` | prova, tolleranza, blocco automatico |
+| `lib/billing/addons.ts` | i moduli che un locale paga a parte, al prezzo suo |
+| `lib/billing/blocco.ts` | chi va spento per morosita' o prova finita, e chi riacceso |
+| `lib/billing/archivio.ts` | i documenti caricati per un locale, fuori da public/ |
+| `lib/billing/stati.ts` | etichette e colori, senza database |
+
+Il **listino** parte dal codice e si ritocca dal pannello; il **contratto**
+sta a database perche' e' un patto gia' fatto: se domani alzi i prezzi, chi ha
+firmato continua a pagare quello che aveva accettato. Un locale nasce sempre in
+prova; passarlo ad _Attivo_ e' la firma, ed e' li' che parte la prima scadenza
+da fatturare.
+
+Ogni locale puo' stare su uno dei due modelli: **abbonamento** (canone e
+basta) oppure **impianto** (attivazione una tantum + assistenza mensile).
+L'attivazione entra nella prima fattura e in nessun'altra.
+
+### Prezzi: valore di partenza e prezzo del singolo cliente
+
+Sono due cose diverse e stanno in due posti diversi apposta.
+
+Il **valore di partenza** vale per tutti e si cambia da
+`/admin/fatturazione/listino`: prezzo dei pacchetti, prezzo dei moduli presi da
+soli, durata della prova, quota sul transato, tolleranza sui pagamenti. Il
+catalogo scritto in `lib/billing/listino.ts` resta il ripiego: quello che il
+pannello non ha mai toccato prende il prezzo del codice, cosi' un pacchetto
+aggiunto domani funziona senza che nessuno debba ricordarsi di prezzarlo.
+«Rimetti i prezzi del codice» cancella tutti gli scostamenti.
+
+Il **prezzo di un cliente** si scrive nella sua scheda, in
+`/admin/locali/<id>`: canone, attivazione, quota sul transato e add-on. Quello
+che c'e' scritto li' vince sempre sul listino, e un ritocco al listino sei mesi
+dopo non lo tocca. E' la ragione per cui i due valori non condividono lo stesso
+campo: il listino e' un'offerta, il contratto e' un patto gia' fatto.
+
+Gli **add-on** sono i moduli che il locale paga fuori dal pacchetto (l'agent al
+telefono, la fedelta'). Il pannello propone il prezzo di listino, tu lo
+correggi, e da li' in poi resta il suo. Finiscono in fattura come righe a se',
+non annegati nel canone.
+
+### Prove gratuite
+
+Ogni locale nuovo nasce in prova. La durata di partenza e' nelle regole; dalla
+scheda del locale si allunga o si ricomincia, e si conta sempre da oggi — «altri
+quindici giorni» a una prova finita tre settimane fa vuol dire quindici giorni
+da adesso, non meno dodici.
+
+### Quando il conto non torna
+
+Ci sono due interruttori e restano distinti:
+
+| | Cosa spegne | Chi lo tocca |
+| --- | --- | --- |
+| `tenants.suspended` | tutto, login compreso | io, da «Zona pericolosa» |
+| `tenants.serviceBlocked` | ordinazione al tavolo, prenotazioni e pannello di lavoro | il conto: fattura scaduta oltre la tolleranza, o prova finita |
+
+Il secondo **lascia entrare il titolare**: trova `/dashboard/sospeso` con
+l'importo, le fatture e da dove si riparte. Uno che non riesce nemmeno a
+leggere la fattura non paga piu' in fretta, chiama piu' arrabbiato.
+
+Il blocco automatico e' **spento** di partenza: si accende dalle regole, e
+finche' e' spento si spegne a mano dalla scheda del locale. Quando la fattura
+risulta saldata il servizio **riparte da solo**, senza aspettare che me ne
+accorga. C'e' anche «Riaccendi il servizio» per chi dice che il bonifico e'
+partito e gli si crede: non incassa niente, la fattura resta da saldare.
+
+Il giro completo — bozze dei rinnovi, documenti scaduti, chi va spento e chi va
+riacceso — sta dietro «Prepara le bozze» in `/admin/fatturazione`.
+
+### Il giro delle scadenze
+
+Da `/admin/fatturazione`, il bottone **Prepara le bozze** guarda chi ha una
+scadenza arrivata, crea la bozza e sposta avanti il rinnovo. E' un bottone e
+non un lavoro automatico apposta: finche' i locali sono pochi voglio vedere
+cosa sto per mandare prima che parta.
+
+Una **bozza** non ha numero e si puo' cancellare. L'**emissione** e' il punto
+di non ritorno: assegna il progressivo dell'anno, congela emittente e
+destinatario dentro il documento e da li' si corregge solo con una nota di
+credito.
+
+
+### Cosa serve per fatturargli
+
+Senza **ragione sociale, sede, provincia e partita IVA** non gli si emette
+niente: `emettiDocumento` si rifiuta invece di produrre un documento che non e'
+una fattura, e il pannello lo dice prima — sulla scheda del locale e con un
+segno accanto al suo nome in `/admin/fatturazione`. Ragione sociale e indirizzo
+stanno in _Anagrafica_, la partita IVA in _Dati per la fattura_.
+
+Codice destinatario e PEC invece **non bloccano**: la fattura si emette lo
+stesso e si consegna a mano. Compaiono come avviso perche' senza uno dei due
+allo SDI non partira', e vale la pena scoprirlo adesso e non il giorno che si
+collega il provider.
+
+### Documenti del locale
+
+Da `/admin/locali/<id>` si carica quello che riguarda il rapporto: contratto
+firmato, preventivo, visura. PDF, immagini o Word fino a 15 MB.
+
+I file **non stanno sotto `public/`**: un contratto con dentro partita IVA e
+firma del titolare non deve essere scaricabile da chiunque indovini
+l'indirizzo. Stanno in `archivio/<slug>/` con un nome casuale — fuori dal
+servito e fuori da git — e ci si arriva solo da `/api/documenti/<id>`, che
+prima guarda chi sta chiedendo: io da admin, il titolare solo ai suoi e solo a
+quelli marcati **visibili**. A chiunque altro risponde 404 e non 403, perche'
+«esiste ma non e' tuo» e' gia' troppo.
+
+Quelli visibili compaiono nella pagina Abbonamento del locale: il contratto
+suo se lo scarica da solo invece di chiedermelo per mail. Gli appunti miei si
+caricano togliendo la spunta.
+### Prima di poter emettere
+
+I tuoi dati da emittente stanno nell'ambiente, non a database: `FATTURAZIONE_*`
+in `.env.example`. Finche' mancano, la piattaforma fa tutti i conti e prepara
+le bozze ma non emette niente, e il pannello lo dice in cima. `FATTURAZIONE_REGIME`
+decide IVA e bollo: `forfettario` non applica IVA e mette i 2 euro di bollo
+sopra i 77,47, `ordinario` applica il 22%.
+
+L'invio allo **SDI** non c'e' ancora: le colonne (`sdi_status`, `sdi_id`) e
+tutti i dati per farlo — partita IVA, codice destinatario, PEC del locale —
+sono gia' raccolti, cosi' collegare un provider domani non chiede di rimettere
+mano ai documenti gia' emessi. Anche **Stripe** e **PayPal** hanno il loro
+posto pronto (`provider`, `provider_customer_id`, `provider_subscription_id`
+sul contratto, `provider_ref` sull'incasso) ma nessuna chiamata: oggi gli
+incassi si segnano a mano.
+
+Il giro completo si prova con un locale finto che alla fine sparisce:
+
+```
+npx tsx scripts/prova-fatturazione.ts
+```
 
 ## Roadmap
 

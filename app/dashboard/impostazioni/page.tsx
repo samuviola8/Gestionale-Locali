@@ -9,6 +9,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { richiediServizio } from "@/lib/billing/blocco";
 import { getTenantModules } from "@/lib/modules";
 import Select from "@/components/Select";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
@@ -68,6 +69,7 @@ function Interruttore({
 export default async function ImpostazioniPage() {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await richiediServizio();
   if (session.role !== "owner") redirect("/dashboard");
 
   const [locale] = await db

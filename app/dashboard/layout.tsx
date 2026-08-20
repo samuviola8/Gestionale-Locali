@@ -101,6 +101,7 @@ export default async function DashboardLayout({
               modules={modules}
               soloCoda={!!repartoAttivo(session)}
               isOwner={session.role === "owner"}
+              bloccato={tenant.serviceBlocked}
             />
 
             <div className="mt-auto space-y-1 pt-4">
@@ -139,6 +140,19 @@ export default async function DashboardLayout({
         }
         intestazione={
           <>
+            {tenant.serviceBlocked ? (
+              // Al posto del "tutto in tempo reale": in tempo reale non c'e'
+              // piu' niente, e lasciarcelo scritto sarebbe una presa in giro.
+              <a
+                href="/dashboard/sospeso"
+                className="flex min-w-0 flex-1 items-center gap-2 truncate rounded-lg px-2 py-1 text-xs font-medium"
+                style={{ background: "var(--warn-bg)", color: "var(--warn)" }}
+              >
+                {tenant.blockedReason === "prova_scaduta"
+                  ? "Prova finita — il servizio e' fermo"
+                  : "Servizio sospeso — c'e' una fattura da saldare"}
+              </a>
+            ) : (
             <span
               className="flex min-w-0 flex-1 items-center gap-2 text-xs"
               style={{ color: "var(--muted)" }}
@@ -151,6 +165,7 @@ export default async function DashboardLayout({
                 Aggiornamento in tempo reale
               </span>
             </span>
+            )}
             <div className="flex shrink-0 items-center gap-3">
               {modules.waiter_call && (
                 <CallsBell

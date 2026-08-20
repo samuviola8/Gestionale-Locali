@@ -171,6 +171,21 @@ export default async function AdminPage() {
 
         <section>
           <a
+            href="/admin/fatturazione"
+            className="flex items-center justify-between gap-4 rounded-xl px-5 py-4 transition hover:border-[var(--brand)]"
+            style={{ border: "1px solid var(--border)" }}
+          >
+            <span>
+              <span className="block text-sm font-medium">Fatturazione</span>
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
+                Contratti, scadenze e documenti dei locali.
+              </span>
+            </span>
+          </a>
+        </section>
+
+        <section>
+          <a
             href="/admin/segnalazioni"
             className="flex items-center justify-between gap-4 rounded-xl px-5 py-4 transition hover:border-[var(--brand)]"
             style={{ border: "1px solid var(--border)" }}

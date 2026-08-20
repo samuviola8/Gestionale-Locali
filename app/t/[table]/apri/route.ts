@@ -18,7 +18,8 @@ export async function GET(
   const tableNumber = parseInt(table, 10);
   const tenant = await getTenantFromHost();
 
-  if (!tenant || tenant.suspended) return redirectTo(`/t/${table}`);
+  if (!tenant || tenant.suspended || tenant.serviceBlocked)
+    return redirectTo(`/t/${table}`);
 
   const token = new URL(req.url).searchParams.get("k") ?? "";
   const session = await openTableSession(tenant, tableNumber, token);

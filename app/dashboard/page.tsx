@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orders, orderItems, reservations } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { richiediServizio } from "@/lib/billing/blocco";
 import { formatPrice } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
 import { getAvvio } from "@/lib/avvio";
@@ -50,6 +51,7 @@ function Stat({
 export default async function DashboardHome() {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await richiediServizio();
 
   const start = new Date();
   start.setHours(0, 0, 0, 0);

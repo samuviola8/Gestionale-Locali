@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { richiediServizio } from "@/lib/billing/blocco";
 import {
   getMenuCategories,
   countProductsWithoutPhoto,
@@ -34,6 +35,7 @@ export default async function MenuAdmin({
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await richiediServizio();
   const { cat, q } = await searchParams;
   const cerca = (q ?? "").trim();
 

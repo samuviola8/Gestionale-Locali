@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { richiediServizio } from "@/lib/billing/blocco";
 import { getAnalytics, type VoceClassifica } from "@/lib/analytics";
 import { formatPrice as fmt } from "@/lib/format";
 import PeriodoFiltro from "@/components/PeriodoFiltro";
@@ -219,6 +220,7 @@ export default async function AnalyticsPage({
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/login");
+  await richiediServizio();
 
   const { p, da, a } = await searchParams;
   const periodo = leggiPeriodo(p, da, a);

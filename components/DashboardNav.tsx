@@ -16,8 +16,11 @@ import {
   IconCalendar,
   IconRubrica,
   IconSettings,
+  IconFattura,
 } from "@/components/icons";
 
+// `soloTitolare` tiene una voce fuori dalla vista di chi non e' il titolare:
+// il conto del locale e le impostazioni sono cose sue, non del turno.
 // `module` collega la voce a un modulo del catalogo: se il locale non ce l'ha
 // attivo, la voce sparisce. Con piu' moduli basta averne uno — i tavoli
 // servono sia al QR sia alla prenotazione. Le voci senza `module` ci sono sempre.
@@ -26,6 +29,7 @@ const items: {
   label: string;
   Icon: React.ComponentType<{ size?: number; className?: string }>;
   module?: ModuleKey | ModuleKey[];
+  soloTitolare?: boolean;
 }[] = [
   { href: "/dashboard", label: "Dashboard", Icon: IconHome },
   {
@@ -73,19 +77,35 @@ const items: {
     module: ["qr_ordering", "reservations"],
   },
   { href: "/dashboard/staff", label: "Staff", Icon: IconUsers },
-  { href: "/dashboard/impostazioni", label: "Impostazioni", Icon: IconSettings },
+  {
+    href: "/dashboard/fatturazione",
+    label: "Abbonamento",
+    Icon: IconFattura,
+    soloTitolare: true,
+  },
+  {
+    href: "/dashboard/impostazioni",
+    label: "Impostazioni",
+    Icon: IconSettings,
+    soloTitolare: true,
+  },
 ];
 
 export default function DashboardNav({
   modules,
   soloCoda = false,
   isOwner = true,
+  bloccato = false,
 }: {
   modules: Record<ModuleKey, boolean>;
   // Chi sta a una postazione di preparazione: la sua giornata e' la coda, e
   // conti e incassi non lo riguardano.
   soloCoda?: boolean;
   isOwner?: boolean;
+  // Servizio spento per il conto: resta in piedi solo la voce da cui si legge
+  // cosa si deve. Le altre rimanderebbero comunque alla stessa pagina, e un
+  // menu pieno di vicoli ciechi fa solo perdere tempo a chi e' gia' arrabbiato.
+  bloccato?: boolean;
 }) {
   const path = usePathname();
   const visible = items
@@ -97,7 +117,8 @@ export default function DashboardNav({
           : modules[i.module]
     )
     .filter((i) => !soloCoda || i.href === "/dashboard/orders")
-    .filter((i) => isOwner || i.href !== "/dashboard/impostazioni");
+    .filter((i) => isOwner || !i.soloTitolare)
+    .filter((i) => !bloccato || i.href === "/dashboard/fatturazione");
 
   return (
     <nav className="space-y-1">

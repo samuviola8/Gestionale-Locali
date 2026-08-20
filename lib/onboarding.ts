@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { inviaInvito, linkAccesso, type EsitoInvio } from "@/lib/account-mail";
 import { seedTenantModules, type ModuleKey } from "@/lib/modules";
+import { avviaProva } from "@/lib/billing/contratti";
 import { createTables } from "@/lib/tables";
 import { getProfile } from "@/lib/profiles";
 import { getPreset } from "@/lib/themes";
@@ -87,6 +88,37 @@ const RESERVED = new Set([
   "comanda",
 ]);
 
+/** Le regole dell'indirizzo web, in un posto solo: valgono alla creazione e
+ *  quando lo si corregge dalla scheda del locale. Due copie di questi
+ *  controlli vorrebbero dire, prima o poi, due locali sullo stesso
+ *  sottodominio — e uno dei due non si aprirebbe piu'. */
+export async function verificaIndirizzoWeb(
+  scritto: string,
+  escludiTenantId?: string
+): Promise<{ ok: true; slug: string } | { ok: false; error: string }> {
+  const slug = slugify(scritto);
+  if (!slug)
+    return {
+      ok: false,
+      error: "L'indirizzo web non e' valido: usa lettere, numeri e trattini.",
+    };
+  if (RESERVED.has(slug))
+    return { ok: false, error: `L'indirizzo «${slug}» e' riservato al sistema.` };
+
+  const preso = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+  if (preso[0] && preso[0].id !== escludiTenantId)
+    return {
+      ok: false,
+      error: `L'indirizzo «${slug}» e' gia' usato da un altro locale.`,
+    };
+
+  return { ok: true, slug };
+}
+
 function clean(value: string | undefined): string | null {
   const trimmed = (value ?? "").trim();
   return trimmed.length ? trimmed : null;
@@ -96,7 +128,6 @@ export async function createLocaleWithSetup(
   input: NewLocaleInput
 ): Promise<NewLocaleResult> {
   const name = input.name.trim();
-  const slug = slugify(input.slug || input.name);
   const email = input.ownerEmail.trim().toLowerCase();
 
   // Password lasciata vuota: se ne genera una temporanea, che il titolare
@@ -106,13 +137,9 @@ export async function createLocaleWithSetup(
   const password = scelta ? input.ownerPassword! : passwordTemporanea();
 
   if (!name) return { ok: false, error: "Il nome del locale e' obbligatorio." };
-  if (!slug)
-    return {
-      ok: false,
-      error: "L'indirizzo web non e' valido: usa lettere, numeri e trattini.",
-    };
-  if (RESERVED.has(slug))
-    return { ok: false, error: `L'indirizzo «${slug}» e' riservato al sistema.` };
+  const indirizzo = await verificaIndirizzoWeb(input.slug || input.name);
+  if (!indirizzo.ok) return indirizzo;
+  const slug = indirizzo.slug;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return { ok: false, error: "L'email del titolare non e' valida." };
   if (scelta && password.length < 8)
@@ -125,17 +152,6 @@ export async function createLocaleWithSetup(
       ok: false,
       error:
         "Senza password devi spuntare l'invito per mail: altrimenti il titolare non avrebbe modo di entrare.",
-    };
-
-  const taken = await db
-    .select({ id: tenants.id })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (taken[0])
-    return {
-      ok: false,
-      error: `L'indirizzo «${slug}» e' gia' usato da un altro locale.`,
     };
 
   const profile = getProfile(input.profile);
@@ -197,6 +213,10 @@ export async function createLocaleWithSetup(
     ...profile.moduleOverrides,
     ...(input.modules ?? {}),
   });
+
+  // Ogni locale nasce in prova. Il contratto vero si scrive dalla sua scheda
+  // quando firma: qui si segna solo la data entro cui va richiamato.
+  await avviaProva(tenantId);
 
   const count = input.tableCount ?? 0;
   const tables = count

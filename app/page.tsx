@@ -50,7 +50,7 @@ export default async function Home() {
 
   // Sottodominio di un locale -> home del locale.
   if (tenant) {
-    if (tenant.suspended) {
+    if (tenant.suspended || tenant.serviceBlocked) {
       return (
         <main className="mx-auto max-w-md px-6 py-20 text-center">
           <h1 className="text-xl font-medium">{tenant.name}</h1>

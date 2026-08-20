@@ -12,7 +12,13 @@ import {
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { revokeTableSessions } from "@/lib/table-session";
-import { eGruppo } from "@/lib/bill";
+import {
+  ALIAS_CONDIVISO,
+  aliasGruppo,
+  eGruppo,
+  membriDi,
+  normalizzaAlias,
+} from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
 import { creaScontrinoConto } from "@/lib/stampa";
 
@@ -189,6 +195,133 @@ export async function closeTable(key: string): Promise<void> {
         )
       );
   }
+}
+
+// Chi ordina non e' sempre chi paga: uno ha preso il giro per tutti, un altro
+// si e' intestato una cosa che andava divisa in due. La voce si riporta su chi
+// la paga davvero — una persona, due, il tavolo intero — e se le copie sono
+// piu' d'una se ne sposta solo una parte: la riga si spezza, e il resto resta
+// dov'era.
+//
+// Si riscrive l'intestazione e basta: la comanda andata in cucina non cambia,
+// perche' quello e' stato davvero ordinato. A cambiare e' solo chi lo paga.
+export async function spostaVoce(
+  itemId: string,
+  nomi: string[],
+  quantita: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+
+  const [riga] = await db
+    .select({
+      id: orderItems.id,
+      orderId: orderItems.orderId,
+      productId: orderItems.productId,
+      variantId: orderItems.variantId,
+      name: orderItems.name,
+      priceCents: orderItems.priceCents,
+      quantity: orderItems.quantity,
+      note: orderItems.note,
+      priceAdjusted: orderItems.priceAdjusted,
+      voidedAt: orderItems.voidedAt,
+      repartoId: orderItems.repartoId,
+      status: orderItems.status,
+      alias: orderItems.alias,
+      paid: orderItems.paid,
+      channel: orders.channel,
+      tableNumber: orders.tableNumber,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(
+      and(
+        eq(orderItems.id, itemId),
+        eq(orders.tenantId, session.tenantId),
+        isNull(orders.closedAt)
+      )
+    )
+    .limit(1);
+
+  if (!riga) return { ok: false, error: "Questa voce non è più sul conto." };
+  // Come per l'annullo e per il prezzo: una riga incassata non si tocca, o la
+  // cassa non torna piu' con quello che il cliente ha pagato.
+  if (riga.paid) return { ok: false, error: "Riga già pagata: non si sposta." };
+  // Si divide dove c'e' gente seduta. Fuori dalla sala l'intestatario e' uno
+  // solo, ed e' quello che ritira: non c'e' nessuno su cui spostare.
+  if (riga.channel !== "tavolo")
+    return { ok: false, error: "Il conto è di una persona sola." };
+  if (!Number.isInteger(quantita) || quantita < 1 || quantita > riga.quantity)
+    return { ok: false, error: "Quantità non valida." };
+
+  // I nomi arrivano da un browser: si tiene solo quello che e' davvero un
+  // nome, e normalizzaAlias fa il resto. Come per l'ordine dal telefono, non
+  // e' chi ha in mano la pagina a decidere che forma ha un intestatario.
+  const scelti = (Array.isArray(nomi) ? nomi : []).filter(
+    (n): n is string => typeof n === "string"
+  );
+  // "Condiviso" e' il gruppo di tutti e non si compone di nomi: sceglierlo
+  // insieme a qualcuno vorrebbe dire tutti e due, e vince il piu' largo.
+  const aTutti = scelti.includes(ALIAS_CONDIVISO);
+  const alias = aTutti ? ALIAS_CONDIVISO : normalizzaAlias(aliasGruppo(scelti));
+  if (alias === "Tavolo") return { ok: false, error: "Scegli chi la paga." };
+  if (alias === riga.alias && quantita === riga.quantity) return { ok: true };
+
+  const tavolo = (
+    await loadOpenTables(session.tenantId, riga.tableNumber ?? 0)
+  )[0];
+
+  // Chi ha gia' pagato ha un totale congelato: mettergli adesso una voce sul
+  // conto vorrebbe dire lasciarla a carico di nessuno. Lo si dice, invece di
+  // spostarla in silenzio dove non verra' mai incassata.
+  const pagato = new Set(
+    (tavolo?.people ?? []).filter((p) => p.paid).map((p) => p.alias)
+  );
+  const destinatari = aTutti
+    ? (tavolo?.people ?? []).map((p) => p.alias)
+    : membriDi(alias);
+  const chiHaPagato = destinatari.find((d) => pagato.has(d));
+  if (chiHaPagato)
+    return {
+      ok: false,
+      error: `${chiHaPagato} ha già pagato: mettila su chi deve ancora farlo.`,
+    };
+
+  if (quantita >= riga.quantity) {
+    await db
+      .update(orderItems)
+      .set({ alias })
+      .where(eq(orderItems.id, riga.id));
+    return { ok: true };
+  }
+
+  // Ne sposta solo una parte: quella che resta si scala, quella che va si
+  // riscrive uguale sotto un altro nome. Stesso prezzo e stesso stato, cosi'
+  // in coda la riga spezzata non torna indietro a "da preparare".
+  await db
+    .update(orderItems)
+    .set({ quantity: riga.quantity - quantita })
+    .where(eq(orderItems.id, riga.id));
+
+  await db.insert(orderItems).values({
+    orderId: riga.orderId,
+    productId: riga.productId,
+    variantId: riga.variantId,
+    name: riga.name,
+    priceCents: riga.priceCents,
+    quantity: quantita,
+    note: riga.note,
+    // I calici sono gia' in tavola da un pezzo: chiederne altri adesso, che si
+    // sta facendo il conto, manderebbe un cameriere a portarli per niente.
+    glasses: null,
+    priceAdjusted: riga.priceAdjusted,
+    voidedAt: riga.voidedAt,
+    repartoId: riga.repartoId,
+    status: riga.status,
+    alias,
+  });
+
+  return { ok: true };
 }
 
 // Lo staff corregge quante persone sono sedute: il cliente puo' aver

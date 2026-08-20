@@ -127,6 +127,10 @@ export type BillPerson = {
   // Posto al tavolo di chi non ha ordinato nulla a proprio nome: paga solo
   // quota e coperto, ma paga come tutti gli altri.
   placeholder: boolean;
+  // Posto senza nome, quello che a schermo si legge "Persona 2". Non basta
+  // guardare placeholder per riconoscerlo: lo e' anche chi ha solo diviso, ma
+  // quello un nome ce l'ha, e su un nome ci si puo' spostare una voce.
+  anonimo: boolean;
 };
 
 // Le voci di un gruppo, cosi' come si mostrano a fondo conto.
@@ -215,18 +219,25 @@ export function buildTable(input: {
 
   // Un posto per ogni persona seduta: prima chi ha ordinato a proprio nome,
   // poi gli altri. Anche chi ha solo diviso deve poter pagare la sua parte.
-  const posti: { alias: string; items: BillLine[]; placeholder: boolean }[] = [
+  const posti: {
+    alias: string;
+    items: BillLine[];
+    placeholder: boolean;
+    anonimo: boolean;
+  }[] = [
     // Chi e' arrivato qui solo perche' nominato in un gruppo non ha voci sue:
     // paga la sua parte e basta, esattamente come un posto anonimo.
     ...names.map((alias) => ({
       alias,
       items: byAlias.get(alias) ?? [],
       placeholder: !byAlias.get(alias)?.length,
+      anonimo: false,
     })),
     ...Array.from({ length: Math.max(0, partySize - names.length) }, (_, k) => ({
       alias: `Persona ${names.length + k + 1}`,
       items: [] as BillLine[],
       placeholder: true,
+      anonimo: true,
     })),
   ];
 
@@ -304,6 +315,7 @@ export function buildTable(input: {
       total,
       paid,
       placeholder: posto.placeholder,
+      anonimo: posto.anonimo,
     };
   })
     // Un posto che non deve nulla non si mostra: non c'e' niente da incassare.

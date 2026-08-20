@@ -1,14 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { formatPrice as fmt } from "@/lib/format";
-import type { BillTable } from "@/lib/bill";
+import {
+  ALIAS_CONDIVISO,
+  membriDi,
+  type BillLine,
+  type BillTable,
+} from "@/lib/bill";
+
+// Una voce che si sta riportando su chi la paga davvero.
+type Spostamento = {
+  itemId: string;
+  // Quante copie se ne spostano: il resto della riga rimane dov'e'.
+  quantita: number;
+  // Chi la paga da adesso. Piu' di uno vuol dire divisa tra loro.
+  nomi: string[];
+  // Il campo per un nome che al tavolo non c'e' ancora. Null quando e' chiuso:
+  // vuoto vorrebbe dire aperto e non ancora scritto, che e' un'altra cosa.
+  nuovo: string | null;
+  errore: string | null;
+};
 
 export default function BillBoard({
   markAliasPaid,
   closeTable,
   setPartySize,
   voidItem,
+  spostaVoce,
   stampaConto,
 }: {
   markAliasPaid: (key: string, alias: string) => Promise<void>;
@@ -18,6 +42,11 @@ export default function BillBoard({
   voidItem: (
     itemId: string,
     annulla: boolean
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  spostaVoce: (
+    itemId: string,
+    nomi: string[],
+    quantita: number
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [tables, setTables] = useState<BillTable[]>([]);
@@ -30,6 +59,44 @@ export default function BillBoard({
   // per sbaglio proprio mentre si incassa.
   const [modifica, setModifica] = useState<string | null>(null);
   const [erroreVoce, setErroreVoce] = useState<string | null>(null);
+  // Una voce alla volta in spostamento: il pannello e' alto, e due aperti
+  // insieme farebbero perdere di vista la riga che si sta guardando.
+  const [sposta, setSposta] = useState<Spostamento | null>(null);
+
+  // Si parte da chi la paga adesso: per aggiungere un terzo a una divisione
+  // gia' fatta si tocca lui e basta. Un nome che al tavolo non c'e' piu' non
+  // si riporta acceso: sarebbe una scelta che nessuno ha fatto e non si vede.
+  function apriSposta(i: BillLine, alias: string, candidati: string[]) {
+    setErroreVoce(null);
+    setSposta({
+      itemId: i.id!,
+      quantita: i.quantity,
+      nomi:
+        alias === ALIAS_CONDIVISO
+          ? [ALIAS_CONDIVISO]
+          : membriDi(alias).filter((n) => candidati.includes(n)),
+      nuovo: null,
+      errore: null,
+    });
+  }
+
+  async function confermaSposta(nomi: string[], quantita: number) {
+    if (!sposta || !nomi.length) return;
+    setBusy(`sposta:${sposta.itemId}`);
+    try {
+      const esito = await spostaVoce(sposta.itemId, nomi, quantita);
+      // L'errore resta attaccato al pannello: in cima alla card, con tutto il
+      // conto di mezzo, chi ha appena toccato il bottone non lo vedrebbe.
+      if (!esito.ok) {
+        setSposta((s) => s && { ...s, errore: esito.error });
+        return;
+      }
+      setSposta(null);
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function annulla(itemId: string, annullare: boolean) {
     setErroreVoce(null);
@@ -101,6 +168,12 @@ export default function BillBoard({
         const residuo = Math.max(0, t.total - t.incassato);
 
         const inSala = t.channel === "tavolo";
+        // Su chi si puo' spostare una voce: le persone del conto che un nome
+        // ce l'hanno. Un posto anonimo non e' una destinazione — nessuno sa
+        // chi sia — e per lui c'e' il campo dove scriverlo.
+        const candidati = t.people
+          .filter((p) => !p.anonimo && p.alias !== "Tavolo")
+          .map((p) => p.alias);
 
         return (
           <section key={t.key} className="card overflow-hidden">
@@ -217,6 +290,8 @@ export default function BillBoard({
                 <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
                   Annulla quello che non è stato servito: esce dal totale e
                   resta barrato, così si sa sempre perché il conto è questo.
+                  Sposta quello che è finito sul conto sbagliato: su una
+                  persona, o diviso tra chi se l&apos;è preso davvero.
                 </p>
               )}
               {modifica === t.key && erroreVoce && (
@@ -277,44 +352,10 @@ export default function BillBoard({
 
                   <ul className="mt-2 space-y-0.5 text-sm">
                     {p.items.map((i, idx) => (
-                      <li key={i.id ?? idx} className="flex justify-between gap-3">
-                        <span
-                          className="min-w-0"
-                          style={
-                            i.paid || i.voided
-                              ? {
-                                  color: "var(--muted)",
-                                  textDecoration: "line-through",
-                                }
-                              : undefined
-                          }
-                        >
-                          <span className="tnum">{i.quantity}×</span> {i.name}
-                          {i.note && (
-                            <span className="block text-xs italic">
-                              «{i.note}»
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          {i.voided && (
-                            <span className="badge badge-muted">annullato</span>
-                          )}
-                          {modifica === t.key && i.id && !i.paid && (
-                            <button
-                              onClick={() => annulla(i.id!, !i.voided)}
-                              className="text-xs underline"
-                              style={{
-                                color: i.voided
-                                  ? "var(--brand-text)"
-                                  : "var(--danger)",
-                              }}
-                            >
-                              {i.voided ? "ripristina" : "annulla"}
-                            </button>
-                          )}
+                      <li key={i.id ?? idx}>
+                        <div className="flex justify-between gap-3">
                           <span
-                            className="tnum"
+                            className="min-w-0"
                             style={
                               i.paid || i.voided
                                 ? {
@@ -324,9 +365,51 @@ export default function BillBoard({
                                 : undefined
                             }
                           >
-                            {fmt(i.priceCents * i.quantity)}
+                            <span className="tnum">{i.quantity}×</span> {i.name}
+                            {i.note && (
+                              <span className="block text-xs italic">
+                                «{i.note}»
+                              </span>
+                            )}
                           </span>
-                        </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {i.voided && (
+                              <span className="badge badge-muted">
+                                annullato
+                              </span>
+                            )}
+                            <AzioniVoce
+                              item={i}
+                              attive={modifica === t.key}
+                              spostabile={inSala}
+                              onAnnulla={() => annulla(i.id!, !i.voided)}
+                              onSposta={() => apriSposta(i, p.alias, candidati)}
+                            />
+                            <span
+                              className="tnum"
+                              style={
+                                i.paid || i.voided
+                                  ? {
+                                      color: "var(--muted)",
+                                      textDecoration: "line-through",
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {fmt(i.priceCents * i.quantity)}
+                            </span>
+                          </span>
+                        </div>
+                        {sposta && sposta.itemId === i.id && (
+                          <PannelloSposta
+                            stato={sposta}
+                            massimo={i.quantity}
+                            candidati={candidati}
+                            setStato={setSposta}
+                            onConferma={confermaSposta}
+                            inCorso={busy === `sposta:${i.id}`}
+                          />
+                        )}
                       </li>
                     ))}
 
@@ -409,44 +492,52 @@ export default function BillBoard({
                   </div>
                   <ul className="mt-1 space-y-0.5 text-sm" style={{ color: "var(--muted)" }}>
                     {g.items.map((i, idx) => (
-                      <li key={i.id ?? idx} className="flex justify-between gap-3">
-                        <span
-                          style={
-                            i.voided
-                              ? { textDecoration: "line-through" }
-                              : undefined
-                          }
-                        >
-                          <span className="tnum">{i.quantity}×</span> {i.name}
-                        </span>
-                        <span className="flex items-center gap-2">
-                          {i.voided && (
-                            <span className="badge badge-muted">annullato</span>
-                          )}
-                          {modifica === t.key && i.id && !i.paid && (
-                            <button
-                              onClick={() => annulla(i.id!, !i.voided)}
-                              className="text-xs underline"
-                              style={{
-                                color: i.voided
-                                  ? "var(--brand-text)"
-                                  : "var(--danger)",
-                              }}
-                            >
-                              {i.voided ? "ripristina" : "annulla"}
-                            </button>
-                          )}
+                      <li key={i.id ?? idx}>
+                        <div className="flex justify-between gap-3">
                           <span
-                            className="tnum"
                             style={
                               i.voided
                                 ? { textDecoration: "line-through" }
                                 : undefined
                             }
                           >
-                            {fmt(i.priceCents * i.quantity)}
+                            <span className="tnum">{i.quantity}×</span> {i.name}
                           </span>
-                        </span>
+                          <span className="flex items-center gap-2">
+                            {i.voided && (
+                              <span className="badge badge-muted">
+                                annullato
+                              </span>
+                            )}
+                            <AzioniVoce
+                              item={i}
+                              attive={modifica === t.key}
+                              spostabile={inSala}
+                              onAnnulla={() => annulla(i.id!, !i.voided)}
+                              onSposta={() => apriSposta(i, g.alias, candidati)}
+                            />
+                            <span
+                              className="tnum"
+                              style={
+                                i.voided
+                                  ? { textDecoration: "line-through" }
+                                  : undefined
+                              }
+                            >
+                              {fmt(i.priceCents * i.quantity)}
+                            </span>
+                          </span>
+                        </div>
+                        {sposta && sposta.itemId === i.id && (
+                          <PannelloSposta
+                            stato={sposta}
+                            massimo={i.quantity}
+                            candidati={candidati}
+                            setStato={setSposta}
+                            onConferma={confermaSposta}
+                            inCorso={busy === `sposta:${i.id}`}
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -514,6 +605,253 @@ export default function BillBoard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Le azioni su una voce del conto: toglierla, o riportarla su chi la paga
+// davvero. Sono le stesse sotto una persona e dentro a un gruppo, e scritte
+// due volte finirebbero prima o poi per non esserlo piu'.
+function AzioniVoce({
+  item,
+  attive,
+  spostabile,
+  onAnnulla,
+  onSposta,
+}: {
+  item: BillLine;
+  attive: boolean;
+  // Fuori dalla sala il conto e' di chi ritira e basta: non c'e' nessun altro
+  // su cui spostare, e il bottone porterebbe a un vicolo cieco.
+  spostabile: boolean;
+  onAnnulla: () => void;
+  onSposta: () => void;
+}) {
+  // Una riga gia' incassata non si tocca piu', ne' di qua ne' a database.
+  if (!attive || !item.id || item.paid) return null;
+
+  return (
+    <>
+      {/* Quella annullata non si sposta: non la paga nessuno, spostarla non
+          vorrebbe dire niente. Prima si ripristina. */}
+      {spostabile && !item.voided && (
+        <button
+          onClick={onSposta}
+          className="text-xs underline"
+          style={{ color: "var(--muted)" }}
+        >
+          sposta
+        </button>
+      )}
+      <button
+        onClick={onAnnulla}
+        className="text-xs underline"
+        style={{ color: item.voided ? "var(--brand-text)" : "var(--danger)" }}
+      >
+        {item.voided ? "ripristina" : "annulla"}
+      </button>
+    </>
+  );
+}
+
+// Su chi finisce questa voce. Le persone sono quelle che il conto elenca gia',
+// e accenderne due vuol dire dividerla tra loro: e' la stessa domanda che il
+// cliente si e' sentito fare dal telefono, rifatta qui dove si paga.
+function PannelloSposta({
+  stato,
+  massimo,
+  candidati,
+  setStato,
+  onConferma,
+  inCorso,
+}: {
+  stato: Spostamento;
+  massimo: number;
+  candidati: string[];
+  setStato: Dispatch<SetStateAction<Spostamento | null>>;
+  onConferma: (nomi: string[], quantita: number) => void;
+  inCorso: boolean;
+}) {
+  const aTutti = stato.nomi.includes(ALIAS_CONDIVISO);
+  const scritto = (stato.nuovo ?? "").trim();
+
+  // I nomi da toccare sono quelli del tavolo piu' quelli scritti a mano, che
+  // al conto non risultano finche' lo spostamento non e' fatto: senza, chi ne
+  // aggiunge uno lo vede sparire e legge "Dividi tra 2" senza il secondo.
+  const pillole = [
+    ...candidati,
+    ...stato.nomi.filter((n) => n !== ALIAS_CONDIVISO && !candidati.includes(n)),
+  ];
+
+  // Chi si sta scrivendo conta come gia' scelto: chi ha finito di digitare e
+  // tocca il bottone ha finito, e chiedergli anche un invio prima vorrebbe
+  // dire vedersi tornare indietro il nome che aveva appena messo.
+  const scelti =
+    scritto && !aTutti && !stato.nomi.includes(scritto)
+      ? [...stato.nomi, scritto]
+      : stato.nomi;
+
+  // Scegliere una persona esce dal condiviso: sono due risposte alla stessa
+  // domanda, e tenerle accese insieme non vorrebbe dire niente.
+  function tocca(nome: string) {
+    setStato((s) => {
+      if (!s) return s;
+      const soli = s.nomi.filter((n) => n !== ALIAS_CONDIVISO);
+      return {
+        ...s,
+        nomi: soli.includes(nome)
+          ? soli.filter((n) => n !== nome)
+          : [...soli, nome],
+        errore: null,
+      };
+    });
+  }
+
+  function chiudiNuovo() {
+    setStato((s) => {
+      if (!s) return s;
+      const nome = (s.nuovo ?? "").trim();
+      if (!nome) return { ...s, nuovo: null };
+      const soli = s.nomi.filter((n) => n !== ALIAS_CONDIVISO);
+      return {
+        ...s,
+        nomi: soli.includes(nome) ? soli : [...soli, nome],
+        nuovo: null,
+        errore: null,
+      };
+    });
+  }
+
+  const etichetta = aTutti
+    ? "Metti in condiviso"
+    : scelti.length === 0
+      ? "Scegli chi la paga"
+      : scelti.length === 1
+        ? `Sposta su ${scelti[0]}`
+        : `Dividi tra ${scelti.length}`;
+
+  return (
+    <div
+      className="mb-1 mt-1.5 rounded-xl border p-2.5"
+      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+    >
+      {/* Ne ha ordinate due e una era per un altro: si sposta solo quella. La
+          riga si spezza, il resto resta dov'e'. */}
+      {massimo > 1 && (
+        <div className="flex items-center gap-1.5 text-sm">
+          <span style={{ color: "var(--muted)" }}>Quante</span>
+          <button
+            onClick={() =>
+              setStato((s) => s && { ...s, quantita: Math.max(1, s.quantita - 1) })
+            }
+            aria-label="Una in meno"
+            className="btn btn-sm"
+          >
+            −
+          </button>
+          <span className="tnum w-6 text-center font-semibold">
+            {stato.quantita}
+          </span>
+          <button
+            onClick={() =>
+              setStato(
+                (s) => s && { ...s, quantita: Math.min(massimo, s.quantita + 1) }
+              )
+            }
+            aria-label="Una in più"
+            className="btn btn-sm"
+          >
+            +
+          </button>
+          <span style={{ color: "var(--muted)" }}>di {massimo}</span>
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {pillole.map((n) => (
+          <button
+            key={n}
+            onClick={() => tocca(n)}
+            aria-pressed={stato.nomi.includes(n)}
+            className={"btn btn-sm" + (stato.nomi.includes(n) ? " btn-primary" : "")}
+          >
+            {n}
+          </button>
+        ))}
+
+        {/* Al tavolo siede anche chi non ha ordinato niente: il suo nome non
+            lo sa nessuno finche' qualcuno non lo scrive. */}
+        {stato.nuovo === null ? (
+          <button
+            onClick={() => setStato((s) => s && { ...s, nuovo: "" })}
+            className="btn btn-sm"
+            style={{ color: "var(--muted)" }}
+          >
+            + nome
+          </button>
+        ) : (
+          <input
+            autoFocus
+            value={stato.nuovo}
+            maxLength={24}
+            onChange={(e) =>
+              setStato((s) => s && { ...s, nuovo: e.target.value, errore: null })
+            }
+            onBlur={chiudiNuovo}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                chiudiNuovo();
+              }
+            }}
+            placeholder="Nome"
+            aria-label="Nome di chi paga"
+            className="input"
+            style={{ width: 130, minHeight: 38 }}
+          />
+        )}
+
+        <button
+          onClick={() =>
+            setStato(
+              (s) =>
+                s && {
+                  ...s,
+                  nomi: aTutti ? [] : [ALIAS_CONDIVISO],
+                  nuovo: null,
+                  errore: null,
+                }
+            )
+          }
+          aria-pressed={aTutti}
+          className={"btn btn-sm" + (aTutti ? " btn-primary" : "")}
+        >
+          Tutto il tavolo
+        </button>
+      </div>
+
+      {stato.errore && (
+        <p
+          role="status"
+          className="mt-1.5 text-xs"
+          style={{ color: "var(--danger)" }}
+        >
+          {stato.errore}
+        </p>
+      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          onClick={() => onConferma(scelti, stato.quantita)}
+          disabled={inCorso || !scelti.length}
+          className="btn btn-primary btn-sm"
+        >
+          {inCorso ? "..." : etichetta}
+        </button>
+        <button onClick={() => setStato(null)} className="btn btn-sm">
+          Lascia com&apos;è
+        </button>
+      </div>
     </div>
   );
 }

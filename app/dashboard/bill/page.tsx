@@ -6,6 +6,7 @@ import {
   markAliasPaid,
   closeTable,
   setPartySize,
+  spostaVoce,
   stampaConto,
 } from "./actions";
 import { voidOrderItem } from "../orders/actions";
@@ -28,6 +29,7 @@ export default async function BillPage() {
         closeTable={closeTable}
         setPartySize={setPartySize}
         voidItem={voidOrderItem}
+        spostaVoce={spostaVoce}
         stampaConto={stampaConto}
       />
     </div>

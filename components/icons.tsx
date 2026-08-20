@@ -209,3 +209,13 @@ export function IconClose(p: Props) {
     </Base>
   );
 }
+
+export function IconFattura(p: Props) {
+  return (
+    <Base {...p}>
+      <path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21z" />
+      <line x1="9" y1="9" x2="15" y2="9" />
+      <line x1="9" y1="13" x2="13" y2="13" />
+    </Base>
+  );
+}
