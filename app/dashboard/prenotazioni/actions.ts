@@ -23,6 +23,13 @@ import {
   mittenteLocale,
   type TipoAvviso,
 } from "@/lib/prenotazioni-mail";
+import {
+  apriSeduta,
+  chiudiSeduta,
+  sedutaDiPrenotazione,
+  tavoliImpegnati,
+} from "@/lib/sedute";
+import { daQuanto } from "@/lib/format";
 
 // Le prenotazioni viste da dentro il locale. Qui lo staff puo' fare cose che
 // dal web non si possono fare — prendere un tavolo pieno, spostare un gruppo,
@@ -43,6 +50,7 @@ async function requireTenantId(): Promise<string> {
 function aggiorna(): void {
   revalidatePath("/dashboard/prenotazioni");
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/sala");
 }
 
 const COLONNE_CONFIG = {
@@ -125,8 +133,73 @@ export async function confermaPrenotazione(formData: FormData): Promise<void> {
   await cambiaStato(formData, "confirmed", { cancelledAt: null }, "confermata");
 }
 
-export async function segnaArrivati(formData: FormData): Promise<void> {
-  await cambiaStato(formData, "seated", { seatedAt: new Date() });
+// Il gruppo si e' seduto. Da qui in poi i suoi tavoli sono occupati davvero, e
+// se erano due accostati diventano un tavolo solo anche per il conto: quale
+// fosse l'accostamento la prenotazione lo sapeva gia', e farlo ridire a mano
+// alla sala sarebbe scrivere due volte la stessa cosa.
+//
+// Prima pero' si guarda se quei tavoli sono liberi davvero. La prenotazione
+// dice che il tavolo 1 e' suo alle 20:30, ma alle 20:30 al tavolo 1 puo' esserci
+// ancora qualcuno che non ha chiesto il conto: farli accomodare li' vorrebbe
+// dire due tavolate su un conto solo, e nessuno se ne accorgerebbe fino al
+// momento di pagare. Non si decide al posto di chi sta in sala — si dice cosa
+// c'e', e si lascia scegliere fra dargli un altro tavolo o farli aspettare.
+export type EsitoArrivo = { ok: true } | { ok: false; motivo: string };
+
+export async function segnaArrivati(id: string): Promise<EsitoArrivo> {
+  const tenantId = await requireTenantId();
+  if (!id) return { ok: false, motivo: "Prenotazione non trovata." };
+
+  const [r] = await db
+    .select({
+      tableNumbers: reservations.tableNumbers,
+      partySize: reservations.partySize,
+    })
+    .from(reservations)
+    .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)))
+    .limit(1);
+  if (!r) return { ok: false, motivo: "Prenotazione non trovata." };
+
+  const impegnati = await tavoliImpegnati(tenantId, r.tableNumbers, {
+    ignoraPrenotazione: id,
+  });
+
+  if (impegnati.length) {
+    const ora = Date.now();
+    const pezzi = impegnati.map((t) => {
+      const quanto = t.da ? daQuanto(t.da.getTime(), ora) : null;
+      // «adesso» qui suonerebbe come un errore: e' il tavolo appena aperto.
+      const durata =
+        quanto === null
+          ? ""
+          : quanto === "adesso"
+            ? " (appena arrivati)"
+            : ` (da ${quanto})`;
+      return `al tavolo ${t.tavolo}${durata}`;
+    });
+    return {
+      ok: false,
+      motivo:
+        pezzi.length === 1
+          ? `C'è ancora gente ${pezzi[0]}.`
+          : `C'è ancora gente ${pezzi.slice(0, -1).join(", ")} e ${pezzi.at(-1)}.`,
+    };
+  }
+
+  await db
+    .update(reservations)
+    .set({ status: "seated", seatedAt: new Date() })
+    .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+
+  if (r.tableNumbers.length) {
+    await apriSeduta(tenantId, r.tableNumbers, {
+      persone: r.partySize,
+      reservationId: id,
+    });
+  }
+
+  aggiorna();
+  return { ok: true };
 }
 
 // Chi non si e' presentato non si cancella: resta scritto. E' l'unico modo per
@@ -230,10 +303,39 @@ export async function assegnaTavoli(formData: FormData): Promise<void> {
     : [];
   const validi = numeri.filter((n) => esistenti.includes(n));
 
+  const [attuale] = await db
+    .select({ status: reservations.status, partySize: reservations.partySize })
+    .from(reservations)
+    .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)))
+    .limit(1);
+  if (!attuale) return;
+
   await db
     .update(reservations)
     .set({ tableNumbers: validi })
     .where(and(eq(reservations.id, id), eq(reservations.tenantId, tenantId)));
+
+  // Se il gruppo si e' gia' seduto, la sala deve seguire la correzione: il
+  // tavolo aggiunto qui risulta occupato da adesso, e quello tolto torna
+  // libero — un elenco che dice 5+6 mentre in sala restano occupati 3+4+5+6 e'
+  // peggio che non poterlo cambiare. Si tiene aperta la seduta che c'era
+  // quando qualche tavolo resta in comune, cosi' «da quanto sono seduti» non
+  // riparte da zero; si chiude solo spostandoli di peso dall'altra parte
+  // della sala.
+  if (attuale.status === "seated") {
+    const vecchia = await sedutaDiPrenotazione(tenantId, id);
+    if (vecchia && !vecchia.tavoli.some((n) => validi.includes(n))) {
+      await chiudiSeduta(tenantId, vecchia.capofila);
+    }
+    if (validi.length) {
+      await apriSeduta(tenantId, validi, {
+        persone: attuale.partySize,
+        reservationId: id,
+        esatto: true,
+      });
+    }
+  }
+
   aggiorna();
 }
 

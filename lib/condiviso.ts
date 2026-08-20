@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
 import { ALIAS_CONDIVISO, aliasGruppo } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
+import { capofila } from "@/lib/sedute";
 
 // Chi si siede a meta' serata non deve pagare la sua parte di quello che gli
 // altri hanno gia' diviso: quel giro era loro. Il condiviso di prima passa a un
@@ -16,7 +17,10 @@ export async function staccaCondiviso(
   tenantId: string,
   tableNumber: number
 ): Promise<{ ok: boolean; spostate: number }> {
-  const conto = (await loadOpenTables(tenantId, tableNumber))[0];
+  // Il condiviso vive sul conto, e il conto di due tavoli accostati e' uno
+  // solo: si stacca quello del gruppo, non quello del singolo tavolo.
+  const tavolo = await capofila(tenantId, tableNumber);
+  const conto = (await loadOpenTables(tenantId, tavolo))[0];
   if (!conto) return { ok: false, spostate: 0 };
 
   const condiviso = conto.shared.find((g) => g.alias === ALIAS_CONDIVISO);
@@ -36,7 +40,7 @@ export async function staccaCondiviso(
         and(
           eq(orders.tenantId, tenantId),
           eq(orders.channel, "tavolo"),
-          eq(orders.tableNumber, tableNumber),
+          eq(orders.tableNumber, tavolo),
           isNull(orders.closedAt)
         )
       )

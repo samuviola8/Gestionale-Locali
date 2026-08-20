@@ -9,6 +9,8 @@ import { getTenantFromHost } from "@/lib/tenant-host";
 import { getMenu } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
 import { personeAlTavolo } from "@/lib/bill-query";
+import { etichettaTavoli } from "@/lib/format";
+import { sedutaDi, seduteAperte } from "@/lib/sedute";
 import { requireModule } from "@/lib/module-guard";
 import OrderClient from "@/components/OrderClient";
 import SenzaZoom from "@/components/SenzaZoom";
@@ -69,12 +71,18 @@ export default async function OrdinaPerTavolo({
     ? await personeAlTavolo(session.tenantId, tableNumber)
     : [];
 
+  // Se il tavolo e' accostato a un altro, l'ordine finisce sul conto del
+  // gruppo: sta scritto in testa, perche' e' il momento in cui il cameriere
+  // potrebbe pensare di stare aprendo un conto nuovo.
+  const seduta = sedutaDi(await seduteAperte(session.tenantId), tableNumber);
+  const titolo = etichettaTavoli(seduta?.tavoli ?? [tableNumber])!;
+
   return (
     <div className="space-y-4" style={{ touchAction: "pan-x pan-y" }}>
       <SenzaZoom />
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Tavolo {tableNumber}</h1>
+          <h1 className="text-2xl font-semibold">{titolo}</h1>
           <p className="mt-0.5 text-sm" style={{ color: "var(--muted)" }}>
             Ordine preso a voce. Finisce nella coda come quelli dal QR.
           </p>

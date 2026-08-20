@@ -114,6 +114,61 @@ export function guidaDelTab(
         ],
       };
 
+    case "sala":
+      return {
+        titolo: "Sala",
+        passi: [
+          {
+            titolo: "Un riquadro per tavolo",
+            testo:
+              "Quelli occupati dicono da quanto sono seduti, in quanti e quanto hanno fatto finora. Il pallino diventa giallo dopo due ore: non e' un allarme, e' il tavolo da cui passare.",
+            punti: [
+              "Il tempo parte dal primo segnale che c'e' di quel tavolo: il QR scansionato, la prima ordinazione, o il momento in cui l'hai aperto tu.",
+              "Le persone sono quelle che hanno dichiarato ordinando. Finche' nessuno lo dice valgono i posti dei tavoli — due accostati da due e da quattro fanno sei — e si correggono selezionando il tavolo.",
+              "«Ha scansionato il QR» vuol dire che qualcuno si e' seduto e sta leggendo il menu: e' un'informazione piu' debole di un conto aperto, e la pagina te lo dice invece di far finta di niente.",
+            ],
+          },
+          {
+            titolo: "Due tavoli accostati sono un tavolo solo",
+            testo:
+              "Tocca il primo, tocca il secondo, «Unisci i tavoli». Da quel momento risultano occupati tutti e due e quello che si ordina dai loro QR finisce su un conto unico, intestato al tavolo piu' basso dei due.",
+            punti: [
+              "«Separa» li stacca di nuovo. Quello che era gia' stato ordinato resta sul conto dove sta: le comande sono partite, e nessuno sa piu' chi ha mangiato da che parte del tavolo lungo.",
+              "Un tavolo dove qualcuno ha gia' pagato non si unisce: prima si chiude quel conto.",
+              ...(modules.reservations
+                ? [
+                    "Le prenotazioni su piu' tavoli si uniscono da sole quando segni «Arrivati».",
+                  ]
+                : []),
+            ],
+          },
+          {
+            titolo: "Il conto sul tavolo sbagliato si sposta",
+            testo:
+              "Tocca il tavolo dove sta il conto, poi quello (o quelli) dove deve andare, e premi «Sposta il conto». Serve piu' spesso a correggere che a spostare: l'ordine battuto sul 5 invece che sul 6 prima si rimediava solo annullando le righe, che restano barrate sul conto per sempre.",
+            punti: [
+              "Si porta dietro tutto: consumazioni, quello che qualcuno ha gia' pagato, le chiamate in attesa. E l'ora resta quella in cui si sono seduti davvero.",
+              "I telefoni rimasti al tavolo di prima devono riscansionare il QR: cosi' nessuno continua a ordinare su un conto che adesso e' da un'altra parte.",
+              "Il tavolo d'arrivo dev'essere libero. Se e' occupato non e' uno spostamento ma una fusione di due conti, e quella si fa con «Unisci».",
+            ],
+          },
+          {
+            titolo: "Segna occupato chi non ha ancora ordinato",
+            testo:
+              "Si siedono, guardano il menu, e per il sistema quel tavolo e' libero. Toccalo e premi «Segna occupato»: da li' parte il tempo, e puoi dire anche in quanti sono. «Libera» lo rimette a posto se se ne vanno senza consumare — se invece c'e' da incassare, il tavolo si chiude dai conti aperti.",
+          },
+          ...(modules.reservations
+            ? [
+                {
+                  titolo: "Chi arriva dopo",
+                  testo:
+                    "In fondo al riquadro compare la prossima prenotazione su quel tavolo, con l'ora e il nome. Vale anche sui tavoli occupati: e' li' che serve, perche' dice entro quando va liberato.",
+                },
+              ]
+            : []),
+        ],
+      };
+
     case "cameriere":
       return {
         titolo: "Ordine dal cameriere",
@@ -245,7 +300,21 @@ export function guidaDelTab(
           {
             titolo: "Cosa si fa su ogni riga",
             testo:
-              "«Conferma» risponde di si' e avvisa il cliente. «Sono arrivati» quando si siedono, «Non presentati» quando l'ora e' passata a vuoto, «Annulla» quando disdicono. Il menu a destra assegna il tavolo o lo cambia: «Senza tavolo» si puo' lasciare, in sala sapete voi dove metterli.",
+              "«Conferma» risponde di si' e avvisa il cliente. «Sono arrivati» quando si siedono, «Non presentati» quando l'ora e' passata a vuoto, «Annulla» quando disdicono. Accanto al nome c'e' sempre scritto dove li mettete.",
+            punti: [
+              "Se al loro tavolo c'e' ancora gente, «Sono arrivati» non li fa sedere: te lo dice, e ti da' le due strade vere — dargliene un altro, oppure farli aspettare che quel conto venga chiuso dalla cassa. Sedersi su un tavolo occupato vorrebbe dire due tavolate su un conto solo, e ce ne si accorge alla cassa.",
+            ],
+          },
+          {
+            titolo: "I tavoli si scelgono a mano, anche piu' d'uno",
+            testo:
+              "«Cambia i tavoli» apre la sala: tocchi i numeri che vuoi dare a quel gruppo e sotto vedi salire i posti — «14 posti per 18 persone» finche' non bastano, verde quando ci stanno. L'assegnazione automatica accosta quello che trova, ma la comitiva sulla stessa fila la decide chi la sala ce l'ha davanti.",
+            punti: [
+              "Il pallino giallo vuol dire che quel tavolo e' gia' di qualcuno: c'e' gente seduta adesso, oppure lo tiene un'altra prenotazione in quella fascia — sotto c'e' scritto quale delle due. Puoi darglielo lo stesso, ma chi c'e' non si sposta da solo.",
+              "Ci sono anche i tavoli non prenotabili dal web: il bancone non si da' a chi prenota da solo, ma per una comitiva lo si usa.",
+              "Togliendoli tutti la prenotazione resta senza posto: si puo' fare, in sala sapete voi dove metterli.",
+              "Se il gruppo si e' gia' seduto, la Sala segue: il tavolo aggiunto risulta occupato, quello tolto torna libero, e il tempo di quelli che erano gia' li' non riparte da capo. L'unico che non si stacca e' il tavolo dove sta il conto, o si spezzerebbe in due il conto di gente che paga insieme.",
+            ],
           },
           {
             titolo: "Spostare invece di rifiutare",

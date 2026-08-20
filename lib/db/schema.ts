@@ -648,6 +648,56 @@ export const tableSessions = pgTable(
   (table) => [index("table_sessions_tenant_table_idx").on(table.tenantId, table.tableNumber)]
 );
 
+// Un gruppo seduto in sala, e su quali tavoli sta.
+//
+// La prenotazione sa gia' accostare due tavoli per un gruppo che non entra in
+// uno solo. In sala pero' la stessa cosa capita senza che nessuno abbia
+// prenotato: arrivano in sei, il cameriere tira di fianco il tavolo libero, e
+// da quel momento i due tavoli sono un tavolo solo. Se non e' scritto da
+// nessuna parte, il secondo risulta libero: qualcuno ci fa accomodare altra
+// gente, o gli apre un secondo conto che poi va incassato due volte.
+//
+// Vale anche per un tavolo solo, ed e' il caso piu' banale: dire "qui c'e'
+// gente" prima che ordinino. E' l'unico momento in cui il sistema, da solo,
+// non puo' saperlo — un tavolo senza ordini e senza QR scansionato e'
+// indistinguibile da un tavolo vuoto.
+export const tableSittings = pgTable(
+  "table_sittings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // I tavoli di questo gruppo, per numero: e' l'identificativo che usano
+    // gia' gli ordini, il conto e la prenotazione.
+    tableNumbers: integer("table_numbers")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    // Il capofila: il tavolo su cui si raccoglie il conto quando sono piu'
+    // d'uno. Sta scritto e non si ricava dall'elenco perche' e' il numero che
+    // gli ordini si portano su ogni riga: dedurlo di nuovo, il giorno che
+    // l'elenco cambia, vorrebbe dire spostare un conto gia' aperto.
+    mainTable: integer("main_table").notNull(),
+    // Quante persone si sono sedute, quando lo staff lo sa gia'. Serve alla
+    // vista della sala prima che ordinino: dal conto il numero si ricava solo
+    // dalla prima consumazione in poi.
+    partySize: integer("party_size"),
+    // La prenotazione da cui nasce, quando il gruppo era atteso.
+    reservationId: uuid("reservation_id").references(() => reservations.id, {
+      onDelete: "set null",
+    }),
+    openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
+    // Chiusa quando si incassa il conto o quando i tavoli si separano. Non si
+    // cancella: e' la traccia di quanto e' rimasto seduto quel gruppo, cioe'
+    // l'unico modo per sapere dopo quanto tempo gira un tavolo.
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("table_sittings_tenant_open_idx").on(table.tenantId, table.closedAt),
+  ]
+);
+
 // Chiamate del cameriere al tavolo (separate dagli ordini).
 export const waiterCalls = pgTable("waiter_calls", {
   id: uuid("id").primaryKey().defaultRandom(),

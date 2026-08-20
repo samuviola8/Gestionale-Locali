@@ -10,6 +10,16 @@ import {
   type BillTable,
 } from "@/lib/bill";
 import { getChannel } from "@/lib/channels";
+import { etichettaTavoli } from "@/lib/format";
+import { capofila, sedutaDi, seduteAperte, type Seduta } from "@/lib/sedute";
+
+// Come si chiama il conto di un tavolo: "Tavolo 3", o "Tavoli 4+5" se sono
+// accostati. Chi incassa deve leggere in un colpo d'occhio quanti tavoli sta
+// chiudendo, altrimenti va a liberarne uno e lascia l'altro apparecchiato.
+function etichettaConto(sedute: Seduta[], tableNumber: number): string {
+  const seduta = sedutaDi(sedute, tableNumber);
+  return etichettaTavoli(seduta?.tavoli ?? [tableNumber]) ?? `Tavolo ${tableNumber}`;
+}
 
 // Carica i conti aperti di un locale. Sta a parte dalla route perche' lo usa
 // anche l'incasso: il totale da congelare dev'essere calcolato con le stesse
@@ -31,6 +41,15 @@ export async function loadOpenTables(
   )[0];
   const coverChargeCents = tenant?.coverChargeCents ?? 0;
 
+  // I tavoli accostati fanno un conto solo, intestato al capofila. Chi chiede
+  // il conto del tavolo unito chiede quello del gruppo: e' la stessa gente,
+  // seduta allo stesso tavolo lungo.
+  const sedute = await seduteAperte(tenantId);
+  const filtro =
+    onlyTable === undefined
+      ? undefined
+      : (sedutaDi(sedute, onlyTable)?.capofila ?? onlyTable);
+
   const os = await db
     .select({
       id: orders.id,
@@ -50,11 +69,9 @@ export async function loadOpenTables(
   // Il filtro per tavolo serve alla pagina cliente, che vive in sala: gli
   // ordini senza tavolo non la riguardano.
   const wanted =
-    onlyTable === undefined
+    filtro === undefined
       ? os
-      : os.filter(
-          (o) => o.channel === "tavolo" && o.tableNumber === onlyTable
-        );
+      : os.filter((o) => o.channel === "tavolo" && o.tableNumber === filtro);
   const ids = wanted.map((o) => o.id);
   if (!ids.length) return [];
 
@@ -111,7 +128,7 @@ export async function loadOpenTables(
         channel: o.channel,
         label:
           o.channel === "tavolo"
-            ? `Tavolo ${o.tableNumber}`
+            ? etichettaConto(sedute, o.tableNumber ?? 0)
             : o.customerName
               ? `${canale.singolare} · ${o.customerName}`
               : canale.singolare,
@@ -217,13 +234,17 @@ export async function personeAlTavolo(
   tenantId: string,
   tableNumber: number
 ): Promise<string[]> {
+  // Su due tavoli accostati la gente e' una sola: chi ordina dal tavolo di
+  // fianco deve trovare gli stessi nomi, o dividerebbe con dei fantasmi.
+  const tavolo = await capofila(tenantId, tableNumber);
+
   const os = await db
     .select({ id: orders.id })
     .from(orders)
     .where(
       and(
         eq(orders.tenantId, tenantId),
-        eq(orders.tableNumber, tableNumber),
+        eq(orders.tableNumber, tavolo),
         isNull(orders.closedAt)
       )
     );

@@ -57,6 +57,8 @@ usata dal pannello.
 | `lib/profiles.ts` | profili di locale (lounge, pub, ristorante) |
 | `lib/onboarding.ts` | creazione completa di un locale |
 | `lib/table-session.ts` | sessione tavolo a scadenza |
+| `lib/sedute.ts` | tavoli accostati: chi sta dove, e su quale conto |
+| `lib/sala.ts` | la sala vista dall'alto: occupati, liberi, da quanto |
 | `scripts/` | seed di un locale e import del suo menu |
 
 ## Come funziona il tema per locale
@@ -123,6 +125,83 @@ chiude il conto la revoca — bisogna riscansionare il QR.
 Senza sessione valida per quel preciso tavolo, la pagina cliente, le server
 action e le API pubbliche rispondono tutte di no.
 
+## La sala durante il servizio
+
+`/dashboard/sala` e' la pianta dei tavoli con quello che di ognuno si sa
+adesso: **da quanto sono seduti**, in quanti, quanto hanno consumato, se
+aspettano qualcosa dalla cucina e se hanno chiamato. E' l'unica pagina che
+risponde alle due domande che durante il servizio si gridano da una parte
+all'altra della sala: «il sei e' libero?» e «quelli da quanto sono li'?».
+
+Il tempo parte dal **primo segnale** che si ha di quel tavolo, in questo
+ordine di certezza:
+
+| Segnale | Cosa vuol dire |
+| --- | --- |
+| seduta aperta dalla sala | qualcuno ha premuto «Segna occupato»: e' il solo modo di saperlo prima che ordinino |
+| ordine aperto | c'e' un conto in corso su quel tavolo |
+| sessione del QR viva | hanno inquadrato il codice e stanno leggendo il menu |
+
+Nessuno dei tre e' inventato dal software, e la pagina dice sempre quale sta
+leggendo: «ha scansionato il QR» e «c'e' un conto aperto» non sono la stessa
+cosa, e nasconderne la differenza vorrebbe dire far prendere decisioni su un
+dato che non c'e'.
+
+### Tavoli accostati senza prenotazione
+
+La prenotazione sa gia' accostare due tavoli per un gruppo che non entra in uno
+solo. In sala la stessa cosa capita senza che nessuno abbia prenotato: arrivano
+in sei, il cameriere tira di fianco il tavolo libero. Da `/dashboard/sala` si
+toccano i due tavoli e si preme **Unisci i tavoli** (`table_sittings`).
+
+Da quel momento:
+
+- risultano **occupati tutti e due**, in sala, nella scelta del tavolo del
+  cameriere e nel conteggio della dashboard;
+- il conto e' **uno solo**, intestato al capofila — il tavolo che ha gia'
+  ordinato, o il numero piu' basso se non ha ordinato ancora nessuno;
+- quello che si ordina **dal QR del tavolo accostato** finisce sul conto del
+  gruppo, e chi guarda dal telefono vede il conto intero, non mezzo;
+- il conto e la comanda si leggono **«Tavoli 4+5»**, perche' chi incassa deve
+  sapere quanti tavoli sta chiudendo e chi porta il vassoio deve sapere dove
+  cercare.
+
+Chiudere il conto libera tutti i tavoli del gruppo e revoca le sessioni QR di
+tutti. **Separa** li stacca senza chiudere niente: quello che era gia' stato
+ordinato resta sul conto dov'e', perche' le comande sono partite e nessuno sa
+piu' chi ha mangiato da che parte del tavolo lungo. Un tavolo dove qualcuno ha
+gia' pagato non si unisce: la sua quota era stata calcolata su quel conto.
+
+Le prenotazioni su piu' tavoli si uniscono da sole quando lo staff segna
+«Arrivati»: quale fosse l'accostamento lo sapeva gia' la prenotazione.
+
+Il giro completo si prova senza browser, su un locale finto che si cancella da
+solo:
+
+```
+npx tsx scripts/prova-sala.ts
+```
+
+### Spostare un gruppo su un altro tavolo
+
+Dalla sala si toccano il tavolo dove sta il conto e quello (o quelli) dove
+deve andare: **Sposta il conto**. Nasce per la correzione piu' comune che non
+si poteva fare — l'ordine battuto sul 5 invece che sul 6, o il QR inquadrato
+al tavolo di fianco — dove l'unica uscita era annullare le righe, che restano
+barrate sul conto per sempre. Serve anche quando il gruppo si sposta davvero:
+il dehors che rientra perche' ha cominciato a piovere.
+
+Si porta dietro tutto quello che era appeso a quei tavoli: ordini aperti,
+`bill_settlements` di chi ha gia' pagato, chiamate del cameriere ancora in
+attesa. La seduta viene aggiornata invece di rifatta, cosi' l'ora in cui si
+sono seduti resta quella vera. Le sessioni QR dei tavoli di partenza vengono
+revocate: chi e' rimasto li' col telefono in mano deve riscansionare, o
+continuerebbe a ordinare su un conto che adesso e' da un'altra parte.
+
+I tavoli d'arrivo devono essere liberi. Se uno e' occupato non e' uno
+spostamento ma una fusione di due conti, e quella si chiama «unisci»: farla
+passare di qui vorrebbe dire mescolare due tavolate per un tocco sbagliato.
+
 ## Prenotazione del tavolo
 
 Modulo `reservations`, spento di default. Acceso, il locale espone
@@ -162,6 +241,31 @@ quella che sposta meno tavoli. I tavoli assegnati si salvano per numero
 Ogni prenotazione nasce in una transazione con un lucchetto per locale
 (`pg_advisory_xact_lock`): due persone che premono "prenota" nello stesso
 secondo non possono ricevere lo stesso tavolo.
+
+Quello che l'automatico decide non e' l'ultima parola: da `Prenotazioni →
+Cambia i tavoli` si toccano i numeri uno per uno e si guarda salire la
+capienza («14 posti per 18 persone», verde quando bastano). Serve perche' la
+sala vera ha vincoli che il software non conosce — la comitiva la si vuole
+tutta sulla stessa fila, il tavolo in fondo balla, quei due si sentono solo se
+stanno vicini. Ci sono anche i tavoli **non prenotabili** dal web: il bancone
+non si da' a chi prenota da solo, ma per una comitiva lo si usa. Un tavolo gia'
+impegnato si sceglie lo stesso, segnalato con il motivo — «c'e' gente seduta
+adesso», «lo tiene Ferrari alle 20:30»: e' un avviso, non un divieto, ma chi
+c'e' non si sposta da solo.
+
+Se il gruppo era gia' segnato «arrivati», la correzione arriva anche in sala e
+i tavoli diventano **esattamente** quelli scelti: il tavolo aggiunto risulta
+occupato, quello tolto torna libero. La seduta resta quella di prima finche' un
+tavolo e' in comune, cosi' «da quanto sono seduti» non riparte da capo. L'unico
+tavolo che non si stacca e' quello dove sta il conto aperto: liberarlo
+spezzerebbe in due il conto di gente che paga insieme.
+
+Segnare «arrivati» un gruppo il cui tavolo e' ancora occupato non li fa
+sedere: la dashboard dice cosa c'e' («c'e' ancora gente al tavolo 7, da 40
+min») e lascia le due strade vere — **assegna un altro tavolo**, che apre il
+selettore li' sotto, oppure **aspettano**, finche' quel conto non viene chiuso
+dalla cassa. Farli accomodare lo stesso vorrebbe dire due tavolate su un conto
+solo, e ce ne si accorge al momento di pagare.
 
 ### Le mail partono dalla casella del locale
 

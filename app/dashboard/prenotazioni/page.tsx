@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { reservations, restaurantTables, tenants } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
@@ -12,17 +12,22 @@ import { leggiOrari } from "@/lib/orari";
 import {
   BADGE_STATO,
   ETICHETTA_STATO,
+  STATI_ATTIVI,
   dataISO,
   etichettaTavoli,
+  fineServizio,
+  finestraGiorno,
   giornoLeggibile,
   isStato,
   leggiImpostazioni,
   postiPrenotabili,
   type StatoPrenotazione,
 } from "@/lib/prenotazioni";
+import { seduteAperte } from "@/lib/sedute";
 import Field from "@/components/Field";
 import CampoOra from "@/components/CampoOra";
-import Select from "@/components/Select";
+import ScegliTavoli from "@/components/ScegliTavoli";
+import PulsanteArrivati from "@/components/PulsanteArrivati";
 import SceltaGiorno from "@/components/SceltaGiorno";
 import {
   annullaPrenotazione,
@@ -130,13 +135,80 @@ export default async function PrenotazioniPage({
     cfg
   );
 
-  const opzioniTavolo = [
-    { value: "", label: "Senza tavolo" },
-    ...prenotabili.map((t) => ({
-      value: String(t.numero),
-      label: `Tavolo ${t.numero} · ${t.posti} posti`,
-    })),
-  ];
+  // Chi tiene occupato cosa, per poterlo dire a chi sposta i tavoli a mano.
+  // Si guarda oltre il giorno mostrato: una prenotazione delle 23:30 tiene il
+  // tavolo fino all'una, e per chi prenota a mezzanotte quel tavolo non c'e'.
+  const [daFinestra, aFinestra] = finestraGiorno(inizioGiorno, cfg);
+  const vicine = await db
+    .select({
+      id: reservations.id,
+      startsAt: reservations.startsAt,
+      customerName: reservations.customerName,
+      tableNumbers: reservations.tableNumbers,
+    })
+    .from(reservations)
+    .where(
+      and(
+        eq(reservations.tenantId, session.tenantId),
+        gte(reservations.startsAt, daFinestra),
+        lt(reservations.startsAt, aFinestra),
+        inArray(reservations.status, STATI_ATTIVI)
+      )
+    );
+
+  // E chi e' seduto adesso, che e' l'altra meta' della stessa domanda: un
+  // tavolo libero in agenda puo' avere sopra una comitiva arrivata senza
+  // prenotare, e assegnarlo senza saperlo vuol dire mandarci qualcuno che
+  // trova le sedie piene.
+  const sedute = await seduteAperte(session.tenantId);
+
+  // Perche' dare questo tavolo a questo gruppo e' un problema, se lo e'.
+  function avvisoTavolo(
+    id: string,
+    inizio: Date
+  ): Map<number, string> {
+    const da = inizio.getTime();
+    const a = fineServizio(inizio, cfg).getTime();
+    const note = new Map<number, string[]>();
+    const aggiungi = (n: number, testo: string) => {
+      if (!note.has(n)) note.set(n, []);
+      note.get(n)!.push(testo);
+    };
+
+    // La seduta di questo stesso gruppo non e' un avviso: sono loro.
+    for (const s of sedute) {
+      if (s.reservationId === id) continue;
+      for (const n of s.tavoli) aggiungi(n, "c'è gente seduta adesso");
+    }
+
+    for (const v of vicine) {
+      if (v.id === id) continue;
+      const suoDa = v.startsAt.getTime();
+      const suoA = fineServizio(v.startsAt, cfg).getTime();
+      if (suoDa >= a || suoA <= da) continue;
+      const quando = v.startsAt.toLocaleTimeString("it-IT", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      for (const n of v.tableNumbers) {
+        aggiungi(n, `lo tiene ${v.customerName} alle ${quando}`);
+      }
+    }
+
+    return new Map([...note].map(([n, testi]) => [n, testi.join("; ")]));
+  }
+
+  // L'ora da cui parte il campo della prenotazione al telefono: adesso,
+  // arrotondato al quarto d'ora successivo. Chi prende una prenotazione a voce
+  // la prende quasi sempre per fra poco, e una tendina che parte da mezzanotte
+  // gli fa scorrere ottanta orari gia' passati per arrivare a quello in cui
+  // sta lavorando.
+  const fraPoco = new Date(adesso);
+  fraPoco.setMinutes(Math.ceil(fraPoco.getMinutes() / 15) * 15, 0, 0);
+  const oraDiPartenza = fraPoco.toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   // I guasti che riguardano proprio questa pagina. Stanno anche in home, ma
   // chi lavora le prenotazioni entra qui: e' qui che deve vedere che le mail
@@ -202,7 +274,7 @@ export default async function PrenotazioniPage({
               <input type="date" name="giorno" defaultValue={giorno} required className="input" />
             </Field>
             <Field label="Ora">
-              <CampoOra name="ora" passo={15} />
+              <CampoOra name="ora" passo={15} defaultValue={oraDiPartenza} />
             </Field>
             <Field label="Persone">
               <input
@@ -259,17 +331,16 @@ export default async function PrenotazioniPage({
               minute: "2-digit",
             });
             const chiuso = stato === "cancelled" || stato === "no_show";
-            // Un gruppo su due tavoli accostati non e' fra le opzioni: si
-            // mostra come scelta corrente, cosi' il menu dice la verita' su
-            // dov'e' seduto senza doverlo spezzare.
-            const valoreTavoli = r.tableNumbers.join("+");
-            const opzioni =
-              r.tableNumbers.length > 1
-                ? [
-                    { value: valoreTavoli, label: etichettaTavoli(r.tableNumbers)! },
-                    ...opzioniTavolo,
-                  ]
-                : opzioniTavolo;
+            const presi = avvisoTavolo(r.id, r.startsAt);
+            // Tutti i tavoli della sala, non solo i prenotabili: il bancone e
+            // i due sgabelli non si danno a chi prenota dal web, ma il locale
+            // che sistema una comitiva a mano ci mette chi vuole.
+            const sceltaTavoli = tavoli.map((t) => ({
+              numero: t.numero,
+              posti: t.posti,
+              prenotabile: t.prenotabile,
+              avviso: presi.get(t.numero) ?? null,
+            }));
 
             return (
               <li
@@ -288,6 +359,18 @@ export default async function PrenotazioniPage({
                       </span>
                       <span className={"badge " + BADGE_STATO[stato]}>
                         {ETICHETTA_STATO[stato]}
+                      </span>
+                      {/* Dove li mettiamo. Prima stava solo dentro il menu che
+                          serviva a cambiarlo: per leggerlo bisognava aprirlo. */}
+                      <span
+                        className="badge badge-muted"
+                        style={
+                          r.tableNumbers.length
+                            ? undefined
+                            : { color: "var(--warn)" }
+                        }
+                      >
+                        {etichettaTavoli(r.tableNumbers) ?? "Senza tavolo"}
                       </span>
                       {r.source === "staff" && (
                         <span className="badge badge-muted">al telefono</span>
@@ -347,18 +430,6 @@ export default async function PrenotazioniPage({
                     )}
                   </div>
 
-                  {!chiuso && (
-                    <form action={assegnaTavoli} className="w-40 shrink-0">
-                      <input type="hidden" name="id" value={r.id} />
-                      <Select
-                        size="sm"
-                        name="tavoli"
-                        defaultValue={valoreTavoli}
-                        options={opzioni}
-                        submitOnChange
-                      />
-                    </form>
-                  )}
                 </div>
 
                 {!chiuso && (
@@ -371,10 +442,11 @@ export default async function PrenotazioniPage({
                         </form>
                       )}
                       {stato !== "seated" && (
-                        <form action={segnaArrivati}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button className="btn btn-sm">Sono arrivati</button>
-                        </form>
+                        <PulsanteArrivati
+                          reservationId={r.id}
+                          pannelloTavoli={`tavoli-${r.id}`}
+                          segna={segnaArrivati}
+                        />
                       )}
                       <form action={segnaAssente}>
                         <input type="hidden" name="id" value={r.id} />
@@ -387,6 +459,29 @@ export default async function PrenotazioniPage({
                         </button>
                       </form>
                     </div>
+
+                    {/* I tavoli a mano. L'automatico accosta quello che trova,
+                        ma la comitiva da diciotto la si vuole tutta sulla
+                        stessa fila, e quello lo sa solo chi la sala ce l'ha
+                        davanti. */}
+                    <details className="disclosure mt-2" id={`tavoli-${r.id}`}>
+                      <summary>
+                        Cambia i tavoli
+                        {r.tableNumbers.length > 0 && (
+                          <> · {etichettaTavoli(r.tableNumbers)}</>
+                        )}
+                      </summary>
+                      <div className="disclosure-body">
+                        <ScegliTavoli
+                          reservationId={r.id}
+                          tavoli={sceltaTavoli}
+                          assegnati={r.tableNumbers}
+                          persone={r.partySize}
+                          sedieExtra={cfg.sedieExtra}
+                          assegna={assegnaTavoli}
+                        />
+                      </div>
+                    </details>
 
                     {/* Spostare invece di rifiutare: quasi sempre il tavolo
                         c'e', ma mezz'ora dopo. La proposta parte per mail e

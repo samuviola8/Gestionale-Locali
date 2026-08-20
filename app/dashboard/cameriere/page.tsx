@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { restaurantTables, orders, orderItems } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
+import { sedutaDi, seduteAperte } from "@/lib/sedute";
 
 // Il cameriere prende l'ordine a voce e lo batte da qui. Prima cosa: per quale
 // tavolo. I tavoli che hanno gia' qualcosa aperto si vedono, cosi' si capisce
@@ -37,6 +38,10 @@ export default async function ScegliTavolo() {
     ).map((r) => r.tableNumber)
   );
 
+  // I tavoli accostati: l'ordine di uno va sul conto dell'altro, e da qui deve
+  // portare la' senza che il cameriere se lo debba ricordare.
+  const sedute = await seduteAperte(session.tenantId);
+
   return (
     <div className="space-y-6">
       <div>
@@ -59,11 +64,16 @@ export default async function ScegliTavolo() {
       ) : (
         <div className="flex flex-wrap gap-2.5">
           {tavoli.map((t) => {
-            const occupato = aperti.has(t.number);
+            const seduta = sedutaDi(sedute, t.number);
+            const capo = seduta?.capofila ?? t.number;
+            const occupato = aperti.has(capo) || !!seduta;
+            const compagni = (seduta?.tavoli ?? []).filter(
+              (n) => n !== t.number
+            );
             return (
               <Link
                 key={t.number}
-                href={`/dashboard/cameriere/${t.number}`}
+                href={`/dashboard/cameriere/${capo}`}
                 className="flex h-20 w-20 flex-col items-center justify-center rounded-2xl text-xl font-semibold transition hover:opacity-80"
                 style={{
                   background: occupato ? "var(--brand-50)" : "var(--surface)",
@@ -73,7 +83,11 @@ export default async function ScegliTavolo() {
               >
                 {t.number}
                 <span className="mt-0.5 text-[10px] font-normal opacity-70">
-                  {occupato ? "conto aperto" : "libero"}
+                  {compagni.length
+                    ? `con il ${compagni.join("+")}`
+                    : occupato
+                      ? "conto aperto"
+                      : "libero"}
                 </span>
               </Link>
             );

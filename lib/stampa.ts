@@ -10,6 +10,8 @@ import {
   tenants,
 } from "@/lib/db/schema";
 import { getChannel, type Channel } from "@/lib/channels";
+import { etichettaTavoli } from "@/lib/format";
+import { sedutaDi, seduteAperte } from "@/lib/sedute";
 
 // Comande e scontrini. Il contenuto si congela qui dentro: una ristampa deve
 // mostrare quello che era stato mandato in cucina, non l'ordine com'e'
@@ -146,9 +148,17 @@ export async function creaComande(
   );
 
   const canale = getChannel(o.channel);
+  // Su due tavoli accostati la comanda porta tutti e due i numeri: il conto e'
+  // sul capofila, ma chi arriva col vassoio cerca il tavolo, e il gruppo sta
+  // di la' e di qua.
+  const seduta =
+    o.channel === "tavolo" && o.tableNumber !== null
+      ? sedutaDi(await seduteAperte(tenantId), o.tableNumber)
+      : null;
   const intestazione =
     o.channel === "tavolo"
-      ? `Tavolo ${o.tableNumber}`
+      ? (etichettaTavoli(seduta?.tavoli ?? [o.tableNumber ?? 0]) ??
+        `Tavolo ${o.tableNumber}`)
       : o.customerName
         ? `${canale.singolare} · ${o.customerName}`
         : canale.singolare;

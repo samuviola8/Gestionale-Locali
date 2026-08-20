@@ -5,6 +5,7 @@ import type { ModuleState } from "@/lib/modules";
 import { getChannel, type Channel } from "@/lib/channels";
 import { creaComande, repartoPerProdotto } from "@/lib/stampa";
 import { normalizzaAlias } from "@/lib/bill";
+import { capofila } from "@/lib/sedute";
 
 // Un ordine nasce uguale sia dal telefono del cliente sia dalla dashboard del
 // cameriere: cambia solo chi ha il diritto di crearlo. Qui sta la parte comune
@@ -60,6 +61,16 @@ export async function createOrderRows(
   const canale = getChannel(channel);
   const clean = items.filter((i) => i.productId && i.quantity > 0);
   if (!clean.length) return { ok: false };
+
+  // Se il tavolo e' accostato a un altro, l'ordine va sul conto del gruppo.
+  // Il controllo sta qui, dove passano sia il telefono del cliente sia il
+  // cameriere: metterlo piu' in la' vorrebbe dire ricordarselo ogni volta che
+  // nasce un modo nuovo di ordinare, e dimenticarselo una volta sola basta a
+  // spaccare in due il conto di una tavolata.
+  const tavolo =
+    canale.seduti && tableNumber
+      ? await capofila(tenantId, tableNumber)
+      : tableNumber;
 
   // Prezzi e nomi vengono presi dal DB, mai dal client.
   const ids = [...new Set(clean.map((i) => i.productId))];
@@ -200,7 +211,7 @@ export async function createOrderRows(
     .insert(orders)
     .values({
       tenantId,
-      tableNumber: canale.seduti ? tableNumber : null,
+      tableNumber: canale.seduti ? tavolo : null,
       dueAt: ritiro,
       channel,
       status: "new",

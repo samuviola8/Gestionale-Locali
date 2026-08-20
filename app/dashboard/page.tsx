@@ -6,10 +6,11 @@ import { orders, orderItems, reservations } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { richiediServizio } from "@/lib/billing/blocco";
 import { formatPrice } from "@/lib/menu";
-import { getTenantModules } from "@/lib/modules";
+import { getTenantModules, type ModuleKey } from "@/lib/modules";
 import { getAvvio } from "@/lib/avvio";
 import { problemiDelLocale } from "@/lib/pronto";
 import { STATI_ATTIVI } from "@/lib/prenotazioni";
+import { seduteAperte } from "@/lib/sedute";
 import ChecklistAvvio from "@/components/ChecklistAvvio";
 import ProblemiLocale from "@/components/ProblemiLocale";
 import {
@@ -18,6 +19,7 @@ import {
   IconMenu,
   IconQr,
   IconCalendar,
+  IconSala,
 } from "@/components/icons";
 
 function Stat({
@@ -76,7 +78,17 @@ export default async function DashboardHome() {
     .select({ tableNumber: orders.tableNumber, status: orders.status })
     .from(orders)
     .where(and(eq(orders.tenantId, session.tenantId), isNull(orders.closedAt)));
-  const tavoliAperti = new Set(open.map((o) => o.tableNumber)).size;
+  // I tavoli occupati adesso: quelli con un conto aperto piu' quelli che la
+  // sala ha aperto senza che abbiano ancora ordinato. Gli ordini senza tavolo
+  // — banco, asporto, domicilio — restano fuori: contarli qui faceva risultare
+  // un tavolo occupato in piu' ogni volta che c'era un asporto in coda.
+  const occupati = new Set<number>(
+    open.map((o) => o.tableNumber).filter((n): n is number => n !== null)
+  );
+  for (const s of await seduteAperte(session.tenantId)) {
+    for (const n of s.tavoli) occupati.add(n);
+  }
+  const tavoliAperti = occupati.size;
   const inCoda = open.filter(
     (o) => o.status === "new" || o.status === "preparing"
   ).length;
@@ -123,27 +135,41 @@ export default async function DashboardHome() {
       ? await problemiDelLocale(session.tenantId, modules)
       : [];
 
-  const links = [
+  // Come nel menu di sinistra: con piu' moduli basta averne uno acceso.
+  const links: {
+    href: string;
+    label: string;
+    desc: string;
+    Icon: React.ComponentType<{ size?: number; className?: string }>;
+    module?: ModuleKey | ModuleKey[];
+  }[] = [
+    {
+      href: "/dashboard/sala",
+      label: "Sala",
+      desc: "Chi è seduto e da quanto",
+      Icon: IconSala,
+      module: ["qr_ordering", "reservations"],
+    },
     {
       href: "/dashboard/orders",
       label: "Coda ordini",
       desc: "Ordini in arrivo",
       Icon: IconOrders,
-      module: "qr_ordering" as const,
+      module: "qr_ordering",
     },
     {
       href: "/dashboard/bill",
       label: "Conti aperti",
       desc: "Incassa e chiudi",
       Icon: IconBill,
-      module: "split_bill" as const,
+      module: "split_bill",
     },
     {
       href: "/dashboard/prenotazioni",
       label: "Prenotazioni",
       desc: "Chi arriva stasera",
       Icon: IconCalendar,
-      module: "reservations" as const,
+      module: "reservations",
     },
     { href: "/dashboard/menu", label: "Menu", desc: "Prodotti e foto", Icon: IconMenu },
     {
@@ -151,9 +177,17 @@ export default async function DashboardHome() {
       label: "Tavoli e QR",
       desc: "Genera i codici",
       Icon: IconQr,
-      module: "qr_ordering" as const,
+      module: "qr_ordering",
     },
-  ].filter((l) => !l.module || modules[l.module]);
+  ];
+
+  const scorciatoie = links.filter((l) =>
+    !l.module
+      ? true
+      : Array.isArray(l.module)
+        ? l.module.some((k) => modules[k])
+        : modules[l.module]
+  );
 
   return (
     <div className="space-y-8">
@@ -193,7 +227,7 @@ export default async function DashboardHome() {
           Gestione
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {links.map(({ href, label, desc, Icon }) => (
+          {scorciatoie.map(({ href, label, desc, Icon }) => (
             <Link
               key={href}
               href={href}

@@ -467,6 +467,11 @@ input[type="date"]:hover::-webkit-calendar-picker-indicator {
 }
 .btn-primary:hover { background: var(--brand); filter: brightness(1.08); }
 
+/* Un pulsante spento deve sembrare spento. Senza questa regola resta identico
+   a uno acceso, e chi lo preme resta li' a chiedersi perche' non succede
+   niente: succede in tutti i punti dove si salva solo quello che e' cambiato. */
+.btn:disabled { opacity: 0.45; }
+
 .btn-sm { min-height: 38px; padding: 0 12px; font-size: 13px; }
 
 /* Pallino "in tempo reale": pulsa piano, senza distrarre chi lavora. */

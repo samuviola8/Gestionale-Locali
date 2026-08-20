@@ -15,6 +15,7 @@ import {
   IconCounter,
   IconCalendar,
   IconRubrica,
+  IconSala,
   IconSettings,
   IconFattura,
 } from "@/components/icons";
@@ -32,6 +33,12 @@ const items: {
   soloTitolare?: boolean;
 }[] = [
   { href: "/dashboard", label: "Dashboard", Icon: IconHome },
+  {
+    href: "/dashboard/sala",
+    label: "Sala",
+    Icon: IconSala,
+    module: ["qr_ordering", "reservations"],
+  },
   {
     href: "/dashboard/orders",
     label: "Coda ordini",

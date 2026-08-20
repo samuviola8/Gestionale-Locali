@@ -5,6 +5,7 @@ import { orders, orderItems } from "@/lib/db/schema";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { requireTableSession } from "@/lib/table-session";
 import { loadOpenTables, personeAlTavolo } from "@/lib/bill-query";
+import { capofila } from "@/lib/sedute";
 
 // Usato dalla pagina cliente per lo stato del proprio tavolo: richiede la
 // sessione aperta col QR, altrimenti si leggerebbero gli ordini altrui.
@@ -19,6 +20,11 @@ export async function GET(req: Request) {
   if (!(await requireTableSession(tenant.id, table)))
     return NextResponse.json({ orders: [], scaduta: true }, { status: 401 });
 
+  // Se il locale ha accostato questo tavolo a un altro, quello che si e'
+  // ordinato sta tutto sul conto del gruppo: chi guarda dal telefono deve
+  // vedere quello, non un tavolo vuoto accanto al proprio piatto.
+  const tavolo = await capofila(tenant.id, table);
+
   const os = await db
     .select({
       id: orders.id,
@@ -30,7 +36,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(orders.tenantId, tenant.id),
-        eq(orders.tableNumber, table),
+        eq(orders.tableNumber, tavolo),
         isNull(orders.closedAt)
       )
     )
@@ -64,7 +70,7 @@ export async function GET(req: Request) {
 
   // Stesso calcolo che vede il cassiere, non un conteggio parallelo: se lo
   // staff corregge le persone al tavolo, qui cambia di conseguenza.
-  const conto = (await loadOpenTables(tenant.id, table))[0] ?? null;
+  const conto = (await loadOpenTables(tenant.id, tavolo))[0] ?? null;
 
   // In quanti sono, se qualcuno l'ha gia' detto. Non e' il numero del conto,
   // che quando nessuno ha risposto lo deduce da chi ha ordinato: qui serve
@@ -75,7 +81,7 @@ export async function GET(req: Request) {
   // I nomi gia' in uso al tavolo, da qualunque telefono siano stati scritti.
   // Senza, ogni telefono conosce solo chi ci ha digitato sopra, e dividere con
   // chi ha ordinato dall'altro telefono e' impossibile: per lui non esiste.
-  const persone = await personeAlTavolo(tenant.id, table);
+  const persone = await personeAlTavolo(tenant.id, tavolo);
 
   return NextResponse.json({
     orders: result,

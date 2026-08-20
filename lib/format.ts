@@ -5,3 +5,36 @@
 export function formatPrice(cents: number): string {
   return "€" + (cents / 100).toFixed(2).replace(".", ",");
 }
+
+// Come si leggono in sala i tavoli di un gruppo: "Tavolo 7" o "Tavoli 4+5".
+// Vale per la prenotazione che li accosta in anticipo e per il cameriere che
+// li unisce sul momento: e' la stessa etichetta, e deve restare la stessa.
+export function etichettaTavoli(numeri: number[]): string | null {
+  if (!numeri.length) return null;
+  return numeri.length === 1
+    ? `Tavolo ${numeri[0]}`
+    : `Tavoli ${numeri.join("+")}`;
+}
+
+// Perche' un tavolo risulta occupato. Non e' un dettaglio da nascondere: «hanno
+// scansionato il QR» e «c'e' un conto aperto» sono due gradi di certezza
+// diversi, e chi guarda la sala deve sapere quale dei due sta leggendo.
+export type OrigineOccupazione = "sala" | "ordine" | "qr";
+
+export const ORIGINE_ETICHETTA: Record<OrigineOccupazione, string> = {
+  sala: "aperto in sala",
+  ordine: "ha ordinato",
+  qr: "solo QR",
+};
+
+// Da quanto sono seduti, in parole: "35 min", "1h 20", "3 h". Sopra le tre ore
+// si smette di contare i minuti: a quel punto la cifra che conta e' l'ora.
+export function daQuanto(daMs: number, adessoMs: number): string {
+  const minuti = Math.max(0, Math.floor((adessoMs - daMs) / 60000));
+  if (minuti === 0) return "adesso";
+  if (minuti < 60) return `${minuti} min`;
+  const ore = Math.floor(minuti / 60);
+  const resto = minuti % 60;
+  if (ore >= 3 || resto === 0) return `${ore} h`;
+  return `${ore}h ${String(resto).padStart(2, "0")}`;
+}

@@ -20,6 +20,7 @@ import {
   normalizzaAlias,
 } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
+import { chiudiSeduta } from "@/lib/sedute";
 import { creaScontrinoConto } from "@/lib/stampa";
 
 // Scontrino del conto su richiesta, prima di chiuderlo: il cliente vuole
@@ -146,8 +147,16 @@ export async function closeTable(key: string): Promise<void> {
   }
 
   if (conto.tipo === "tavolo") {
-    // Il tavolo si libera: i telefoni ancora collegati devono riscansionare.
-    await revokeTableSessions(session.tenantId, conto.tableNumber);
+    // Il gruppo se n'e' andato, e se ne va da tutti i tavoli che occupava: il
+    // conto e' uno anche quando i tavoli erano due accostati. Liberarne uno
+    // solo lascerebbe l'altro occupato da nessuno per il resto della serata.
+    const seduta = await chiudiSeduta(session.tenantId, conto.tableNumber);
+    const tavoli = seduta?.tavoli ?? [conto.tableNumber];
+
+    // I telefoni ancora collegati devono riscansionare.
+    for (const n of tavoli) {
+      await revokeTableSessions(session.tenantId, n);
+    }
 
     // E chi aveva chiamato se n'e' andato: una chiamata lasciata aperta fa
     // suonare la campanella per un tavolo che non c'e' piu', e chi va a
@@ -158,7 +167,7 @@ export async function closeTable(key: string): Promise<void> {
       .where(
         and(
           eq(waiterCalls.tenantId, session.tenantId),
-          eq(waiterCalls.tableNumber, conto.tableNumber),
+          inArray(waiterCalls.tableNumber, tavoli),
           isNull(waiterCalls.resolvedAt)
         )
       );

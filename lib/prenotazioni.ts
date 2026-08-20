@@ -570,14 +570,6 @@ export async function contestoPrenotazione(): Promise<ContestoPrenotazione | nul
   };
 }
 
-// Etichetta leggibile dei tavoli assegnati: "Tavolo 7" o "Tavoli 4+5".
-export function etichettaTavoli(numeri: number[]): string | null {
-  if (!numeri.length) return null;
-  return numeri.length === 1
-    ? `Tavolo ${numeri[0]}`
-    : `Tavoli ${numeri.join("+")}`;
-}
-
 export function giornoLeggibile(d: Date, adesso: Date): string {
   const diff = Math.round(
     (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() -
@@ -594,3 +586,6 @@ export function giornoLeggibile(d: Date, adesso: Date): string {
 }
 
 export { dataISO };
+// L'etichetta dei tavoli sta fra le formattazioni pure: la stessa la usa la
+// sala, che con le prenotazioni non ha niente a che vedere.
+export { etichettaTavoli } from "@/lib/format";

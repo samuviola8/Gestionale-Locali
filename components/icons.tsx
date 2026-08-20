@@ -125,6 +125,17 @@ export function IconQr(p: Props) {
   );
 }
 
+// Sala: la pianta dei tavoli, due tondi dentro le quattro pareti.
+export function IconSala(p: Props) {
+  return (
+    <Base {...p}>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="9" cy="9.5" r="2.2" />
+      <circle cx="15.5" cy="15" r="2.2" />
+    </Base>
+  );
+}
+
 // Prenotazioni: il calendario con il giorno segnato.
 export function IconCalendar(p: Props) {
   return (
