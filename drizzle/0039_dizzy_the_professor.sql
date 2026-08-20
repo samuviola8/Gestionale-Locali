@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "billing_prices_globali" ON "billing_prices" USING btree ("scope","key") WHERE tenant_id is null;

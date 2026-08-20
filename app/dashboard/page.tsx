@@ -8,8 +8,10 @@ import { richiediServizio } from "@/lib/billing/blocco";
 import { formatPrice } from "@/lib/menu";
 import { getTenantModules } from "@/lib/modules";
 import { getAvvio } from "@/lib/avvio";
+import { problemiDelLocale } from "@/lib/pronto";
 import { STATI_ATTIVI } from "@/lib/prenotazioni";
 import ChecklistAvvio from "@/components/ChecklistAvvio";
+import ProblemiLocale from "@/components/ProblemiLocale";
 import {
   IconOrders,
   IconBill,
@@ -114,6 +116,13 @@ export default async function DashboardHome() {
       ? await getAvvio(session.tenantId, modules)
       : null;
 
+  // E quello che invece e' gia' acceso e non funziona. Sta sopra la checklist
+  // perche' e' rotto adesso, mentre la checklist e' roba ancora da fare.
+  const problemi =
+    session.role === "owner"
+      ? await problemiDelLocale(session.tenantId, modules)
+      : [];
+
   const links = [
     {
       href: "/dashboard/orders",
@@ -154,6 +163,8 @@ export default async function DashboardHome() {
           {today}
         </p>
       </div>
+
+      <ProblemiLocale problemi={problemi} />
 
       {avvio && <ChecklistAvvio avvio={avvio} />}
 

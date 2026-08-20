@@ -23,6 +23,7 @@ import {
   dataBreve,
   etichettaContratto,
   etichettaDocumento,
+  etichettaModello,
 } from "@/lib/billing/stati";
 import { preparaRinnoviAction } from "./actions";
 
@@ -172,7 +173,7 @@ export default async function FatturazionePage() {
                     </a>
                     <div className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
                       {c
-                        ? `${c.model === "impianto" ? "Impianto" : "Abbonamento"} · ${c.pack}`
+                        ? `${etichettaModello(c.model)} · ${c.pack}`
                         : "Nessun contratto"}
                     </div>
                   </div>
@@ -180,11 +181,8 @@ export default async function FatturazionePage() {
                     {etichettaContratto(c?.status ?? "prova")}
                   </span>
                   {mancanzeIntestatario(l).length > 0 && (
-                    <span
-                      className="badge badge-warn"
-                      title={"Manca " + mancanzeIntestatario(l).join(", ")}
-                    >
-                      dati fattura
+                    <span className="badge badge-warn">
+                      manca {mancanzeIntestatario(l).join(", ")}
                     </span>
                   )}
                   {l.serviceBlocked && (

@@ -143,11 +143,16 @@ export async function impostaProva(
 // Il canone che il listino chiede oggi per un pacchetto. Serve a proporre la
 // cifra nel pannello: quella che conta, dopo, e' quella scritta nel contratto.
 export async function canoneDaListino(
-  pack: PaccoKey,
+  pack: string,
   model: ModelloContratto,
-  period: Periodo
+  period: Periodo,
+  tenantId?: string
 ): Promise<{ recurringCents: number; activationCents: number }> {
-  const p = await getPaccoPrezzato(pack);
+  const p = await getPaccoPrezzato(pack, tenantId);
+  // Pacchetto che non esiste (o su misura chiesto a un locale che non ce
+  // l'ha): zero e non un prezzo a caso. Meglio una cifra vuota da correggere
+  // che una plausibile e sbagliata.
+  if (!p) return { recurringCents: 0, activationCents: 0 };
   if (model === "impianto") {
     return { recurringCents: p.assistenzaCents, activationCents: p.attivazioneCents };
   }
@@ -155,6 +160,107 @@ export async function canoneDaListino(
     recurringCents: period === "annuale" ? p.annualeCents : p.mensileCents,
     activationCents: 0,
   };
+}
+
+// Il cambio di piano che il locale ha chiesto e che aspetta il rinnovo.
+//
+// Scendere di piano non vale subito: ha gia' pagato fino a fine periodo, e
+// togliergli i moduli prima sarebbe togliergli roba pagata. Sale invece
+// subito — chi vuole un modulo oggi lo vuole oggi — e la differenza per i
+// giorni che restano finisce in conguaglio sulla prossima fattura.
+export async function programmaCambioPacco(
+  tenantId: string,
+  pack: string
+): Promise<void> {
+  const attuale = await getContratto(tenantId);
+  if (!attuale) return;
+  await db
+    .update(tenantBilling)
+    .set({
+      pendingPack: pack,
+      pendingFrom: attuale.nextInvoiceAt ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+export async function annullaCambioProgrammato(tenantId: string): Promise<void> {
+  await db
+    .update(tenantBilling)
+    .set({ pendingPack: null, pendingFrom: null, updatedAt: new Date() })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+// Il cambio programmato scatta. Torna true se ha cambiato qualcosa.
+//
+// A scatenarlo e' il rinnovo, non l'orologio: si chiama da preparaRinnovi e
+// da nessun altro posto. Guardare `pendingFrom` sembrava piu' prudente, ma
+// quella data e' solo quello che ho detto al cliente — se la scadenza si
+// sposta (una prova allungata, una correzione a mano) resta indietro, e il
+// cambio non scatterebbe mai piu': il locale continuerebbe a pagare il piano
+// vecchio aspettando un downgrade che non arriva.
+export async function applicaCambioProgrammato(
+  tenantId: string
+): Promise<boolean> {
+  const c = await getContratto(tenantId);
+  if (!c?.pendingPack) return false;
+
+  const nuovo = await canoneDaListino(
+    c.pendingPack,
+    c.model as ModelloContratto,
+    c.period as Periodo,
+    tenantId
+  );
+
+  await db
+    .update(tenantBilling)
+    .set({
+      pack: c.pendingPack,
+      recurringCents: nuovo.recurringCents,
+      pendingPack: null,
+      pendingFrom: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+  return true;
+}
+
+// Il conguaglio dell'upgrade a meta' periodo: la differenza di canone per i
+// giorni che restano. Chi sale il primo giorno paga tutto, chi sale a due
+// giorni dalla scadenza paga due giorni — che e' l'unico modo perche' salire
+// non sembri una fregatura.
+export async function segnaConguaglio(
+  tenantId: string,
+  cents: number,
+  nota: string
+): Promise<void> {
+  if (!cents) return;
+  const c = await getContratto(tenantId);
+  if (!c) return;
+  await db
+    .update(tenantBilling)
+    .set({
+      adjustmentCents: c.adjustmentCents + Math.round(cents),
+      adjustmentNote: nota,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+export async function azzeraConguaglio(tenantId: string): Promise<void> {
+  await db
+    .update(tenantBilling)
+    .set({ adjustmentCents: 0, adjustmentNote: null, updatedAt: new Date() })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+// Quanto vale il resto del periodo, in millesimi di canone. Serve al
+// conguaglio: se mancano 12 giorni su 30, la differenza si paga per 12/30.
+export function quotaResidua(scadenza: Date, quando: Date, period: Periodo): number {
+  const giorniPeriodo = period === "annuale" ? 365 : 30;
+  const restano = Math.ceil((scadenza.getTime() - quando.getTime()) / 86400000);
+  if (restano <= 0) return 0;
+  return Math.min(1, restano / giorniPeriodo);
 }
 
 export type DatiContratto = {
@@ -165,7 +271,10 @@ export type DatiContratto = {
   activationCents: number;
   transactionBps: number;
   status: StatoContratto;
-  provider: Provider;
+  // Come paga lo decide il locale dalla sua dashboard, non io: e' il suo
+  // conto corrente. Quando questo campo non arriva — ed e' il caso del
+  // pannello admin — quello gia' scelto resta dov'e'.
+  provider?: Provider;
   notes: string | null;
 };
 
@@ -180,17 +289,28 @@ export async function salvaContratto(
   // contratto era gia' attivo la data di rinnovo non si tocca — riscriverla a
   // ogni salvataggio del pannello sposterebbe in avanti la fattura ogni volta
   // che si corregge una nota.
-  const diventaAttivo = dati.status === "attivo" && attuale?.status !== "attivo";
-  const startedAt = attuale?.startedAt ?? (diventaAttivo ? new Date() : null);
-  const nextInvoiceAt = diventaAttivo
-    ? new Date()
-    : dati.status === "chiuso"
+  const attivo = dati.status === "attivo";
+  const startedAt = attuale?.startedAt ?? (attivo ? new Date() : null);
+
+  // Un contratto attivo deve sempre avere una scadenza. Attivo senza scadenza
+  // vuol dire che non entra nel giro dei rinnovi, non produce mai una bozza e
+  // non si fattura piu': il guasto peggiore possibile qui, perche' non fa
+  // rumore e lo si scopre quando mancano i soldi. Percio' non basta metterla
+  // al passaggio "prova -> attivo": se manca la si mette comunque.
+  //
+  // Quando invece la scadenza c'e' gia' non si tocca — riscriverla a ogni
+  // salvataggio la sposterebbe in avanti ogni volta che si corregge una nota.
+  const nextInvoiceAt =
+    dati.status === "chiuso"
       ? null
-      : (attuale?.nextInvoiceAt ?? null);
+      : attivo
+        ? (attuale?.nextInvoiceAt ?? new Date())
+        : (attuale?.nextInvoiceAt ?? null);
 
   const values = {
     ...dati,
     pack: isPaccoKey(dati.pack) ? dati.pack : "su_misura",
+    provider: dati.provider ?? attuale?.provider ?? "manuale",
     startedAt,
     nextInvoiceAt,
     endedAt: dati.status === "chiuso" ? (attuale?.endedAt ?? new Date()) : null,

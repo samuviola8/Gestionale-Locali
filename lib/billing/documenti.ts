@@ -16,12 +16,23 @@ import {
   type Emittente,
 } from "@/lib/billing/emittente";
 import {
+  applicaCambioProgrammato,
+  azzeraConguaglio,
+  getContratto,
   mesiPerScadenza,
   prossimaScadenza,
   segnaAttivazioneFatturata,
   type Periodo,
 } from "@/lib/billing/contratti";
-import { getAddons, totaleAddonsCents } from "@/lib/billing/addons";
+import {
+  applicaModuliDelPacco,
+  getAddons,
+  sincronizzaAddons,
+  totaleAddonsCents,
+} from "@/lib/billing/addons";
+import { isPaccoKey } from "@/lib/billing/listino";
+import { getPaccoPrezzato } from "@/lib/billing/prezzi";
+import { getTenantModules } from "@/lib/modules";
 import { aggiornaBloccoLocale } from "@/lib/billing/blocco";
 
 // I documenti verso i locali: si creano in bozza, si emettono, si incassano.
@@ -444,7 +455,34 @@ export async function preparaRinnovi(quando: Date = new Date()): Promise<number>
   const scaduti = await contrattiDaFatturare(quando);
   let fatti = 0;
 
-  for (const c of scaduti) {
+  for (const scaduto of scaduti) {
+    // Il cambio di piano chiesto dal locale scatta adesso: "dal prossimo
+    // rinnovo" vuol dire esattamente questo momento, un attimo prima che si
+    // scriva la fattura del periodo nuovo.
+    const cambiato = await applicaCambioProgrammato(scaduto.tenantId);
+    if (cambiato) {
+      const nuovo = await getContratto(scaduto.tenantId);
+      // Prima i moduli: scendendo di piano quelli che non ci sono piu' vanno
+      // spenti davvero. Cambiare solo la cifra vorrebbe dire fargli pagare
+      // Sala tenendogli acceso Tutto — e allora nessuno salirebbe mai.
+      if (nuovo && isPaccoKey(nuovo.pack)) {
+        await applicaModuliDelPacco(scaduto.tenantId, nuovo.pack);
+      }
+      // Poi cosa si fattura a parte: chi entra nel pacchetto smette di essere
+      // un add-on, chi ne esce ricomincia a esserlo.
+      await sincronizzaAddons(
+        scaduto.tenantId,
+        await getTenantModules(scaduto.tenantId)
+      );
+    }
+
+    // Rileggo: applicaCambioProgrammato puo' aver riscritto pacchetto e
+    // canone, e la copia presa prima del giro adesso mentirebbe.
+    const aggiornato = await getContratto(scaduto.tenantId);
+    const c = aggiornato
+      ? { ...scaduto, ...aggiornato, tenantId: scaduto.tenantId }
+      : scaduto;
+
     const inizio = c.nextInvoiceAt ?? quando;
     const fine = prossimaScadenza(c.period as Periodo, inizio);
     const righe: RigaNuova[] = [];
@@ -453,18 +491,22 @@ export async function preparaRinnovi(quando: Date = new Date()): Promise<number>
     if (c.activationCents > 0 && !c.activationInvoicedAt) {
       righe.push({
         kind: "attivazione",
-        description: "Attivazione e impianto Comanda",
+        description: "Installazione e attivazione Comanda",
         unitCents: c.activationCents,
       });
     }
 
     if (c.recurringCents > 0) {
+      // Il nome del pacchetto e non la sua chiave: in fattura ci va "Pro",
+      // non "locale". La chiave e' roba nostra, e il commercialista che legge
+      // la riga non deve tradurla.
+      const suo = await getPaccoPrezzato(c.pack, c.tenantId);
       righe.push({
         kind: "canone",
         description:
           c.model === "impianto"
             ? `Assistenza e servizio Comanda — ${periodoLeggibile(inizio, fine)}`
-            : `Abbonamento Comanda ${c.pack} — ${periodoLeggibile(inizio, fine)}`,
+            : `Abbonamento Comanda ${suo?.label ?? c.pack} — ${periodoLeggibile(inizio, fine)}`,
         unitCents: c.recurringCents,
       });
     }
@@ -483,6 +525,18 @@ export async function preparaRinnovi(quando: Date = new Date()): Promise<number>
       });
     }
 
+    // Il conguaglio dell'upgrade fatto a meta' periodo. Riga a se': "hai
+    // pagato Sala fino al 30, dal 12 hai Locale, ecco la differenza per i
+    // diciotto giorni" e' una cosa che si deve poter leggere in fattura.
+    const conguaglio = aggiornato?.adjustmentCents ?? 0;
+    if (conguaglio) {
+      righe.push({
+        kind: "modulo",
+        description: aggiornato?.adjustmentNote ?? "Conguaglio cambio piano",
+        unitCents: conguaglio,
+      });
+    }
+
     if (!righe.length) continue;
 
     await creaDocumento(c.tenantId, {
@@ -490,6 +544,8 @@ export async function preparaRinnovi(quando: Date = new Date()): Promise<number>
       periodStart: inizio,
       periodEnd: fine,
     });
+
+    if (conguaglio) await azzeraConguaglio(c.tenantId);
 
     if (c.activationCents > 0 && !c.activationInvoicedAt) {
       await segnaAttivazioneFatturata(c.tenantId);

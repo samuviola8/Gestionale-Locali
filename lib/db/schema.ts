@@ -8,6 +8,7 @@ import {
   unique,
   jsonb,
   index,
+  uniqueIndex,
   doublePrecision,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -780,6 +781,20 @@ export const tenantBilling = pgTable("tenant_billing", {
   // Attivazione una tantum: si fattura alla firma e poi non si tocca piu'.
   activationCents: integer("activation_cents").notNull().default(0),
   activationInvoicedAt: timestamp("activation_invoiced_at", { withTimezone: true }),
+
+  // Il pacchetto che entrera' in vigore al prossimo rinnovo. Serve al
+  // downgrade: chi scende non scende oggi — ha gia' pagato fino a fine
+  // periodo, e togliergli i moduli prima sarebbe togliergli roba pagata.
+  // L'upgrade invece non passa di qui: parte subito.
+  pendingPack: text("pending_pack"),
+  pendingFrom: timestamp("pending_from", { withTimezone: true }),
+
+  // Conguaglio da mettere sulla prossima fattura, in centesimi. Nasce
+  // dall'upgrade a meta' periodo: il piano nuovo parte oggi, ma i giorni gia'
+  // pagati al prezzo vecchio non si buttano — si addebita la differenza per i
+  // giorni che restano. Si azzera appena e' finito in fattura.
+  adjustmentCents: integer("adjustment_cents").notNull().default(0),
+  adjustmentNote: text("adjustment_note"),
   // Quota piattaforma sul transato, in punti base (40 = 0,40%).
   transactionBps: integer("transaction_bps").notNull().default(0),
 
@@ -961,6 +976,14 @@ export const billingPrices = pgTable(
   "billing_prices",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Nullo = prezzo di listino, vale per tutti. Valorizzato = prezzo di
+    // quel locale, e vince sul listino. Tre livelli in tutto — codice,
+    // listino, cliente — risolti sempre nello stesso ordine da
+    // lib/billing/prezzi.ts: se la risoluzione si sparpaglia, fra sei mesi
+    // non si sa piu quale prezzo vince.
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "cascade",
+    }),
     // pacco | modulo
     scope: text("scope").notNull(),
     key: text("key").notNull(),
@@ -972,7 +995,15 @@ export const billingPrices = pgTable(
     assistenzaCents: integer("assistenza_cents").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [unique("billing_prices_scope_key").on(table.scope, table.key)]
+  (table) => [
+    unique("billing_prices_scope_key").on(table.scope, table.key, table.tenantId),
+    // Il vincolo qui sopra non basta: per Postgres due NULL sono diversi, e
+    // due righe di listino globale per lo stesso pacchetto passerebbero
+    // entrambe. Questo indice tiene unica la riga senza tenant.
+    uniqueIndex("billing_prices_globali")
+      .on(table.scope, table.key)
+      .where(sql`tenant_id is null`),
+  ]
 );
 
 // Gli add-on di un locale: i moduli che paga a parte, fuori dal pacchetto.
@@ -1027,3 +1058,35 @@ export const tenantFiles = pgTable(
   },
   (table) => [index("tenant_files_tenant_idx").on(table.tenantId, table.uploadedAt)]
 );
+
+// Il pacchetto su misura di un locale: uno per locale, disegnato in
+// trattativa.
+//
+// Non sta in `billing_prices` con gli altri scostamenti perche' non e' un
+// prezzo: e' una composizione. Quali moduli comprende lo decido io caso per
+// caso, ed e' proprio la cosa che i tre pacchetti standard non sanno dire.
+//
+// Una volta creato compare accanto a Base, Pro e Premium nella pagina dove il
+// locale sceglie, e ci resta: se passa a Pro e poi ci ripensa, il suo su
+// misura e' ancora li'. Cancellarlo appena non e' quello scelto vorrebbe dire
+// costringerlo a richiamarmi per tornare indietro.
+export const tenantCustomPacks = pgTable("tenant_custom_packs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .unique()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  // Come si chiama per lui: "Il tuo piano", "Pro senza asporto", quello che
+  // gli ho detto al telefono. Il nome fa parte dell'accordo.
+  label: text("label").notNull().default("Su misura"),
+  descrizione: text("descrizione"),
+  // Le chiavi dei moduli compresi nel canone. Array e non tabella a parte:
+  // e' una lista corta che si legge e si riscrive sempre tutta insieme.
+  moduli: jsonb("moduli").notNull().default([]),
+  mensileCents: integer("mensile_cents").notNull().default(0),
+  annualeCents: integer("annuale_cents").notNull().default(0),
+  attivazioneCents: integer("attivazione_cents").notNull().default(0),
+  assistenzaCents: integer("assistenza_cents").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

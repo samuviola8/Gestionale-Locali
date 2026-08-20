@@ -219,3 +219,13 @@ export function IconFattura(p: Props) {
     </Base>
   );
 }
+
+export function IconAiuto(p: Props) {
+  return (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9a2.6 2.6 0 0 1 5 1c0 1.7-2.5 2-2.5 3.5" />
+      <path d="M12 17.2h.01" />
+    </Base>
+  );
+}

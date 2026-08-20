@@ -194,7 +194,7 @@ export default function NewLocaleForm({
 
           <div>
             <label className={label}>Ragione sociale</label>
-            <input name="legalName" placeholder="Noya Lounge S.r.l.s." className={field} />
+            <input name="legalName" placeholder="Come sei registrato, non l'insegna" className={field} />
           </div>
           <div>
             <label className={label}>Telefono</label>

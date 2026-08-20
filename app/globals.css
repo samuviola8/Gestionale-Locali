@@ -539,6 +539,14 @@ input[type="date"]:hover::-webkit-calendar-picker-indicator {
   font-size: 14px;
 }
 .input::placeholder { color: var(--muted); }
+/* Un campo spento deve sembrarlo. Senza questo un select disabilitato e' in
+   tutto identico a uno attivo: ci si clicca sopra, non succede niente, e si
+   pensa che il pannello sia rotto. */
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
 
 /* Le caselle da spuntare.
    Quella di sistema e' un quadretto azzurro uguale su ogni sito, che del tema

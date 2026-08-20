@@ -20,6 +20,7 @@ import { isValidTheme, safeColor } from "@/lib/branding";
 import { verificaIndirizzoWeb } from "@/lib/onboarding";
 import { saveImage } from "@/lib/uploads";
 import {
+  getContratto,
   impostaProva,
   isModello,
   isPeriodo,
@@ -28,6 +29,17 @@ import {
   salvaContratto,
 } from "@/lib/billing/contratti";
 import { sincronizzaAddons } from "@/lib/billing/addons";
+import { PACCHETTI } from "@/lib/billing/listino";
+import {
+  CHIAVE_SU_MISURA,
+  eliminaSuMisura,
+  salvaSuMisura,
+} from "@/lib/billing/sumisura";
+import {
+  azzeraScostamenti,
+  salvaPrezzoModulo,
+  salvaPrezzoPacco,
+} from "@/lib/billing/prezzi";
 import { caricaFile, eliminaFile, spostaArchivio } from "@/lib/billing/archivio";
 import { aggiornaBloccoLocale, sbloccaLocale } from "@/lib/billing/blocco";
 
@@ -378,7 +390,6 @@ export async function saveContratto(formData: FormData): Promise<void> {
   const model = String(formData.get("model") ?? "abbonamento");
   const period = String(formData.get("period") ?? "mensile");
   const status = String(formData.get("status") ?? "prova");
-  const provider = String(formData.get("provider") ?? "manuale");
 
   // La percentuale sul transato si scrive in percento perche' e' come la si
   // dice in trattativa; a database sta in punti base, che sono interi e non
@@ -397,7 +408,7 @@ export async function saveContratto(formData: FormData): Promise<void> {
       ? 0
       : Math.max(0, Math.round(percentuale * 100)),
     status: isStato(status) ? status : "prova",
-    provider: isProvider(provider) ? provider : "manuale",
+    // provider non si tocca: lo sceglie il locale dalla sua dashboard.
     notes: String(formData.get("notes") ?? "").trim() || null,
   });
 
@@ -508,5 +519,95 @@ export async function eliminaFileAction(formData: FormData): Promise<void> {
   if (!locale) return;
 
   await eliminaFile(fileId, locale.slug);
+  revalidatePath(`/admin/locali/${id}`);
+}
+
+// I prezzi di questo locale: quelli che vede lui quando sceglie il piano.
+//
+// Non e' lo stesso listino per tutti — quello sta in /admin/fatturazione/
+// listino. Qui si scrive "per questo, Sala costa 39": e' la trattativa, ed e'
+// il motivo per cui il locale puo' scegliere da solo senza che io debba
+// rifargli il prezzo al telefono ogni volta.
+export async function salvaPrezziLocaleAction(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  for (const p of PACCHETTI) {
+    await salvaPrezzoPacco(
+      p.key,
+      {
+        mensileCents: euroToCents(String(formData.get(`p_${p.key}_mensile`) ?? "")),
+        annualeCents: euroToCents(String(formData.get(`p_${p.key}_annuale`) ?? "")),
+        attivazioneCents: euroToCents(
+          String(formData.get(`p_${p.key}_attivazione`) ?? "")
+        ),
+        assistenzaCents: euroToCents(
+          String(formData.get(`p_${p.key}_assistenza`) ?? "")
+        ),
+      },
+      id
+    );
+  }
+
+  for (const m of MODULES) {
+    const valore = formData.get(`m_${m.key}`);
+    if (valore === null) continue;
+    await salvaPrezzoModulo(m.key, euroToCents(String(valore)), id);
+  }
+
+  revalidatePath(`/admin/locali/${id}`);
+}
+
+// Torna al listino di tutti, cancellando gli scostamenti di questo locale.
+export async function azzeraPrezziLocaleAction(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await azzeraScostamenti(id);
+  revalidatePath(`/admin/locali/${id}`);
+}
+
+// Il pacchetto su misura di questo locale: quello che i tre standard non sanno
+// dire. Una volta salvato compare accanto agli altri nella sua pagina
+// Abbonamento, e ci resta anche se nel frattempo passa a uno standard.
+export async function salvaSuMisuraAction(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const moduli = MODULES.filter(
+    (m) => formData.get(`sm_${m.key}`) === "on"
+  ).map((m) => m.key);
+
+  await salvaSuMisura(id, {
+    label: String(formData.get("sm_label") ?? ""),
+    descrizione: String(formData.get("sm_descrizione") ?? ""),
+    moduli,
+    mensileCents: euroToCents(String(formData.get("sm_mensile") ?? "")),
+    annualeCents: euroToCents(String(formData.get("sm_annuale") ?? "")),
+    attivazioneCents: euroToCents(String(formData.get("sm_attivazione") ?? "")),
+    assistenzaCents: euroToCents(String(formData.get("sm_assistenza") ?? "")),
+  });
+
+  revalidatePath(`/admin/locali/${id}`);
+}
+
+// Toglierlo e' un'altra cosa dal non usarlo: finche' esiste il locale puo'
+// sempre tornarci. Se lo sta usando adesso, il contratto resterebbe agganciato
+// a un pacchetto che non c'e' piu' — quindi prima lo si sposta, poi si toglie.
+export async function eliminaSuMisuraAction(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const contratto = await getContratto(id);
+  if (contratto?.pack === CHIAVE_SU_MISURA) return;
+
+  await eliminaSuMisura(id);
   revalidatePath(`/admin/locali/${id}`);
 }

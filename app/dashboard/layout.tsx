@@ -3,11 +3,14 @@ import { redirect } from "next/navigation";
 import { accessoDaCompletare, getSessionUser, repartoAttivo } from "@/lib/auth";
 import { getTenantFromHost } from "@/lib/tenant-host";
 import { getTenantModules } from "@/lib/modules";
+import { getContratto } from "@/lib/billing/contratti";
+import { giorniAllaFine } from "@/lib/billing/prova";
 import { ultimeDelLocale } from "@/lib/segnalazioni-query";
 import DashboardNav from "@/components/DashboardNav";
 import DashboardShell from "@/components/DashboardShell";
 import ThemeToggle from "@/components/ThemeToggle";
 import CallsBell from "@/components/CallsBell";
+import GuidaDashboard from "@/components/GuidaDashboard";
 import { IconLogout, IconUsers } from "@/components/icons";
 import Stampante from "@/components/Stampante";
 import Segnalazioni from "@/components/Segnalazioni";
@@ -30,6 +33,11 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
 };
+
+// Da quando la prova comincia a comparire nella striscia in cima. Una
+// settimana: prima e' presto e diventa rumore, dopo e' tardi per organizzarsi
+// col commercialista.
+const GIORNI_AVVISO_PROVA = 7;
 
 export default async function DashboardLayout({
   children,
@@ -54,6 +62,17 @@ export default async function DashboardLayout({
   if (accessoDaCompletare(session)) redirect("/primo-accesso");
 
   const modules = await getTenantModules(session.tenantId);
+
+  // Quanti giorni mancano alla fine della prova, se e' vicina. Null il resto
+  // del tempo, cosi' la striscia in cima resta quella di sempre e non diventa
+  // un cartello pubblicitario acceso per trenta giorni di fila.
+  const contratto = await getContratto(session.tenantId);
+  const giorniProva =
+    contratto?.status === "prova"
+      ? giorniAllaFine(contratto.trialEndsAt)
+      : null;
+  const provaInScadenza =
+    giorniProva !== null && giorniProva <= GIORNI_AVVISO_PROVA ? giorniProva : null;
 
   // Le segnalazioni del locale viaggiano col layout: sono poche righe su un
   // indice, e cosi' il pannello si apre gia' pieno invece di far aspettare
@@ -141,6 +160,7 @@ export default async function DashboardLayout({
         intestazione={
           <>
             {tenant.serviceBlocked ? (
+              // ordine voluto: il servizio spento batte tutto il resto.
               // Al posto del "tutto in tempo reale": in tempo reale non c'e'
               // piu' niente, e lasciarcelo scritto sarebbe una presa in giro.
               <a
@@ -151,6 +171,21 @@ export default async function DashboardLayout({
                 {tenant.blockedReason === "prova_scaduta"
                   ? "Prova finita — il servizio e' fermo"
                   : "Servizio sospeso — c'e' una fattura da saldare"}
+              </a>
+            ) : provaInScadenza !== null && session.role === "owner" ? (
+              // La prova che sta per finire va vista da chi decide, e chi
+              // decide non passa la giornata nel tab Abbonamento: passa nella
+              // coda ordini. Quindi la striscia che c'e' su tutte le pagine.
+              <a
+                href="/dashboard/fatturazione"
+                className="flex min-w-0 flex-1 items-center gap-2 truncate rounded-lg px-2 py-1 text-xs font-medium"
+                style={{ background: "var(--brand-50)", color: "var(--brand-text)" }}
+              >
+                {provaInScadenza <= 0
+                  ? "La prova finisce oggi — scegli il piano"
+                  : provaInScadenza === 1
+                    ? "La prova finisce domani — scegli il piano"
+                    : `La prova finisce fra ${provaInScadenza} giorni — scegli il piano`}
               </a>
             ) : (
             <span
@@ -167,6 +202,15 @@ export default async function DashboardLayout({
             </span>
             )}
             <div className="flex shrink-0 items-center gap-3">
+              {/* La guida della scheda aperta. Sta nell'intestazione e non
+                  dentro alle pagine perche' questa e' l'unica striscia che
+                  c'e' su tutte: chi la cerca la cerca sempre nello stesso
+                  angolo, non dove l'ha messa quella pagina li'. */}
+              <GuidaDashboard
+                tenantId={session.tenantId}
+                modules={modules}
+                isOwner={session.role === "owner"}
+              />
               {modules.waiter_call && (
                 <CallsBell
                   resolveCall={resolveCall}

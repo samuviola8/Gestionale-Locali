@@ -230,7 +230,8 @@ prova; passarlo ad _Attivo_ e' la firma, ed e' li' che parte la prima scadenza
 da fatturare.
 
 Ogni locale puo' stare su uno dei due modelli: **abbonamento** (canone e
-basta) oppure **impianto** (attivazione una tantum + assistenza mensile).
+basta) oppure **installazione + assistenza** (una tantum all'inizio, poi il
+canone di assistenza mensile).
 L'attivazione entra nella prima fattura e in nessun'altra.
 
 ### Prezzi: valore di partenza e prezzo del singolo cliente

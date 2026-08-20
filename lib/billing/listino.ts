@@ -10,7 +10,10 @@ import type { ModuleKey } from "@/lib/modules";
 export type PaccoKey = "sala" | "locale" | "tutto";
 
 export type Pacco = {
-  key: PaccoKey;
+  // Non solo `PaccoKey`: il pacchetto su misura di un locale e' un Pacco a
+  // tutti gli effetti — ha nome, moduli e prezzi — ma la sua chiave non sta
+  // nel catalogo, perche' non e' di tutti.
+  key: PaccoKey | "su_misura";
   label: string;
   descrizione: string;
   moduli: ModuleKey[];
@@ -28,7 +31,7 @@ export type Pacco = {
 export const PACCHETTI: Pacco[] = [
   {
     key: "sala",
-    label: "Sala",
+    label: "Base",
     descrizione: "Ordinazione da QR, sotto-conti e chiamata cameriere.",
     moduli: ["qr_ordering", "split_bill", "waiter_call"],
     mensileCents: 4900,
@@ -38,8 +41,9 @@ export const PACCHETTI: Pacco[] = [
   },
   {
     key: "locale",
-    label: "Locale",
-    descrizione: "Tutto Sala, piu' banco, prenotazioni, rubrica e asporto.",
+    label: "Pro",
+    descrizione:
+      "Tutto Base, piu' cassa al banco, prenotazione web, rubrica e asporto.",
     moduli: [
       "qr_ordering",
       "split_bill",
@@ -56,8 +60,8 @@ export const PACCHETTI: Pacco[] = [
   },
   {
     key: "tutto",
-    label: "Tutto",
-    descrizione: "Tutto Locale, piu' consegna a domicilio e programma fedelta'.",
+    label: "Premium",
+    descrizione: "Tutto Pro, piu' la consegna a domicilio.",
     moduli: [
       "qr_ordering",
       "split_bill",
@@ -67,12 +71,15 @@ export const PACCHETTI: Pacco[] = [
       "customers",
       "takeaway",
       "delivery",
-      "loyalty",
     ],
-    mensileCents: 14900,
-    annualeCents: 149000,
-    attivazioneCents: 199000,
-    assistenzaCents: 4900,
+    // Tolta la fedelta', Premium aggiunge a Pro la sola consegna: a 149 sarebbe
+    // costato 60 euro per un modulo che a listino singolo ne vale 29, e chi fa
+    // il conto se ne accorge. 109 lascia 9 euro di risparmio rispetto a
+    // comprarsela a parte, che e' il motivo per cui un pacchetto esiste.
+    mensileCents: 10900,
+    annualeCents: 109000,
+    attivazioneCents: 169000,
+    assistenzaCents: 4500,
   },
 ];
 

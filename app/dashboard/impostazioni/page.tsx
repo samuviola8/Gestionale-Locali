@@ -33,6 +33,7 @@ import {
   salvaPosta,
   salvaPrenotazioni,
   salvaStampa,
+  salvaLogo,
   setCategoriaReparto,
   setUtenteReparto,
 } from "./actions";
@@ -176,6 +177,67 @@ export default async function ImpostazioniPage() {
           Reparti di preparazione e stampa delle comande.
         </p>
       </div>
+      {/* --- Logo --- */}
+      <section className="card p-4">
+        <div className="text-sm font-medium">Il tuo logo</div>
+        <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+          Compare qui in cima e sulla pagina che vede il cliente quando
+          scansiona il QR. Senza, si vede la lettera iniziale del nome.
+        </p>
+
+        <form
+          action={salvaLogo}
+          encType="multipart/form-data"
+          className="mt-3 flex flex-wrap items-center gap-4"
+        >
+          <div
+            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+            style={{
+              background: locale.logoUrl ? "#000" : "var(--brand)",
+              color: "var(--brand-on)",
+            }}
+          >
+            {locale.logoUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={locale.logoUrl}
+                alt=""
+                className="h-12 w-12 object-contain"
+              />
+            ) : (
+              <span className="text-xl font-semibold">
+                {session.tenantName.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-[220px] flex-1">
+            <input
+              type="file"
+              name="logo"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="block w-full text-sm"
+            />
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+              PNG, JPG, WebP o SVG, fino a 5 MB. Meglio quadrato e con lo
+              sfondo trasparente: qui dentro sta in un riquadro piccolo.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+              Salva il logo
+            </button>
+            {locale.logoUrl && (
+              <label className="flex items-center gap-2 text-xs" style={{ color: "var(--muted)" }}>
+                <input type="checkbox" name="togli" />
+                togli il logo
+              </label>
+            )}
+          </div>
+        </form>
+      </section>
+
 
       {/* --- Reparti --- */}
       <section className="card p-4">

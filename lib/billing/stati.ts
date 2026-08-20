@@ -34,6 +34,19 @@ export function badgeContratto(k: string): string {
   return STATI_CONTRATTO.find((s) => s.key === k)?.badge ?? "badge-muted";
 }
 
+// Come si chiamano i due modelli davanti a un cliente. A database restano
+// "abbonamento" e "impianto": qui c'e' solo quello che si legge, in un posto
+// solo — "impianto" da solo e' gergo da installatore, e chi lo legge nel
+// pannello deve capirlo senza chiedere.
+export const MODELLI: { key: string; label: string }[] = [
+  { key: "abbonamento", label: "Abbonamento" },
+  { key: "impianto", label: "Installazione + assistenza" },
+];
+
+export function etichettaModello(k: string): string {
+  return MODELLI.find((m) => m.key === k)?.label ?? k;
+}
+
 export const METODI: { key: string; label: string }[] = [
   { key: "stripe", label: "Stripe" },
   { key: "paypal", label: "PayPal" },

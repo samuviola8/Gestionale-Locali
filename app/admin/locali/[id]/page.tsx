@@ -14,8 +14,13 @@ import { formatPrice } from "@/lib/menu";
 import { MODULES, getTenantModules } from "@/lib/modules";
 import { THEME_PRESETS } from "@/lib/themes";
 import { SKIN_CATALOGO } from "@/lib/skins";
-import { getPacchetti, getPrezziModuli } from "@/lib/billing/prezzi";
-import { etichettaPeriodo, getContratto } from "@/lib/billing/contratti";
+import { getPacchetti, getPrezziModuli, haPrezziSuoi } from "@/lib/billing/prezzi";
+import { getSuMisura } from "@/lib/billing/sumisura";
+import {
+  etichettaPeriodo,
+  getContratto,
+  importoAScadenzaCents,
+} from "@/lib/billing/contratti";
 import { getAddons, totaleAddonsCents } from "@/lib/billing/addons";
 import { getImpostazioni } from "@/lib/billing/impostazioni";
 import { spiegaBlocco } from "@/lib/billing/blocco";
@@ -32,12 +37,15 @@ import {
   pesoLeggibile,
 } from "@/lib/billing/archivio";
 import {
-  STATI_CONTRATTO,
+  badgeContratto,
   badgeDocumento,
   dataBreve,
+  etichettaContratto,
   etichettaDocumento,
+  etichettaModello,
 } from "@/lib/billing/stati";
 import DeleteLocaleButton from "@/components/DeleteLocaleButton";
+import FormContratto from "@/components/FormContratto";
 import AccessiLocale from "@/components/AccessiLocale";
 import IndirizzoWebLocale from "@/components/IndirizzoWebLocale";
 import {
@@ -54,6 +62,10 @@ import {
   saveContratto,
   saveDatiFiscali,
   impostaProvaAction,
+  salvaPrezziLocaleAction,
+  salvaSuMisuraAction,
+  eliminaSuMisuraAction,
+  azzeraPrezziLocaleAction,
   sbloccaAction,
   bloccaAction,
   caricaFileAction,
@@ -65,7 +77,10 @@ function inEuro(cents: number): string {
   return (cents / 100).toFixed(2).replace(".", ",");
 }
 
+// Scorciatoia per la classe dei campi: usata dove il markup ripete
+// className={input} decine di volte.
 const input = "input";
+
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -134,8 +149,9 @@ export default async function LocaleDetail({
   const documenti = await documentiDelLocale(id);
   const addons = await getAddons(id);
   const totaleAddons = await totaleAddonsCents(id);
-  const prezziModuli = await getPrezziModuli();
-  const pacchetti = await getPacchetti();
+  // I prezzi che valgono per questo locale: i suoi se ce li ha, il listino se no.
+  const prezziModuli = await getPrezziModuli(id);
+  const pacchetti = await getPacchetti(id);
   const impostazioni = await getImpostazioni();
   // I moduli gia' dentro il pacchetto firmato. Sono compresi nel canone e non
   // si fatturano a parte: farli pagare due volte e' il tipo di errore che il
@@ -143,7 +159,19 @@ export default async function LocaleDetail({
   const inPacco = new Set(
     pacchetti.find((p) => p.key === contratto?.pack)?.moduli ?? []
   );
+  // Il pacchetto da proporre a chi non ha ancora un contratto: il primo del
+  // listino, che e' anche il piu' piccolo.
+  const paccoProposto = pacchetti[0];
+  const haSuoi = await haPrezziSuoi(id);
+  const suMisura = await getSuMisura(id);
   const file = await fileDelLocale(id);
+  // Quello che gli ho emesso e non risulta ancora saldato. Non tiene conto
+  // degli acconti parziali: e' un riepilogo, e per il dettaglio si apre il
+  // documento.
+  const nonSaldate = documenti.filter(
+    (d) => d.status === "emesso" || d.status === "scaduto"
+  );
+  const daIncassare = nonSaldate.reduce((s, d) => s + d.totalCents, 0);
   const mancanzeFattura = mancanzeIntestatario(t);
   const avvisiFattura = avvisiIntestatario(t);
 
@@ -217,6 +245,107 @@ export default async function LocaleDetail({
           <Stat label="Tavoli" value={tableCount} />
         </div>
 
+        {/* Le prime tre cose che voglio sapere aprendo un cliente: se paga,
+            quanto, e se c'e' qualcosa che non va. Le sei statistiche qui sopra
+            raccontano gli ordini, che e' un'altra domanda. */}
+        <div className="card p-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            <div className="min-w-[150px]">
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                Rapporto
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {/* Senza contratto non e' "in prova": e' un locale a cui non
+                    ho ancora chiesto niente. Dirlo "In prova" e poi scrivere
+                    "Nessun contratto" due righe sotto e' un pannello che si
+                    contraddice da solo. */}
+                {contratto ? (
+                  <span className={`badge ${badgeContratto(contratto.status)}`}>
+                    {etichettaContratto(contratto.status)}
+                  </span>
+                ) : (
+                  <span className="badge badge-muted">Nessun contratto</span>
+                )}
+                {t.serviceBlocked && (
+                  <span className="badge badge-danger">
+                    {spiegaBlocco(t.blockedReason)}
+                  </span>
+                )}
+                {/* Cosa manca si legge, non si scopre col mouse fermo sopra:
+                    su un telefono quel `title` non esiste proprio. */}
+                {mancanzeFattura.length > 0 && (
+                  <span className="badge badge-warn">
+                    manca {mancanzeFattura.join(", ")}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+                {contratto
+                  ? `${etichettaModello(contratto.model)} · ${contratto.pack}`
+                  : "Da aprire qui sotto"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                Paga
+              </div>
+              <div className="tnum mt-1 text-lg font-semibold">
+                {/* Zero euro sarebbe una cifra, e non e' una cifra: e' che non
+                    gli si e' ancora chiesto niente. */}
+                {contratto
+                  ? formatPrice(importoAScadenzaCents(contratto, totaleAddons))
+                  : "—"}
+              </div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                {contratto ? etichettaPeriodo(contratto) : "niente da fatturare"}
+                {totaleAddons > 0 && " · add-on inclusi"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                {contratto?.status === "prova" ? "Prova fino al" : "Prossima scadenza"}
+              </div>
+              {/* Attivo senza scadenza vuol dire che non entra nel giro dei
+                  rinnovi: non produce bozze e non si fattura piu'. Un trattino
+                  muto lo nasconderebbe finche' non mancano i soldi. */}
+              {contratto?.status === "attivo" && !contratto.nextInvoiceAt && (
+                <span className="badge badge-danger mt-1 block w-fit">
+                  non verra&apos; fatturato
+                </span>
+              )}
+              <div className="tnum mt-1 text-lg font-semibold">
+                {dataBreve(
+                  contratto?.status === "prova"
+                    ? contratto.trialEndsAt
+                    : (contratto?.nextInvoiceAt ?? null)
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                Da incassare
+              </div>
+              <div
+                className="tnum mt-1 text-lg font-semibold"
+                style={daIncassare > 0 ? { color: "var(--danger)" } : undefined}
+              >
+                {formatPrice(daIncassare)}
+              </div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                {daIncassare > 0
+                  ? `${nonSaldate.length} document${nonSaldate.length === 1 ? "o" : "i"}`
+                  : "tutto saldato"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <details className="disclosure" open>
+          <summary>Anagrafica e dati per la fattura</summary>
+          <div className="disclosure-body space-y-8">
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Anagrafica</h2>
           <form action={saveAnagrafica} className="card grid gap-3 p-4 sm:grid-cols-2">
@@ -234,7 +363,7 @@ export default async function LocaleDetail({
               <input
                 name="legalName"
                 defaultValue={t.legalName ?? ""}
-                placeholder="Noya Lounge S.r.l.s."
+                placeholder="Come sei registrato, non l'insegna"
                 className="input mt-1 w-full"
               />
             </label>
@@ -329,403 +458,6 @@ export default async function LocaleDetail({
             </div>
           </form>
         </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Account</h2>
-          <AccessiLocale
-            utenti={staff}
-            resetta={resettaAccesso}
-            azzera={azzeraAccessoDueFattori}
-          />
-
-          <form
-            action={toggleDueFattori}
-            className="card mt-3 flex flex-wrap items-center justify-between gap-3 p-4"
-          >
-            <input type="hidden" name="id" value={t.id} />
-            <span className="text-sm">
-              <span className="block font-medium">
-                Verifica in due passaggi obbligatoria
-              </span>
-              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
-                {t.twofaRequired
-                  ? "Chi non ce l'ha se la configura al primo accesso, e non può toglierla."
-                  : "Ognuno decide per sé dalle proprie impostazioni."}
-              </span>
-            </span>
-            <button className="btn btn-sm">
-              {t.twofaRequired ? "Rendi facoltativa" : "Rendila obbligatoria"}
-            </button>
-          </form>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Moduli e prezzi
-          </h2>
-          <form action={saveModules} className="card p-4">
-            <input type="hidden" name="id" value={t.id} />
-
-            <div className="space-y-1">
-              {MODULES.map((m) => {
-                const compreso = inPacco.has(m.key);
-                const attivo = addons.find((a) => a.moduleKey === m.key);
-                // Si fattura a parte solo quello che ha un prezzo suo e non e'
-                // gia' dentro il pacchetto. Il resto o e' compreso, o e' di
-                // servizio e non si vende da solo.
-                const sePagante = !compreso && prezziModuli[m.key] > 0;
-                return (
-                  <div
-                    key={m.key}
-                    className="flex flex-wrap items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-2)]"
-                  >
-                    <label className="flex min-w-[220px] flex-1 items-start gap-2.5 text-sm">
-                      <input
-                        type="checkbox"
-                        name={`modulo_${m.key}`}
-                        defaultChecked={modules[m.key]}
-                        disabled={m.comingSoon}
-                        className="mt-1"
-                      />
-                      <span>
-                        <span className="font-medium">{m.label}</span>
-                        {compreso && (
-                          <span className="ml-2 badge badge-muted">
-                            nel pacchetto
-                          </span>
-                        )}
-                        {m.comingSoon && (
-                          <span className="ml-2 text-[10px] text-neutral-400">
-                            in sviluppo
-                          </span>
-                        )}
-                        <span className="mt-0.5 block text-xs text-neutral-500">
-                          {m.description}
-                        </span>
-                      </span>
-                    </label>
-
-                    <div className="flex shrink-0 items-center gap-2 pt-0.5">
-                      {sePagante ? (
-                        <>
-                          <input
-                            name={`prezzo_${m.key}`}
-                            defaultValue={inEuro(
-                              attivo?.priceCents ?? prezziModuli[m.key]
-                            )}
-                            inputMode="decimal"
-                            aria-label={`Prezzo di ${m.label}`}
-                            className="input w-24 text-right"
-                          />
-                          <span
-                            className="w-14 text-xs"
-                            style={{ color: "var(--muted)" }}
-                          >
-                            al mese
-                          </span>
-                        </>
-                      ) : (
-                        <span
-                          className="w-[152px] text-right text-xs"
-                          style={{ color: "var(--muted)" }}
-                        >
-                          {compreso ? "nel canone" : "senza costo"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div
-              className="mt-3 flex flex-wrap items-center justify-between gap-3 pt-3 text-sm"
-              style={{ borderTop: "1px solid var(--border)" }}
-            >
-              <span style={{ color: "var(--muted)" }}>
-                Canone {formatPrice(contratto?.recurringCents ?? 0)}
-                {totaleAddons > 0 && (
-                  <> + add-on {formatPrice(totaleAddons)}</>
-                )}{" "}
-                ={" "}
-                <strong style={{ color: "var(--fg)" }}>
-                  {formatPrice((contratto?.recurringCents ?? 0) + totaleAddons)}
-                </strong>{" "}
-                {contratto ? etichettaPeriodo(contratto) : ""}
-              </span>
-              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
-                Salva moduli e prezzi
-              </button>
-            </div>
-
-            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-              Spegnere un modulo toglie anche il suo prezzo: acceso e non
-              fatturato non deve poter succedere. Quelli del pacchetto sono gia&apos;
-              dentro il canone e non si pagano due volte — cambiando pacchetto,
-              chi ci entra smette di essere un add-on. Il prezzo proposto e&apos;
-              quello di{" "}
-              <a
-                href="/admin/fatturazione/listino"
-                className="hover:underline"
-                style={{ color: "var(--brand-text)" }}
-              >
-                listino
-              </a>
-              : correggilo e resta quello concordato con lui.
-            </p>
-          </form>
-        </section>
-
-        <section>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
-              Contratto
-            </h2>
-            <a
-              href="/admin/fatturazione"
-              className="text-xs hover:underline"
-              style={{ color: "var(--brand-text)" }}
-            >
-              Registro fatturazione →
-            </a>
-          </div>
-          <form action={saveContratto} className="card grid gap-3 p-4 sm:grid-cols-2">
-            <input type="hidden" name="id" value={t.id} />
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Come paga
-              </span>
-              <select
-                name="model"
-                defaultValue={contratto?.model ?? "abbonamento"}
-                className="input mt-1 w-full"
-              >
-                <option value="abbonamento">Abbonamento</option>
-                <option value="impianto">Impianto + assistenza</option>
-              </select>
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Pacchetto
-              </span>
-              <select
-                name="pack"
-                defaultValue={contratto?.pack ?? "sala"}
-                className="input mt-1 w-full"
-              >
-                {pacchetti.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label} — {formatPrice(p.mensileCents)}/mese
-                  </option>
-                ))}
-                <option value="su_misura">Su misura</option>
-              </select>
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Ogni quanto
-              </span>
-              <select
-                name="period"
-                defaultValue={contratto?.period ?? "mensile"}
-                className="input mt-1 w-full"
-              >
-                <option value="mensile">Mensile</option>
-                <option value="annuale">Annuale</option>
-              </select>
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Canone a scadenza (€)
-              </span>
-              <input
-                name="recurring"
-                defaultValue={inEuro(contratto?.recurringCents ?? 0)}
-                inputMode="decimal"
-                className="input mt-1 w-full"
-              />
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Attivazione una tantum (€)
-              </span>
-              <input
-                name="activation"
-                defaultValue={inEuro(contratto?.activationCents ?? 0)}
-                inputMode="decimal"
-                className="input mt-1 w-full"
-              />
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Quota sul transato (%)
-              </span>
-              <input
-                name="transactionPct"
-                defaultValue={((contratto?.transactionBps ?? 0) / 100)
-                  .toFixed(2)
-                  .replace(".", ",")}
-                inputMode="decimal"
-                className="input mt-1 w-full"
-              />
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Stato
-              </span>
-              <select
-                name="status"
-                defaultValue={contratto?.status ?? "prova"}
-                className="input mt-1 w-full"
-              >
-                {STATI_CONTRATTO.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Con cosa paga
-              </span>
-              <select
-                name="provider"
-                defaultValue={contratto?.provider ?? "manuale"}
-                className="input mt-1 w-full"
-              >
-                <option value="manuale">Bonifico, a mano</option>
-                <option value="stripe">Stripe</option>
-                <option value="paypal">PayPal</option>
-              </select>
-            </label>
-
-            <label className="text-sm sm:col-span-2">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Note del contratto
-              </span>
-              <input
-                name="notes"
-                defaultValue={contratto?.notes ?? ""}
-                placeholder="Prezzo fondatori bloccato, sconto concordato, ..."
-                className="input mt-1 w-full"
-              />
-            </label>
-
-            <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>
-              Passare lo stato ad <em>Attivo</em> e&apos; la firma: da li&apos;
-              parte la prima scadenza da fatturare. Il canone scritto qui vince
-              sempre sul listino — un prezzo concordato resta quello anche se il
-              listino cambia.
-              {contratto?.status === "prova" && contratto.trialEndsAt && (
-                <> La prova finisce il {dataBreve(contratto.trialEndsAt)}.</>
-              )}
-              {contratto?.nextInvoiceAt && (
-                <> Prossima scadenza: {dataBreve(contratto.nextInvoiceAt)}.</>
-              )}
-            </p>
-
-            <div className="sm:col-span-2">
-              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
-                Salva contratto
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Prova gratuita
-          </h2>
-          <form action={impostaProvaAction} className="card flex flex-wrap items-end gap-3 p-4">
-            <input type="hidden" name="id" value={t.id} />
-            <label className="text-sm">
-              <span className="text-xs" style={{ color: "var(--muted)" }}>
-                Giorni da oggi
-              </span>
-              <input
-                name="giorni"
-                type="number"
-                min={1}
-                max={365}
-                defaultValue={impostazioni.trialDays}
-                className="input mt-1 w-28"
-              />
-            </label>
-            <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
-              {contratto?.status === "prova" ? "Allunga la prova" : "Rimetti in prova"}
-            </button>
-            <p className="w-full text-xs" style={{ color: "var(--muted)" }}>
-              {contratto?.status === "prova" && contratto.trialEndsAt
-                ? `Adesso finisce il ${dataBreve(contratto.trialEndsAt)}. Si riparte a contare da oggi, non da quella data.`
-                : "Rimette il contratto in prova e toglie la prossima scadenza da fatturare."}
-              {" "}Il valore di partenza per i locali nuovi si cambia in{" "}
-              <a
-                href="/admin/fatturazione/listino"
-                className="hover:underline"
-                style={{ color: "var(--brand-text)" }}
-              >
-                listino e regole
-              </a>
-              .
-            </p>
-          </form>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Servizio
-          </h2>
-          <div className="card p-4">
-            {t.serviceBlocked ? (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="badge badge-danger">
-                    {spiegaBlocco(t.blockedReason)}
-                  </span>
-                  <span className="text-sm" style={{ color: "var(--muted)" }}>
-                    Ordinazione al tavolo e pannello di lavoro sono fermi.
-                  </span>
-                </div>
-                <form action={sbloccaAction} className="mt-3">
-                  <input type="hidden" name="id" value={t.id} />
-                  <button className="btn btn-primary btn-sm">Riaccendi il servizio</button>
-                </form>
-                <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-                  Riaccendere non incassa niente: le fatture restano da saldare.
-                  Serve per chi dice che il bonifico e&apos; partito e gli credo.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm">Servizio attivo.</p>
-                <form action={bloccaAction} className="mt-3">
-                  <input type="hidden" name="id" value={t.id} />
-                  <button
-                    className="btn btn-sm"
-                    style={{ border: "1px solid var(--border)", color: "var(--danger)" }}
-                  >
-                    Spegni per morosita&apos;
-                  </button>
-                </form>
-                <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-                  Spegne subito senza aspettare la tolleranza. Il titolare
-                  continua a entrare e a vedere cosa deve: sono i clienti al
-                  tavolo a non poter piu&apos; ordinare.
-                </p>
-              </>
-            )}
-          </div>
-        </section>
-
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
             Dati per la fattura
@@ -806,9 +538,380 @@ export default async function LocaleDetail({
             </div>
           </form>
         </section>
+          </div>
+        </details>
+
+        <details className="disclosure" open>
+          <summary>Contratto e stato del rapporto</summary>
+          <div className="disclosure-body space-y-8">
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
+              Contratto
+            </h2>
+            <a
+              href="/admin/fatturazione"
+              className="text-xs hover:underline"
+              style={{ color: "var(--brand-text)" }}
+            >
+              Registro fatturazione →
+            </a>
+          </div>
+          <FormContratto
+            tenantId={t.id}
+            pacchetti={pacchetti.map((p) => ({
+              key: p.key,
+              label: `${p.label} — ${formatPrice(p.mensileCents)}/mese`,
+              mensileCents: p.mensileCents,
+              annualeCents: p.annualeCents,
+              attivazioneCents: p.attivazioneCents,
+              assistenzaCents: p.assistenzaCents,
+            }))}
+            valori={{
+              model: contratto?.model ?? "abbonamento",
+              pack: contratto?.pack ?? paccoProposto.key,
+              period: contratto?.period ?? "mensile",
+              // Senza contratto i campi partono dal listino del pacchetto
+              // proposto, non da zero: mostrare "Sala" accanto a 0,00 e' una
+              // schermata che si contraddice, e chi la legge non sa se il
+              // prezzo e' quello o se deve scriverlo lui.
+              recurringCents: contratto?.recurringCents ?? paccoProposto.mensileCents,
+              activationCents: contratto?.activationCents ?? 0,
+              transactionBps: contratto?.transactionBps ?? impostazioni.transactionBps,
+              status: contratto?.status ?? "prova",
+              provider: contratto?.provider ?? "manuale",
+              notes: contratto?.notes ?? "",
+            }}
+            salva={saveContratto}
+            nota={
+              <>
+                {" "}Passare lo stato ad <em>Attivo</em> e&apos; la firma: da li&apos;
+                parte la prima scadenza da fatturare.
+                {contratto?.status === "prova" && contratto.trialEndsAt && (
+                  <> La prova finisce il {dataBreve(contratto.trialEndsAt)}.</>
+                )}
+                {contratto?.nextInvoiceAt && (
+                  <> Prossima scadenza: {dataBreve(contratto.nextInvoiceAt)}.</>
+                )}
+              </>
+            }
+          />
+        </section>
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Documenti del locale
+            Pacchetto su misura
+          </h2>
+
+          <p className="mb-3 text-xs" style={{ color: "var(--muted)" }}>
+            Quando nessuno dei tre standard va bene. Una volta salvato compare
+            accanto a Base, Pro e Premium nella <strong>sua</strong> pagina
+            Abbonamento, e ci resta: se passa a uno standard e poi ci ripensa,
+            puo&apos; tornarci da solo senza richiamarti.
+            {suMisura && contratto?.pack === "su_misura" && (
+              <> Adesso e&apos; il pacchetto che ha in corso.</>
+            )}
+          </p>
+
+          <form action={salvaSuMisuraAction} className="card grid gap-3 p-4 sm:grid-cols-2">
+            <input type="hidden" name="id" value={t.id} />
+
+            <label className="text-sm">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Come si chiama
+              </span>
+              <input
+                name="sm_label"
+                defaultValue={suMisura?.label ?? ""}
+                placeholder="Il tuo piano"
+                className="input mt-1 w-full"
+              />
+            </label>
+
+            <label className="text-sm">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Una riga di spiegazione
+              </span>
+              <input
+                name="sm_descrizione"
+                defaultValue={suMisura?.descrizione ?? ""}
+                placeholder="Pro senza asporto, con la consegna"
+                className="input mt-1 w-full"
+              />
+            </label>
+
+            <div className="sm:col-span-2">
+              <div className="mb-2 text-xs" style={{ color: "var(--muted)" }}>
+                Cosa comprende il canone
+              </div>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {MODULES.filter((m) => !m.comingSoon).map((m) => (
+                  <label key={m.key} className="flex items-center gap-2.5 text-sm">
+                    <input
+                      type="checkbox"
+                      name={`sm_${m.key}`}
+                      defaultChecked={suMisura?.moduli.includes(m.key) ?? false}
+                    />
+                    <span>{m.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {[
+              ["mensile", "Mensile (€)", suMisura?.mensileCents ?? 0],
+              ["annuale", "Annuale (€)", suMisura?.annualeCents ?? 0],
+              ["attivazione", "Installazione (€)", suMisura?.attivazioneCents ?? 0],
+              ["assistenza", "Assistenza al mese (€)", suMisura?.assistenzaCents ?? 0],
+            ].map(([k, etichetta, valore]) => (
+              <label key={String(k)} className="text-sm">
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  {etichetta}
+                </span>
+                <input
+                  name={`sm_${k}`}
+                  defaultValue={inEuro(Number(valore))}
+                  inputMode="decimal"
+                  className="input mt-1 w-full"
+                />
+              </label>
+            ))}
+
+            <div className="sm:col-span-2">
+              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+                {suMisura ? "Salva il su misura" : "Crea il su misura"}
+              </button>
+            </div>
+          </form>
+
+          {suMisura && contratto?.pack !== "su_misura" && (
+            <form action={eliminaSuMisuraAction} className="mt-2">
+              <input type="hidden" name="id" value={t.id} />
+              <button
+                className="btn btn-sm"
+                style={{ border: "1px solid var(--border)", color: "var(--danger)" }}
+              >
+                Togli il su misura
+              </button>
+              <span className="ml-3 text-xs" style={{ color: "var(--muted)" }}>
+                Da fare solo quando l&apos;accordo e&apos; finito: da li&apos; in
+                poi non puo&apos; piu&apos; tornarci.
+              </span>
+            </form>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
+              Prezzi per questo locale
+            </h2>
+            <a
+              href="/admin/fatturazione/listino"
+              className="text-xs hover:underline"
+              style={{ color: "var(--brand-text)" }}
+            >
+              Listino di tutti →
+            </a>
+          </div>
+
+          <p className="mb-3 text-xs" style={{ color: "var(--muted)" }}>
+            Sono i prezzi che vede <strong>lui</strong> quando sceglie il piano
+            dalla sua dashboard. Partono dal listino: quello che cambi qui vale
+            solo per questo locale, e resta anche se il listino di tutti cambia.
+            {haSuoi && (
+              <> Oggi ha almeno un prezzo suo, diverso dal listino.</>
+            )}
+          </p>
+
+          <form action={salvaPrezziLocaleAction} className="space-y-3">
+            <input type="hidden" name="id" value={t.id} />
+
+            {pacchetti.map((p) => (
+              <div key={p.key} className="card p-4">
+                <div className="mb-3 text-sm font-medium">{p.label}</div>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    ["mensile", "Mensile", p.mensileCents],
+                    ["annuale", "Annuale", p.annualeCents],
+                    ["attivazione", "Installazione", p.attivazioneCents],
+                    ["assistenza", "Assistenza", p.assistenzaCents],
+                  ].map(([k, etichetta, valore]) => (
+                    <label key={String(k)} className="text-sm">
+                      <span className="text-xs" style={{ color: "var(--muted)" }}>
+                        {etichetta}
+                      </span>
+                      <input
+                        name={`p_${p.key}_${k}`}
+                        defaultValue={inEuro(Number(valore))}
+                        inputMode="decimal"
+                        className="input mt-1 w-full"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="card p-0">
+              {MODULES.filter((m) => prezziModuli[m.key] > 0).map((m, i) => (
+                <div
+                  key={m.key}
+                  className="flex flex-wrap items-center gap-3 px-4 py-2.5"
+                  style={i > 0 ? { borderTop: "1px solid var(--border)" } : undefined}
+                >
+                  <span className="min-w-[180px] flex-1 text-sm">{m.label}</span>
+                  <input
+                    name={`m_${m.key}`}
+                    defaultValue={inEuro(prezziModuli[m.key])}
+                    inputMode="decimal"
+                    className="input w-24 text-right"
+                  />
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>
+                    al mese
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+                Salva i prezzi di questo locale
+              </button>
+            </div>
+          </form>
+
+          {haSuoi && (
+            <form action={azzeraPrezziLocaleAction} className="mt-2">
+              <input type="hidden" name="id" value={t.id} />
+              <button
+                className="btn btn-sm"
+                style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
+              >
+                Rimettilo sul listino di tutti
+              </button>
+            </form>
+          )}
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Prova gratuita
+          </h2>
+          <form action={impostaProvaAction} className="card flex flex-wrap items-end gap-3 p-4">
+            <input type="hidden" name="id" value={t.id} />
+            <label className="text-sm">
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Giorni da oggi
+              </span>
+              <input
+                name="giorni"
+                type="number"
+                min={1}
+                max={365}
+                defaultValue={impostazioni.trialDays}
+                className="input mt-1 w-28"
+              />
+            </label>
+            <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+              {contratto?.status === "prova" ? "Allunga la prova" : "Rimetti in prova"}
+            </button>
+            <p className="w-full text-xs" style={{ color: "var(--muted)" }}>
+              {contratto?.status === "prova" && contratto.trialEndsAt
+                ? `Adesso finisce il ${dataBreve(contratto.trialEndsAt)}. Si riparte a contare da oggi, non da quella data.`
+                : "Rimette il contratto in prova e toglie la prossima scadenza da fatturare."}
+              {" "}Il valore di partenza per i locali nuovi si cambia in{" "}
+              <a
+                href="/admin/fatturazione/listino"
+                className="hover:underline"
+                style={{ color: "var(--brand-text)" }}
+              >
+                listino e regole
+              </a>
+              .
+            </p>
+          </form>
+        </section>
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Stato del servizio
+          </h2>
+          <div className="card p-4">
+            {t.serviceBlocked ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="badge badge-danger">
+                    {spiegaBlocco(t.blockedReason)}
+                  </span>
+                  <span className="text-sm" style={{ color: "var(--muted)" }}>
+                    Ordinazione al tavolo e pannello di lavoro sono fermi.
+                  </span>
+                </div>
+                <form action={sbloccaAction} className="mt-3">
+                  <input type="hidden" name="id" value={t.id} />
+                  <button className="btn btn-primary btn-sm">Riaccendi il servizio</button>
+                </form>
+                <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+                  Riaccendere non incassa niente: le fatture restano da saldare.
+                  Serve per chi dice che il bonifico e&apos; partito e gli credo.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">Servizio attivo.</p>
+                <form action={bloccaAction} className="mt-3">
+                  <input type="hidden" name="id" value={t.id} />
+                  <button
+                    className="btn btn-sm"
+                    style={{ border: "1px solid var(--border)", color: "var(--danger)" }}
+                  >
+                    Spegni per morosita&apos;
+                  </button>
+                </form>
+                <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+                  Spegne subito senza aspettare la tolleranza. Il titolare
+                  continua a entrare e a vedere cosa deve: sono i clienti al
+                  tavolo a non poter piu&apos; ordinare.
+                </p>
+              </>
+            )}
+          </div>
+        </section>
+          </div>
+        </details>
+
+        <details className="disclosure">
+          <summary>Fatture e documenti</summary>
+          <div className="disclosure-body space-y-8">
+        {documenti.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+              Fatture emesse
+            </h2>
+            <div className="card overflow-hidden">
+              {documenti.map((d, i) => (
+                <a
+                  key={d.id}
+                  href={`/admin/fatturazione/${d.id}`}
+                  className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-[var(--surface-2)]"
+                  style={i > 0 ? { borderTop: "1px solid var(--border)" } : undefined}
+                >
+                  <span className="tnum w-20 shrink-0" style={{ color: "var(--muted)" }}>
+                    {numeroDocumento(d)}
+                  </span>
+                  <span className={`badge ${badgeDocumento(d.status)}`}>
+                    {etichettaDocumento(d.status)}
+                  </span>
+                  <span className="tnum ml-auto font-medium">
+                    {formatPrice(d.totalCents)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Contratti e allegati
           </h2>
 
           {erroreFile && (
@@ -941,36 +1044,128 @@ export default async function LocaleDetail({
             </div>
           </form>
         </section>
+          </div>
+        </details>
 
+        <details className="disclosure">
+          <summary>Configurazione del locale</summary>
+          <div className="disclosure-body space-y-8">
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+            Moduli e prezzi
+          </h2>
+          <form action={saveModules} className="card p-4">
+            <input type="hidden" name="id" value={t.id} />
 
-        {documenti.length > 0 && (
-          <section>
-            <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-              Documenti
-            </h2>
-            <div className="card overflow-hidden">
-              {documenti.map((d, i) => (
-                <a
-                  key={d.id}
-                  href={`/admin/fatturazione/${d.id}`}
-                  className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-[var(--surface-2)]"
-                  style={i > 0 ? { borderTop: "1px solid var(--border)" } : undefined}
-                >
-                  <span className="tnum w-20 shrink-0" style={{ color: "var(--muted)" }}>
-                    {numeroDocumento(d)}
-                  </span>
-                  <span className={`badge ${badgeDocumento(d.status)}`}>
-                    {etichettaDocumento(d.status)}
-                  </span>
-                  <span className="tnum ml-auto font-medium">
-                    {formatPrice(d.totalCents)}
-                  </span>
-                </a>
-              ))}
+            <div className="space-y-1">
+              {MODULES.map((m) => {
+                const compreso = inPacco.has(m.key);
+                const attivo = addons.find((a) => a.moduleKey === m.key);
+                // Si fattura a parte solo quello che ha un prezzo suo e non e'
+                // gia' dentro il pacchetto. Il resto o e' compreso, o e' di
+                // servizio e non si vende da solo.
+                const sePagante = !compreso && prezziModuli[m.key] > 0;
+                return (
+                  <div
+                    key={m.key}
+                    className="flex flex-wrap items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-2)]"
+                  >
+                    <label className="flex min-w-[220px] flex-1 items-start gap-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        name={`modulo_${m.key}`}
+                        defaultChecked={modules[m.key]}
+                        disabled={m.comingSoon}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="font-medium">{m.label}</span>
+                        {compreso && (
+                          <span className="ml-2 badge badge-muted">
+                            nel pacchetto
+                          </span>
+                        )}
+                        {m.comingSoon && (
+                          <span className="ml-2 text-[10px] text-neutral-400">
+                            in sviluppo
+                          </span>
+                        )}
+                        <span className="mt-0.5 block text-xs text-neutral-500">
+                          {m.description}
+                        </span>
+                      </span>
+                    </label>
+
+                    <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                      {sePagante ? (
+                        <>
+                          <input
+                            name={`prezzo_${m.key}`}
+                            defaultValue={inEuro(
+                              attivo?.priceCents ?? prezziModuli[m.key]
+                            )}
+                            inputMode="decimal"
+                            aria-label={`Prezzo di ${m.label}`}
+                            className="input w-24 text-right"
+                          />
+                          <span
+                            className="w-14 text-xs"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            al mese
+                          </span>
+                        </>
+                      ) : (
+                        <span
+                          className="w-[152px] text-right text-xs"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          {compreso ? "nel canone" : "senza costo"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </section>
-        )}
 
+            <div
+              className="mt-3 flex flex-wrap items-center justify-between gap-3 pt-3 text-sm"
+              style={{ borderTop: "1px solid var(--border)" }}
+            >
+              <span style={{ color: "var(--muted)" }}>
+                Canone {formatPrice(contratto?.recurringCents ?? 0)}
+                {totaleAddons > 0 && (
+                  <> + add-on {formatPrice(totaleAddons)}</>
+                )}{" "}
+                ={" "}
+                <strong style={{ color: "var(--fg)" }}>
+                  {formatPrice((contratto?.recurringCents ?? 0) + totaleAddons)}
+                </strong>{" "}
+                {contratto ? etichettaPeriodo(contratto) : ""}
+              </span>
+              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+                Salva moduli e prezzi
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+              Spegnere un modulo toglie anche il suo prezzo: acceso e non
+              fatturato non deve poter succedere. Quelli del pacchetto sono gia&apos;
+              dentro il canone e non si pagano due volte — cambiando pacchetto,
+              chi ci entra smette di essere un add-on. Il prezzo proposto e&apos;
+              quello di{" "}
+              <a
+                href="/admin/fatturazione/listino"
+                className="hover:underline"
+                style={{ color: "var(--brand-text)" }}
+              >
+                listino
+              </a>
+              : correggilo e resta quello concordato con lui.
+            </p>
+          </form>
+        </section>
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
             Servizio
@@ -1015,7 +1210,6 @@ export default async function LocaleDetail({
             </button>
           </form>
         </section>
-
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Aspetto</h2>
           <form
@@ -1118,7 +1312,40 @@ export default async function LocaleDetail({
             </button>
           </form>
         </section>
+          </div>
+        </details>
 
+        <details className="disclosure">
+          <summary>Accessi e gestione</summary>
+          <div className="disclosure-body space-y-8">
+        <section>
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Account</h2>
+          <AccessiLocale
+            utenti={staff}
+            resetta={resettaAccesso}
+            azzera={azzeraAccessoDueFattori}
+          />
+
+          <form
+            action={toggleDueFattori}
+            className="card mt-3 flex flex-wrap items-center justify-between gap-3 p-4"
+          >
+            <input type="hidden" name="id" value={t.id} />
+            <span className="text-sm">
+              <span className="block font-medium">
+                Verifica in due passaggi obbligatoria
+              </span>
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--muted)" }}>
+                {t.twofaRequired
+                  ? "Chi non ce l'ha se la configura al primo accesso, e non può toglierla."
+                  : "Ognuno decide per sé dalle proprie impostazioni."}
+              </span>
+            </span>
+            <button className="btn btn-sm">
+              {t.twofaRequired ? "Rendi facoltativa" : "Rendila obbligatoria"}
+            </button>
+          </form>
+        </section>
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>Gestione</h2>
           <div className="card space-y-4 p-4">
@@ -1136,7 +1363,6 @@ export default async function LocaleDetail({
             </form>
           </div>
         </section>
-
         <section>
           <h2 className="mb-3 text-sm font-medium text-red-600">Zona pericolosa</h2>
           <div className="card p-4">
@@ -1148,6 +1374,8 @@ export default async function LocaleDetail({
             </div>
           </div>
         </section>
+          </div>
+        </details>
       </main>
     </div>
   );

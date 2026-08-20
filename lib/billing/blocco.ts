@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { invoices, tenantBilling, tenants } from "@/lib/db/schema";
@@ -107,7 +107,17 @@ export async function aggiornaBloccoLocale(
   if (nuovoStato && nuovoStato !== contratto?.status) {
     await db
       .update(tenantBilling)
-      .set({ status: nuovoStato, updatedAt: new Date() })
+      .set({
+        status: nuovoStato,
+        // Chi torna attivo dopo aver pagato deve rientrare nel giro dei
+        // rinnovi. Rimettere solo lo stato lo lascerebbe attivo e senza
+        // scadenza, cioe' mai piu' fatturato: paga una volta e poi il conto
+        // si ferma da solo, in silenzio.
+        ...(nuovoStato === "attivo" && !contratto?.nextInvoiceAt
+          ? { nextInvoiceAt: quando }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(tenantBilling.tenantId, tenantId));
   }
 
@@ -149,7 +159,13 @@ export async function sbloccaLocale(tenantId: string): Promise<void> {
     .where(eq(tenants.id, tenantId));
   await db
     .update(tenantBilling)
-    .set({ status: "attivo", updatedAt: new Date() })
+    .set({
+      status: "attivo",
+      // Come sopra: attivo senza scadenza vuol dire mai piu' fatturato.
+      // `coalesce` la mette solo se manca, senza spostare quella buona.
+      nextInvoiceAt: sql`coalesce(${tenantBilling.nextInvoiceAt}, now())`,
+      updatedAt: new Date(),
+    })
     .where(
       and(eq(tenantBilling.tenantId, tenantId), eq(tenantBilling.status, "sospeso"))
     );

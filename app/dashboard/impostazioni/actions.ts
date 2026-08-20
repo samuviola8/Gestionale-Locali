@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuCategories, reparti, tenants, users } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { saveImage } from "@/lib/uploads";
 import {
   leggiChiusure,
   leggiOrari,
@@ -295,4 +296,47 @@ export async function salvaStampa(formData: FormData): Promise<void> {
     })
     .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");
+}
+
+// Il logo del locale, cambiato da lui.
+//
+// Era solo in /admin, e non ha senso: il logo cambia quando il locale rifa'
+// l'insegna o il grafico gli manda il file buono, e in quel momento la
+// persona che ce l'ha in mano e' il titolare — non io. Compare in cima alla
+// dashboard e sulla pagina che vede il cliente col QR, quindi e' roba sua.
+export async function salvaLogo(formData: FormData): Promise<void> {
+  const session = await getSessionUser();
+  if (!session || session.role !== "owner") return;
+
+  const [locale] = await db
+    .select({ slug: tenants.slug, logoUrl: tenants.logoUrl })
+    .from(tenants)
+    .where(eq(tenants.id, session.tenantId))
+    .limit(1);
+  if (!locale) return;
+
+  // "Togli il logo" e' una scelta, non un errore: chi non ce l'ha vede la
+  // lettera iniziale del nome, che e' meglio di un file sbagliato.
+  if (formData.get("togli") === "on") {
+    await db
+      .update(tenants)
+      .set({ logoUrl: null })
+      .where(eq(tenants.id, session.tenantId));
+    revalidatePath("/dashboard", "layout");
+    return;
+  }
+
+  const nuovo = await saveImage(formData.get("logo"), locale.slug);
+  // Nessun file scelto, o formato che non va: si tiene quello di prima invece
+  // di cancellarlo. Un salvataggio a vuoto non deve lasciare il locale senza.
+  if (!nuovo) return;
+
+  await db
+    .update(tenants)
+    .set({ logoUrl: nuovo })
+    .where(eq(tenants.id, session.tenantId));
+
+  // "layout" e non la sola pagina: il logo sta nella barra, che vive nel
+  // layout — rivalidare solo Impostazioni lo lascerebbe vecchio dappertutto.
+  revalidatePath("/dashboard", "layout");
 }

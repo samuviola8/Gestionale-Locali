@@ -18,6 +18,8 @@ import {
   numeroDocumento,
 } from "@/lib/billing/documenti";
 import { getPacco, isPaccoKey } from "@/lib/billing/listino";
+import { getPacchetti } from "@/lib/billing/prezzi";
+import { giorniAllaFine, usoInProva } from "@/lib/billing/prova";
 import {
   etichettaTipoFile,
   fileDelLocale,
@@ -30,7 +32,11 @@ import {
   etichettaContratto,
   etichettaDocumento,
 } from "@/lib/billing/stati";
-import { salvaDatiFatturazione } from "./actions";
+import {
+  cambiaPiano,
+  salvaDatiFatturazione,
+  salvaMetodoPagamento,
+} from "./actions";
 
 // Cosa vede il locale del proprio conto: quanto paga, quando scade, e i
 // documenti. Le bozze non compaiono — finche' non sono emesse non esistono
@@ -42,7 +48,8 @@ export default async function FatturazioneLocalePage() {
   if (!session) redirect("/login");
   if (session.role !== "owner") redirect("/dashboard");
 
-  const [contratto, tutti, moduli, allegati, addons, locali] = await Promise.all([
+  const [contratto, tutti, moduli, allegati, addons, pacchetti, locali] =
+    await Promise.all([
     getContratto(session.tenantId),
     documentiDelLocale(session.tenantId),
     getTenantModules(session.tenantId),
@@ -50,6 +57,9 @@ export default async function FatturazioneLocalePage() {
     // appunti su di lui no.
     fileDelLocale(session.tenantId, true),
     getAddons(session.tenantId),
+    // I pacchetti al prezzo che vale per lui: i suoi se glieli ho fatti, il
+    // listino se no.
+    getPacchetti(session.tenantId),
     db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1),
   ]);
 
@@ -68,6 +78,24 @@ export default async function FatturazioneLocalePage() {
   const totale = contratto ? importoAScadenzaCents(contratto, addonsCents) : 0;
   const mesiAddon = contratto ? mesiPerScadenza(contratto) : 1;
   const mancanze = mancanzeIntestatario(locale);
+  // La fine della prova e' il momento in cui decide. Il riepilogo di quello
+  // che ha usato si calcola solo li': fuori dalla prova sarebbero sei query
+  // per una schermata che non c'e'.
+  const inProva = contratto?.status === "prova";
+  const giorniRimasti = giorniAllaFine(contratto?.trialEndsAt ?? null);
+  const scaduta = giorniRimasti !== null && giorniRimasti < 0;
+  const uso =
+    inProva && contratto
+      ? await usoInProva(session.tenantId, contratto.createdAt)
+      : null;
+  const consigliato = uso?.paccoConsigliato
+    ? (pacchetti.find((p) => p.key === uso.paccoConsigliato) ?? null)
+    : null;
+  // Il cambio di piano gia' chiesto e in attesa del rinnovo: si dice, non si
+  // lascia scoprire dalla fattura.
+  const inAttesa = contratto?.pendingPack
+    ? (pacchetti.find((p) => p.key === contratto.pendingPack) ?? null)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -159,19 +187,35 @@ export default async function FatturazioneLocalePage() {
                 )}
               </div>
             </div>
-            <div>
-              <div className="text-xs" style={{ color: "var(--muted)" }}>
-                Come paghi
-              </div>
-              <div className="mt-0.5">
-                {contratto.provider === "stripe"
-                  ? "Carta, addebito automatico"
-                  : contratto.provider === "paypal"
-                    ? "PayPal"
-                    : "Bonifico"}
-              </div>
-            </div>
+            {/* La scelta e' sua: e' il suo conto corrente, e chiedergliela per
+                telefono per poi scriverla io dall'altra parte era un giro
+                inutile. */}
+            <form action={salvaMetodoPagamento}>
+              <label className="text-xs" style={{ color: "var(--muted)" }}>
+                Come vuoi pagare
+                <select
+                  name="provider"
+                  defaultValue={contratto.provider}
+                  className="input mt-1 w-full"
+                >
+                  <option value="manuale">Bonifico</option>
+                  <option value="stripe">Carta, addebito automatico</option>
+                  <option value="paypal">PayPal</option>
+                </select>
+              </label>
+              <button className="btn btn-sm mt-2" style={{ border: "1px solid var(--border)" }}>
+                Salva
+              </button>
+            </form>
           </div>
+
+          {contratto.provider !== "manuale" && (
+            <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
+              {contratto.provider === "stripe" ? "La carta" : "PayPal"} non e&apos;
+              ancora collegato: te lo scriviamo appena lo attiviamo. Fino ad
+              allora le fatture si saldano con bonifico, come sempre.
+            </p>
+          )}
 
           {contratto.transactionBps > 0 && (
             <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
@@ -205,6 +249,184 @@ export default async function FatturazioneLocalePage() {
             ? "C'e' un documento da saldare."
             : `Ci sono ${daPagare.length} documenti da saldare.`}
         </div>
+      )}
+      {inProva && uso && (
+        <section>
+          <div
+            className="rounded-xl px-5 py-4"
+            style={
+              scaduta
+                ? { background: "var(--warn-bg)", color: "var(--warn)" }
+                : { background: "var(--brand-50)", color: "var(--brand-text)" }
+            }
+          >
+            <h2 className="text-lg font-semibold">
+              {scaduta
+                ? "La prova e' finita"
+                : giorniRimasti === 0
+                  ? "La prova finisce oggi"
+                  : giorniRimasti === 1
+                    ? "La prova finisce domani"
+                    : `La prova finisce fra ${giorniRimasti} giorni`}
+            </h2>
+            <p className="mt-1 text-sm">
+              {uso.voci.length === 0 ? (
+                <>
+                  In {uso.giorni} giorni non risulta ancora niente di usato. Se
+                  qualcosa non ha funzionato scrivicelo — prima di farti
+                  scegliere un piano preferiamo capire cosa e&apos; andato
+                  storto.
+                </>
+              ) : (
+                <>
+                  In {uso.giorni} giorni hai fatto{" "}
+                  <strong>{uso.ordini} ordini</strong>
+                  {uso.incassoCents > 0 && (
+                    <> per <strong>{formatPrice(uso.incassoCents)}</strong></>
+                  )}
+                  . Qui sotto c&apos;e&apos; cosa hai usato davvero: scegli il
+                  piano che lo copre.
+                </>
+              )}
+            </p>
+          </div>
+
+          {uso.voci.length > 0 && (
+            <div className="card mt-3 p-4">
+              <div className="mb-3 text-xs" style={{ color: "var(--muted)" }}>
+                Cosa hai usato
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {uso.voci.map((v) => (
+                  <div key={v.key} className="flex items-baseline gap-2 text-sm">
+                    <span className="tnum font-semibold">{v.quante}</span>
+                    <span style={{ color: "var(--muted)" }}>{v.unita}</span>
+                  </div>
+                ))}
+              </div>
+              {consigliato && (
+                <p
+                  className="mt-3 pt-3 text-sm"
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  Il piano piu' piccolo che copre tutto questo e&apos;{" "}
+                  <strong>{consigliato.label}</strong>. Non e&apos; un consiglio
+                  a caso: e&apos; il conto dei numeri qui sopra.
+                </p>
+              )}
+              {!consigliato && uso.voci.length > 0 && (
+                <p
+                  className="mt-3 pt-3 text-sm"
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  Quello che usi non sta tutto dentro un pacchetto solo:
+                  scrivicelo e ti facciamo un prezzo su misura.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+
+      {contratto && contratto.status !== "chiuso" && (
+        <section>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
+              {contratto.status === "prova" ? "Scegli come continuare" : "Cambia piano"}
+            </h2>
+            <a
+              href="/dashboard/fatturazione/pacchetti"
+              className="text-xs hover:underline"
+              style={{ color: "var(--brand-text)" }}
+            >
+              Confronta i piani →
+            </a>
+          </div>
+
+          {contratto.status === "prova" && (
+            <div
+              className="mb-3 rounded-xl px-4 py-3 text-sm"
+              style={{ background: "var(--brand-50)", color: "var(--brand-text)" }}
+            >
+              Sei in prova fino al {dataBreve(contratto.trialEndsAt)}: hai tutto
+              acceso. Scegli il piano con cui vuoi continuare — puoi cambiarlo
+              quante volte vuoi finche&apos; la prova dura.
+            </div>
+          )}
+
+          {inAttesa && (
+            <div
+              className="mb-3 rounded-xl px-4 py-3 text-sm"
+              style={{ background: "var(--surface-2)", color: "var(--muted)" }}
+            >
+              Dal {dataBreve(contratto.pendingFrom)} passi a{" "}
+              <strong>{inAttesa.label}</strong>. Fino ad allora resta tutto come
+              adesso: hai gia&apos; pagato questo periodo. Per annullare, riscegli
+              il piano che hai adesso.
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {pacchetti.map((p) => {
+              const attuale = p.key === contratto.pack;
+              const prezzo =
+                contratto.model === "impianto"
+                  ? p.assistenzaCents
+                  : contratto.period === "annuale"
+                    ? p.annualeCents
+                    : p.mensileCents;
+              const sale = prezzo > contratto.recurringCents;
+              return (
+                <form
+                  key={p.key}
+                  action={cambiaPiano}
+                  className="card flex flex-col p-4"
+                  style={
+                    attuale
+                      ? { borderColor: "var(--brand)", borderWidth: 2 }
+                      : undefined
+                  }
+                >
+                  <input type="hidden" name="pack" value={p.key} />
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{p.label}</span>
+                    {attuale && <span className="badge badge-brand">il tuo</span>}
+                  </div>
+                  <div className="tnum mt-1 text-xl font-semibold">
+                    {formatPrice(prezzo)}
+                  </div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>
+                    {etichettaPeriodo(contratto)}
+                  </div>
+                  <p className="mt-2 flex-1 text-xs" style={{ color: "var(--muted)" }}>
+                    {p.descrizione}
+                  </p>
+                  {!attuale && (
+                    <button className={`btn btn-sm mt-3 ${sale ? "btn-primary" : ""}`}
+                      style={sale ? undefined : { border: "1px solid var(--border)" }}
+                    >
+                      {contratto.status === "prova"
+                        ? "Scegli questo"
+                        : sale
+                          ? "Passa subito"
+                          : "Passa al rinnovo"}
+                    </button>
+                  )}
+                </form>
+              );
+            })}
+          </div>
+
+          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+            {contratto.status === "prova"
+              ? "Nessun addebito finche' la prova non finisce."
+              : "Salire vale subito: paghi solo la differenza per i giorni che restano, sulla prossima fattura. Scendere vale dal prossimo rinnovo, perche' questo periodo l'hai gia' pagato."}
+            {addons.length > 0 && (
+              <> Gli add-on che paghi a parte restano accesi in ogni caso.</>
+            )}
+          </p>
+        </section>
       )}
 
       {/* Si compilano una volta e non si guardano piu': aperto di default

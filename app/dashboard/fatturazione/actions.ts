@@ -3,8 +3,136 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tenants } from "@/lib/db/schema";
+import { tenantBilling, tenants } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import {
+  annullaCambioProgrammato,
+  canoneDaListino,
+  getContratto,
+  isProvider,
+  programmaCambioPacco,
+  quotaResidua,
+  salvaContratto,
+  segnaConguaglio,
+  type ModelloContratto,
+  type Periodo,
+  type StatoContratto,
+} from "@/lib/billing/contratti";
+import { getPacchetti } from "@/lib/billing/prezzi";
+import {
+  applicaModuliDelPacco,
+  sincronizzaAddons,
+} from "@/lib/billing/addons";
+import { getTenantModules } from "@/lib/modules";
+
+// Il locale sceglie il suo piano.
+//
+// Due direzioni, due tempi diversi, e non e' una finezza:
+//
+//   sale  -> subito. Chi vuole le prenotazioni stasera le vuole stasera, e
+//            fargliele aspettare il rinnovo vuol dire non vendergliele. La
+//            differenza per i giorni che restano va in conguaglio sulla
+//            prossima fattura, non regalata e non fatta pagare tutta.
+//   scende -> al rinnovo. Ha gia' pagato fino a fine periodo: togliergli i
+//            moduli prima sarebbe togliergli roba pagata. Fino ad allora
+//            resta tutto acceso e in pagina c'e' scritto cosa cambiera'.
+//
+// In prova non c'e' niente da conguagliare: si sceglie e basta, ed e' il
+// senso della prova — provare piani diversi prima di decidere.
+export async function cambiaPiano(formData: FormData): Promise<void> {
+  const session = await getSessionUser();
+  if (!session || session.role !== "owner") return;
+
+  // Fra quelli che puo' scegliere c'e' anche il suo su misura, se ce l'ha:
+  // e' un pacchetto a tutti gli effetti, e una volta creato deve restare
+  // raggiungibile anche dopo che e' passato a uno standard.
+  const scelto = String(formData.get("pack") ?? "");
+  const disponibili = await getPacchetti(session.tenantId);
+  if (!disponibili.some((p) => p.key === scelto)) return;
+
+  const contratto = await getContratto(session.tenantId);
+  if (!contratto || contratto.status === "chiuso") return;
+
+  // Un locale col servizio spento non cambia piano da solo: prima si salda.
+  const [locale] = await db
+    .select({ serviceBlocked: tenants.serviceBlocked })
+    .from(tenants)
+    .where(eq(tenants.id, session.tenantId))
+    .limit(1);
+  if (locale?.serviceBlocked) return;
+
+  // Ha rimesso quello che aveva gia': via il cambio in attesa, se c'era.
+  if (scelto === contratto.pack) {
+    await annullaCambioProgrammato(session.tenantId);
+    revalidatePath("/dashboard/fatturazione");
+    return;
+  }
+
+  const nuovo = await canoneDaListino(
+    scelto,
+    contratto.model as ModelloContratto,
+    contratto.period as Periodo,
+    session.tenantId
+  );
+  const sale = nuovo.recurringCents > contratto.recurringCents;
+
+  if (contratto.status === "prova" || sale) {
+    if (sale && contratto.status !== "prova" && contratto.nextInvoiceAt) {
+      const quota = quotaResidua(
+        contratto.nextInvoiceAt,
+        new Date(),
+        contratto.period as Periodo
+      );
+      await segnaConguaglio(
+        session.tenantId,
+        Math.round((nuovo.recurringCents - contratto.recurringCents) * quota),
+        `Passaggio a ${scelto} — differenza per i giorni che restano`
+      );
+    }
+
+    await salvaContratto(session.tenantId, {
+      model: contratto.model as ModelloContratto,
+      pack: scelto,
+      period: contratto.period as Periodo,
+      recurringCents: nuovo.recurringCents,
+      activationCents: contratto.activationCents,
+      transactionBps: contratto.transactionBps,
+      status: contratto.status as StatoContratto,
+      notes: contratto.notes,
+    });
+    await applicaModuliDelPacco(session.tenantId, scelto);
+    await sincronizzaAddons(
+      session.tenantId,
+      await getTenantModules(session.tenantId)
+    );
+  } else {
+    await programmaCambioPacco(session.tenantId, scelto);
+  }
+
+  revalidatePath("/dashboard/fatturazione");
+  revalidatePath("/dashboard");
+}
+
+// Con cosa paga il locale. E' una scelta sua e sta qui, non in /admin: e' il
+// suo conto corrente, e deciderla al posto suo vuol dire ritrovarsi a chiedere
+// per telefono una cosa che lui sa gia'.
+//
+// Carta e PayPal oggi si possono scegliere ma non addebitano niente: manca
+// l'integrazione. La pagina lo dice, invece di far finta.
+export async function salvaMetodoPagamento(formData: FormData): Promise<void> {
+  const session = await getSessionUser();
+  if (!session || session.role !== "owner") return;
+
+  const scelto = String(formData.get("provider") ?? "");
+  if (!isProvider(scelto)) return;
+
+  await db
+    .update(tenantBilling)
+    .set({ provider: scelto, updatedAt: new Date() })
+    .where(eq(tenantBilling.tenantId, session.tenantId));
+
+  revalidatePath("/dashboard/fatturazione");
+}
 
 // I dati di fatturazione li scrive il locale, non io.
 //

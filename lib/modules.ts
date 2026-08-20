@@ -70,7 +70,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "reservations",
-    label: "Prenotazione del tavolo",
+    label: "Prenotazione web",
     description:
       "Il cliente prenota dal sito del locale: sceglie giorno, ora e quante persone, e il tavolo viene assegnato da solo.",
     defaultEnabled: false,

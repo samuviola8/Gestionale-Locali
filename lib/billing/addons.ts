@@ -1,9 +1,16 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenantAddons } from "@/lib/db/schema";
-import { MODULES, getModule, isModuleKey, type ModuleKey } from "@/lib/modules";
+import {
+  MODULES,
+  getModule,
+  getTenantModules,
+  isModuleKey,
+  setTenantModules,
+  type ModuleKey,
+} from "@/lib/modules";
 import { getContratto } from "@/lib/billing/contratti";
-import { getPacco, isPaccoKey } from "@/lib/billing/listino";
+import { moduliDelPacco } from "@/lib/billing/sumisura";
 import { getPrezziModuli } from "@/lib/billing/prezzi";
 
 // I moduli che un locale paga a parte, fuori dal pacchetto: l'agent al
@@ -57,10 +64,53 @@ export async function salvaAddons(
   );
 }
 
+// Accende i moduli del pacchetto scelto, lasciando accesi gli add-on che il
+// locale paga a parte.
+//
+// Senza questo, scegliere "Tutto" non darebbe niente di nuovo: cambierebbe
+// solo la cifra. E scendendo di piano i moduli del piano vecchio resterebbero
+// accesi e gratis. Gli add-on sopravvivono al cambio perche' non fanno parte
+// del pacchetto: si pagano a parte, e chi li paga se li tiene.
+export async function applicaModuliDelPacco(
+  tenantId: string,
+  pack: string
+): Promise<void> {
+  const compresi = await moduliDelPacco(tenantId, pack);
+  const addons = await getAddons(tenantId);
+  const tenuti = new Set<string>([
+    ...compresi,
+    ...addons.map((a) => a.moduleKey),
+  ]);
+
+  const state = await getTenantModules(tenantId);
+  for (const m of MODULES) state[m.key] = tenuti.has(m.key);
+  await setTenantModules(tenantId, state);
+}
+
+// Cosa si spegnerebbe passando a questo pacchetto. Serve a dirlo prima: un
+// modulo che sparisce senza preavviso e' una prenotazione che nessuno prende
+// piu', non una riga di listino.
+export async function moduliCheSiSpengono(
+  tenantId: string,
+  pack: string
+): Promise<ModuleKey[]> {
+  const compresi = await moduliDelPacco(tenantId, pack);
+  const addons = await getAddons(tenantId);
+  const tenuti = new Set<string>([
+    ...compresi,
+    ...addons.map((a) => a.moduleKey),
+  ]);
+  const state = await getTenantModules(tenantId);
+  return MODULES.filter((m) => state[m.key] && !tenuti.has(m.key)).map((m) => m.key);
+}
+
 // Il prezzo da proporre nel pannello quando si spunta un add-on nuovo: quello
 // di listino, che poi si corregge a mano se la trattativa e' andata altrimenti.
-export async function prezzoProposto(key: ModuleKey): Promise<number> {
-  const prezzi = await getPrezziModuli();
+export async function prezzoProposto(
+  key: ModuleKey,
+  tenantId?: string
+): Promise<number> {
+  const prezzi = await getPrezziModuli(tenantId);
   return prezzi[key] ?? 0;
 }
 
@@ -82,10 +132,10 @@ export async function sincronizzaAddons(
   prezziScritti: Partial<Record<ModuleKey, number>> = {}
 ): Promise<void> {
   const contratto = await getContratto(tenantId);
-  const pacco =
-    contratto && isPaccoKey(contratto.pack) ? getPacco(contratto.pack) : null;
-  const compresi = new Set<string>(pacco?.moduli ?? []);
-  const listino = await getPrezziModuli();
+  const compresi = new Set<string>(
+    contratto ? await moduliDelPacco(tenantId, contratto.pack) : []
+  );
+  const listino = await getPrezziModuli(tenantId);
   const concordati = await getAddons(tenantId);
 
   const daFatturare = MODULES.filter(

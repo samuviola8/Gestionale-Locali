@@ -5,6 +5,9 @@ import { db } from "@/lib/db";
 import { reservations, restaurantTables, tenants } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { requireModule } from "@/lib/module-guard";
+import { problemiDelLocale } from "@/lib/pronto";
+import { getTenantModules } from "@/lib/modules";
+import ProblemiLocale from "@/components/ProblemiLocale";
 import { leggiOrari } from "@/lib/orari";
 import {
   BADGE_STATO,
@@ -135,8 +138,19 @@ export default async function PrenotazioniPage({
     })),
   ];
 
+  // I guasti che riguardano proprio questa pagina. Stanno anche in home, ma
+  // chi lavora le prenotazioni entra qui: e' qui che deve vedere che le mail
+  // ai clienti non stanno partendo.
+  const suoi = (
+    await problemiDelLocale(session.tenantId, await getTenantModules(session.tenantId))
+  ).filter((p) =>
+    p.chiave.includes("prenotazioni") || p.chiave === "tavoli-prenotabili"
+  );
+
   return (
     <div className="space-y-6">
+      <ProblemiLocale problemi={suoi} compatto />
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Prenotazioni</h1>

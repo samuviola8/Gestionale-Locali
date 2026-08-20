@@ -26,12 +26,14 @@ process.env.FATTURAZIONE_REGIME ||= "forfettario";
 async function main() {
   const { eq, inArray } = await import("drizzle-orm");
   const { db } = await import("@/lib/db");
-  const { tenants, invoices, invoiceLines, payments, tenantBilling } =
+  const { tenants, invoices, invoiceLines, payments, tenantBilling, orders, orderItems } =
     await import("@/lib/db/schema");
   const { billingPrices } = await import("@/lib/db/schema");
   const { createLocaleWithSetup } = await import("@/lib/onboarding");
   const { getTenantModules, setTenantModules } = await import("@/lib/modules");
   const {
+    annullaCambioProgrammato,
+    applicaCambioProgrammato,
     canoneDaListino,
     canoneMensileCents,
     getContratti,
@@ -39,7 +41,10 @@ async function main() {
     importoAScadenzaCents,
     impostaProva,
     mesiPerScadenza,
+    programmaCambioPacco,
     prossimaScadenza,
+    quotaResidua,
+    segnaConguaglio,
     salvaContratto,
     segnaProssimaScadenza,
   } = await import("@/lib/billing/contratti");
@@ -57,18 +62,24 @@ async function main() {
   const { caricaFile, eliminaFile, fileDelLocale, percorsoFile } =
     await import("@/lib/billing/archivio");
   const {
+    azzeraScostamenti,
     getPacchetti,
+    getPaccoPrezzato,
     getPrezziModuli,
     salvaPrezzoModulo,
     salvaPrezzoPacco,
   } = await import("@/lib/billing/prezzi");
-  const { getAddons, sincronizzaAddons, totaleAddonsCents } =
+  const { applicaModuliDelPacco, getAddons, sincronizzaAddons, totaleAddonsCents } =
     await import("@/lib/billing/addons");
   const { getImpostazioni, salvaImpostazioni } = await import(
     "@/lib/billing/impostazioni"
   );
   const { aggiornaBloccoLocale, sbloccaLocale } = await import(
     "@/lib/billing/blocco"
+  );
+  const { giorniAllaFine, usoInProva } = await import("@/lib/billing/prova");
+  const { eliminaSuMisura, moduliDelPacco, salvaSuMisura } = await import(
+    "@/lib/billing/sumisura"
   );
 
   const slug = "prova-fatture-tmp";
@@ -86,6 +97,7 @@ async function main() {
   const listinoOriginale = await db.select().from(billingPrices);
 
   const giorniFa = (n: number) => new Date(Date.now() - n * 86400000);
+  const fraGiorni = (n: number) => new Date(Date.now() + n * 86400000);
   const leggiLocale = async (id: string) => {
     const r = await db
       .select({
@@ -435,6 +447,213 @@ async function main() {
   });
   await eliminaBozza(bozzaAnnuale.id);
 
+  console.log("\n8d. Prezzi per singolo cliente");
+  await salvaPrezzoPacco(
+    "locale",
+    { mensileCents: 6900, annualeCents: 69000, attivazioneCents: 0, assistenzaCents: 2900 },
+    tenantId
+  );
+  const suoi = await getPacchetti(tenantId);
+  ok(
+    suoi.find((p) => p.key === "locale")?.mensileCents === 6900,
+    "il prezzo scritto per questo locale vince sul listino"
+  );
+  const diTutti = await getPacchetti();
+  ok(
+    diTutti.find((p) => p.key === "locale")?.mensileCents === 8900,
+    "e per gli altri il listino resta quello di prima"
+  );
+  ok(
+    suoi.find((p) => p.key === "tutto")?.mensileCents ===
+      diTutti.find((p) => p.key === "tutto")?.mensileCents,
+    "i pacchetti non ritoccati per lui restano al listino"
+  );
+  ok(
+    (await canoneDaListino("locale", "abbonamento", "mensile", tenantId))
+      .recurringCents === 6900,
+    "e chi propone il canone usa il prezzo suo"
+  );
+
+  await azzeraScostamenti(tenantId);
+  ok(
+    (await getPacchetti(tenantId)).find((p) => p.key === "locale")
+      ?.mensileCents === 8900,
+    "azzerando i suoi scostamenti torna sul listino di tutti"
+  );
+
+  console.log("\n8e. Il locale cambia piano");
+  // Punto di partenza pulito: abbonamento mensile su Sala, attivo.
+  await salvaContratto(tenantId, {
+    model: "abbonamento", pack: "sala", period: "mensile",
+    recurringCents: 4900, activationCents: 0, transactionBps: 0,
+    status: "attivo", notes: null,
+  });
+  await segnaProssimaScadenza(tenantId, fraGiorni(15));
+  await applicaModuliDelPacco(tenantId, "sala");
+  ok(
+    !(await getTenantModules(tenantId)).reservations,
+    "su Sala le prenotazioni sono spente"
+  );
+
+  // Sale: subito, col conguaglio per i giorni che restano.
+  const suPacco = (await getPaccoPrezzato("locale", tenantId))!;
+  await salvaContratto(tenantId, {
+    model: "abbonamento", pack: "locale", period: "mensile",
+    recurringCents: suPacco.mensileCents, activationCents: 0, transactionBps: 0,
+    status: "attivo", notes: null,
+  });
+  await applicaModuliDelPacco(tenantId, "locale");
+  ok(
+    (await getTenantModules(tenantId)).reservations,
+    "salendo a Locale le prenotazioni si accendono davvero"
+  );
+
+  const quota = quotaResidua(fraGiorni(15), new Date(), "mensile");
+  ok(quota > 0.4 && quota < 0.6, "a meta' periodo la quota residua e' circa meta'");
+  await segnaConguaglio(tenantId, Math.round((8900 - 4900) * quota), "Passaggio a locale");
+  const conConguaglio = await getContratto(tenantId);
+  ok(conConguaglio!.adjustmentCents > 1800, "il conguaglio e' segnato sul contratto");
+
+  // Scende: non adesso, al rinnovo.
+  await programmaCambioPacco(tenantId, "sala");
+  const programmato = await getContratto(tenantId);
+  ok(programmato?.pendingPack === "sala", "il downgrade resta in attesa");
+  ok(programmato?.pack === "locale", "e intanto il piano di oggi non cambia");
+  ok(
+    (await getTenantModules(tenantId)).reservations,
+    "i moduli restano accesi: quel periodo l'ha gia' pagato"
+  );
+
+  ok(
+    programmato?.pendingFrom !== null,
+    "con scritta la data da cui varra', quella che vede in pagina"
+  );
+
+  console.log("\n8f. Il rinnovo applica il cambio e il conguaglio");
+  await segnaProssimaScadenza(tenantId, new Date());
+  await preparaRinnovi();
+  const dopoCambio = await getContratto(tenantId);
+  ok(dopoCambio?.pack === "sala", "al rinnovo il piano scende davvero");
+  ok(dopoCambio?.pendingPack === null, "e il cambio in attesa si consuma");
+  ok(
+    dopoCambio?.recurringCents ===
+      (await getPaccoPrezzato("sala", tenantId))!.mensileCents,
+    "col canone di Sala che vale per lui"
+  );
+  ok(
+    !(await getTenantModules(tenantId)).reservations,
+    "e le prenotazioni si spengono da li' in poi"
+  );
+  ok(dopoCambio?.adjustmentCents === 0, "il conguaglio e' stato consumato");
+
+  const bozzaCambio = (await documentiDelLocale(tenantId)).find(
+    (d) => d.status === "bozza"
+  )!;
+  const righeCambio = (await documentoCompleto(bozzaCambio.id))!.righe;
+  ok(
+    righeCambio.some((r) => r.description.includes("Passaggio a locale")),
+    "e il conguaglio compare in fattura come riga sua"
+  );
+  await eliminaBozza(bozzaCambio.id);
+
+  // Rimesso com'era per le prove che vengono dopo.
+  await salvaContratto(tenantId, {
+    model: "impianto", pack: "locale", period: "mensile",
+    recurringCents: 3900, activationCents: 149000, transactionBps: 40,
+    status: "attivo", notes: "prezzo fondatori",
+  });
+  await sincronizzaAddons(tenantId, await getTenantModules(tenantId), { delivery: 2000 });
+
+  console.log("\n8g. Il pacchetto su misura");
+  ok(
+    (await getPacchetti(tenantId)).length === 3,
+    "senza su misura i pacchetti restano tre"
+  );
+
+  await salvaSuMisura(tenantId, {
+    label: "Il tuo piano",
+    descrizione: "Pro senza asporto, con la consegna",
+    moduli: ["qr_ordering", "split_bill", "waiter_call", "reservations", "delivery"],
+    mensileCents: 7500,
+    annualeCents: 75000,
+    attivazioneCents: 120000,
+    assistenzaCents: 3500,
+  });
+
+  const conSuMisura = await getPacchetti(tenantId);
+  ok(conSuMisura.length === 4, "creato, compare accanto ai tre standard");
+  ok(conSuMisura[3].key === "su_misura", "e sta in fondo");
+  ok(conSuMisura[3].label === "Il tuo piano", "col nome che gli ho dato");
+  ok(
+    (await getPacchetti()).length === 3,
+    "ma per gli altri locali i pacchetti restano tre"
+  );
+
+  ok(
+    (await canoneDaListino("su_misura", "abbonamento", "mensile", tenantId))
+      .recurringCents === 7500,
+    "il suo canone si legge come quello di un pacchetto qualsiasi"
+  );
+
+  // La composizione: e' la cosa che i tre standard non sanno dire.
+  const compresi = await moduliDelPacco(tenantId, "su_misura");
+  ok(compresi.includes("delivery"), "comprende la consegna");
+  ok(!compresi.includes("takeaway"), "e non l'asporto");
+  ok(
+    (await moduliDelPacco(tenantId, "locale")).includes("takeaway"),
+    "mentre Pro l'asporto ce l'ha, come sempre"
+  );
+
+  // Il punto che rendeva tutto sbagliato prima: con un pacchetto fuori
+  // catalogo, "cosa e' compreso" tornava vuoto e ogni modulo acceso diventava
+  // un add-on a pagamento.
+  await salvaContratto(tenantId, {
+    model: "abbonamento", pack: "su_misura", period: "mensile",
+    recurringCents: 7500, activationCents: 0, transactionBps: 0,
+    status: "attivo", notes: null,
+  });
+  await applicaModuliDelPacco(tenantId, "su_misura");
+  await sincronizzaAddons(tenantId, await getTenantModules(tenantId));
+  const addonSuMisura = await getAddons(tenantId);
+  ok(
+    !addonSuMisura.some((a) => a.moduleKey === "delivery"),
+    "la consegna e' nel suo canone, non un add-on da pagare a parte"
+  );
+  ok(
+    !(await getTenantModules(tenantId)).takeaway,
+    "e l'asporto, che non ci sta dentro, resta spento"
+  );
+  ok(
+    (await getTenantModules(tenantId)).delivery,
+    "mentre la consegna e' accesa"
+  );
+
+  // Ci si torna anche dopo essere passati a uno standard: e' il motivo per cui
+  // il su misura non si cancella quando non e' quello scelto.
+  await salvaContratto(tenantId, {
+    model: "abbonamento", pack: "locale", period: "mensile",
+    recurringCents: 8900, activationCents: 0, transactionBps: 0,
+    status: "attivo", notes: null,
+  });
+  ok(
+    (await getPacchetti(tenantId)).some((p) => p.key === "su_misura"),
+    "passato a Pro, il suo su misura e' ancora fra quelli che puo' scegliere"
+  );
+
+  // Rimesso com'era per le prove che vengono dopo.
+  await eliminaSuMisura(tenantId);
+  ok(
+    (await getPacchetti(tenantId)).length === 3,
+    "e togliendolo si torna ai tre standard"
+  );
+  await salvaContratto(tenantId, {
+    model: "impianto", pack: "locale", period: "mensile",
+    recurringCents: 3900, activationCents: 149000, transactionBps: 40,
+    status: "attivo", notes: "prezzo fondatori",
+  });
+  await applicaModuliDelPacco(tenantId, "locale");
+  await sincronizzaAddons(tenantId, await getTenantModules(tenantId), { delivery: 2000 });
+
   console.log("\n9. Prove gratuite");
   await salvaImpostazioni({ ...impostazioniOriginali, trialDays: 7 });
   const altroSlug = "prova-fatture-tmp2";
@@ -456,6 +675,78 @@ async function main() {
     Math.round((allungata!.trialEndsAt!.getTime() - Date.now()) / 86400000) === 21,
     "allungare la prova la conta da oggi"
   );
+
+  console.log("\n9b. Fine prova: cosa ha usato e cosa gli serve");
+  await impostaProva(tenantId, 30);
+  const daSempre = giorniFa(60);
+
+  const vuoto = await usoInProva(tenantId, daSempre);
+  ok(vuoto.voci.length === 0, "un locale che non ha toccato niente non ha voci");
+  ok(
+    vuoto.paccoConsigliato === "sala",
+    "e il consiglio ricade sul pacchetto piu' piccolo"
+  );
+
+  // Due ordini al tavolo e uno al banco: il canale e' quello che dice cosa ha
+  // usato davvero, non il modulo acceso.
+  const [t1] = await db
+    .insert(orders)
+    .values({ tenantId, tableNumber: 1, channel: "tavolo" })
+    .returning({ id: orders.id });
+  await db
+    .insert(orders)
+    .values({ tenantId, tableNumber: 2, channel: "tavolo" });
+  await db.insert(orders).values({ tenantId, channel: "banco" });
+  await db.insert(orderItems).values({
+    orderId: t1.id, name: "Spritz", priceCents: 700, quantity: 2, paid: true,
+  });
+
+  const conOrdini = await usoInProva(tenantId, daSempre);
+  ok(conOrdini.ordini === 3, "conta tutti gli ordini del periodo");
+  ok(conOrdini.incassoCents === 1400, "e l'incasso di quelli pagati");
+  ok(
+    conOrdini.voci.find((v) => v.key === "qr_ordering")?.quante === 2,
+    "due ordini al tavolo"
+  );
+  ok(
+    conOrdini.voci.find((v) => v.key === "counter_orders")?.quante === 1,
+    "e uno al banco"
+  );
+  ok(
+    conOrdini.voci[0].key === "qr_ordering",
+    "le voci arrivano ordinate dalla piu' usata"
+  );
+  ok(
+    conOrdini.paccoConsigliato === "locale",
+    "usando il banco, il pacchetto che lo copre e' Locale, non Sala"
+  );
+
+  // Una consegna a domicilio: sta solo in Tutto.
+  await db.insert(orders).values({ tenantId, channel: "domicilio" });
+  const conDelivery = await usoInProva(tenantId, daSempre);
+  ok(
+    conDelivery.paccoConsigliato === "tutto",
+    "con una consegna il consiglio sale a Tutto"
+  );
+  ok(
+    conDelivery.voci.some((v) => v.key === "delivery"),
+    "e la consegna compare fra le voci"
+  );
+
+  const giorniRimasti = giorniAllaFine(fraGiorni(5));
+  ok(giorniRimasti === 5, "i giorni che mancano si contano giusti");
+  ok((giorniAllaFine(giorniFa(2)) ?? 0) < 0, "e una prova finita da' un numero negativo");
+  ok(giorniAllaFine(null) === null, "senza data di fine non c'e' niente da dire");
+
+  // Gli ordini finti se ne vanno con il locale, in pulizia.
+
+  // Rimesso attivo: `impostaProva` qui sopra l'aveva riportato in prova, e le
+  // prove che vengono dopo lavorano su un contratto attivo.
+  await salvaContratto(tenantId, {
+    model: "impianto", pack: "locale", period: "mensile",
+    recurringCents: 3900, activationCents: 149000, transactionBps: 40,
+    status: "attivo", notes: "prezzo fondatori",
+  });
 
   console.log("\n10. Prova scaduta");
   await db
