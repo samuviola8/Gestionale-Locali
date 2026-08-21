@@ -345,10 +345,24 @@ export async function segnaProssimaScadenza(
     .where(eq(tenantBilling.tenantId, tenantId));
 }
 
+// L'attivazione risulta gia' chiesta, o torna da chiedere.
+//
+// Ad accenderla e' l'emissione di un documento che la contiene — e non la
+// preparazione di una bozza, che si puo' cancellare — ma serve poterla
+// correggere a mano: un impianto pagato a bonifico prima ancora di aprire una
+// fattura va segnato, e un flag acceso per sbaglio va spento, altrimenti
+// quell'attivazione non la chiede piu' nessuno e sparisce per sempre.
 export async function segnaAttivazioneFatturata(tenantId: string): Promise<void> {
   await db
     .update(tenantBilling)
     .set({ activationInvoicedAt: new Date(), updatedAt: new Date() })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+export async function rimettiAttivazioneDaFatturare(tenantId: string): Promise<void> {
+  await db
+    .update(tenantBilling)
+    .set({ activationInvoicedAt: null, updatedAt: new Date() })
     .where(eq(tenantBilling.tenantId, tenantId));
 }
 

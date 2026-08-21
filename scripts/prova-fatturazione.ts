@@ -215,6 +215,14 @@ async function main() {
   const conRighe = await documentoCompleto(bozza.id);
   ok(conRighe?.righe.length === 2, "due righe: attivazione e canone");
 
+  // Una bozza non e' una fattura: si cancella, si rifa', e per il locale non
+  // esiste. Segnare qui l'attivazione voleva dire non chiederla mai piu' —
+  // ne' in Checkout ne' al rinnovo — anche se quella bozza finiva nel cestino.
+  ok(
+    (await getContratto(tenantId))?.activationInvoicedAt === null,
+    "la bozza NON segna l'attivazione come fatturata: e' solo una bozza"
+  );
+
   await preparaRinnovi();
   ok(
     (await documentiDelLocale(tenantId)).length === 1,
@@ -279,6 +287,10 @@ async function main() {
   ok(!!emesso.sellerSnapshot && !!emesso.buyerSnapshot, "congela le due parti");
   ok(!!emesso.vatNote, "forfettario: porta la sua riga di legge");
   ok(emesso.sdiStatus === "da_inviare", "resta in attesa dello SDI");
+  ok(
+    !!(await getContratto(tenantId))?.activationInvoicedAt,
+    "ed e' l'emissione a segnare l'attivazione: ora il locale ce l'ha in mano"
+  );
 
   const numeroPrima = emesso.number;
   await emettiDocumento(bozza.id);

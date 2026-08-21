@@ -213,6 +213,16 @@ export default async function FatturazionePage() {
                       {c ? etichettaPeriodo(c) : "—"}
                       {l.addonsCents > 0 && " · add-on inclusi"}
                     </div>
+                    {/* L'attivazione ancora da incassare. Senza, un impianto da
+                        890 + 29 si legge come "29,00 al mese": la cifra e'
+                        giusta ma racconta un contratto che non e' quello, e chi
+                        scorre il registro per sapere quanto vale un locale si
+                        porta via il numero sbagliato. */}
+                    {c && c.activationCents > 0 && !c.activationInvoicedAt && (
+                      <div className="text-xs" style={{ color: "var(--warn)" }}>
+                        + {formatPrice(c.activationCents)} di attivazione
+                      </div>
+                    )}
                   </div>
                   <div className="text-right text-xs" style={{ color: "var(--muted)" }}>
                     <div>Prossima</div>

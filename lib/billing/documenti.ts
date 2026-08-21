@@ -21,7 +21,6 @@ import {
   getContratto,
   mesiPerScadenza,
   prossimaScadenza,
-  segnaAttivazioneFatturata,
   type Periodo,
 } from "@/lib/billing/contratti";
 import {
@@ -263,6 +262,23 @@ export async function emettiDocumento(id: string): Promise<void> {
         updatedAt: ora,
       })
       .where(eq(invoices.id, id));
+
+    // Se in questo documento c'e' l'attivazione, da adesso e' fatturata: il
+    // locale ha in mano una fattura numerata che gliela chiede. Si guarda cosa
+    // c'e' scritto sulle righe invece di ricavarlo dal contratto, perche' e'
+    // il documento a dire cosa gli e' stato chiesto davvero — se la bozza era
+    // stata corretta a mano, vale la correzione.
+    const conAttivazione = await tx
+      .select({ id: invoiceLines.id })
+      .from(invoiceLines)
+      .where(and(eq(invoiceLines.invoiceId, id), eq(invoiceLines.kind, "attivazione")))
+      .limit(1);
+    if (conAttivazione.length > 0) {
+      await tx
+        .update(tenantBilling)
+        .set({ activationInvoicedAt: ora, updatedAt: ora })
+        .where(eq(tenantBilling.tenantId, doc.tenantId));
+    }
   });
 }
 
@@ -547,9 +563,17 @@ export async function preparaRinnovi(quando: Date = new Date()): Promise<number>
 
     if (conguaglio) await azzeraConguaglio(c.tenantId);
 
-    if (c.activationCents > 0 && !c.activationInvoicedAt) {
-      await segnaAttivazioneFatturata(c.tenantId);
-    }
+    // L'attivazione NON si segna qui, ed e' la correzione di un guaio che
+    // costava un impianto intero. Qui si e' appena creata una **bozza**, e una
+    // bozza non e' una fattura: si puo' cancellare, si puo' rifare, e per il
+    // locale non esiste finche' non e' emessa. Segnandola qui bastava far
+    // girare i rinnovi una volta perche' l'attivazione risultasse incassata
+    // per sempre — anche con la bozza poi cancellata, anche con l'importo
+    // cambiato dopo. Da li' in avanti non la chiedeva piu' nessuno: ne'
+    // Checkout, ne' il rinnovo dopo.
+    //
+    // A segnarla e' l'emissione, in emettiDocumento: e' li' che il documento
+    // prende un numero e diventa una cosa che il locale ha davvero in mano.
 
     await db
       .update(tenantBilling)

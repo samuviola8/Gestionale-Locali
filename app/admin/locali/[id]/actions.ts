@@ -30,7 +30,9 @@ import {
   isPeriodo,
   isProvider,
   isStato,
+  rimettiAttivazioneDaFatturare,
   salvaContratto,
+  segnaAttivazioneFatturata,
 } from "@/lib/billing/contratti";
 import { sincronizzaAddons } from "@/lib/billing/addons";
 import { PACCHETTI } from "@/lib/billing/listino";
@@ -630,4 +632,26 @@ export async function eliminaSuMisuraAction(formData: FormData): Promise<void> {
 
   await eliminaSuMisura(id);
   revalidatePath(`/admin/locali/${id}`);
+}
+
+// L'attivazione risulta gia' fatturata, o torna da chiedere.
+//
+// Serve perche' quel campo, una volta acceso, decideva in silenzio: se e'
+// acceso l'attivazione non compare piu' ne' in Checkout ne' al rinnovo, e dal
+// pannello non si capiva perche' un impianto da 1.690 euro non venisse mai
+// chiesto. Adesso lo stato si vede e si corregge da qui.
+export async function cambiaStatoAttivazioneAction(formData: FormData): Promise<void> {
+  const admin = await getAdminUser();
+  if (!admin) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  if (String(formData.get("verso") ?? "") === "da_fatturare") {
+    await rimettiAttivazioneDaFatturare(id);
+  } else {
+    await segnaAttivazioneFatturata(id);
+  }
+
+  revalidatePath(`/admin/locali/${id}`);
+  revalidatePath("/admin/fatturazione");
 }

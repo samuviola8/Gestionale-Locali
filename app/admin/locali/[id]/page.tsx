@@ -61,6 +61,7 @@ import {
   azzeraAccessoDueFattori,
   saveContratto,
   saveDatiFiscali,
+  cambiaStatoAttivazioneAction,
   impostaProvaAction,
   salvaPrezziLocaleAction,
   salvaSuMisuraAction,
@@ -597,6 +598,28 @@ export default async function LocaleDetail({
                     silenzio di un rinnovo che non arriva: fra il giorno in cui
                     disdice e il giorno in cui se ne va c'e' l'unica finestra
                     per richiamarlo, e puo' durare un anno. */}
+                {/* Lo stato dell'attivazione, quando ce n'e' una. Quel campo
+                    decideva in silenzio: acceso, l'attivazione non compare
+                    piu' ne' in Checkout ne' al rinnovo, e dal pannello non si
+                    capiva perche' un impianto non venisse mai chiesto. */}
+                {(contratto?.activationCents ?? 0) > 0 && (
+                  <>
+                    {" "}
+                    {contratto?.activationInvoicedAt ? (
+                      <>
+                        L&apos;attivazione risulta <strong>gia&apos; fatturata</strong> il{" "}
+                        {dataBreve(contratto.activationInvoicedAt)}, quindi non
+                        viene piu&apos; chiesta.
+                      </>
+                    ) : (
+                      <>
+                        L&apos;attivazione e&apos; <strong>ancora da fatturare</strong>:
+                        entra nel prossimo documento e nel primo pagamento con
+                        carta.
+                      </>
+                    )}
+                  </>
+                )}
                 {contratto?.providerCancelAt && (
                   <>
                     {" "}
@@ -807,6 +830,44 @@ export default async function LocaleDetail({
             </form>
           )}
         </section>
+
+        {(contratto?.activationCents ?? 0) > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
+              Attivazione
+            </h2>
+            <form
+              action={cambiaStatoAttivazioneAction}
+              className="card flex flex-wrap items-center gap-3 p-4"
+            >
+              <input type="hidden" name="id" value={t.id} />
+              <input
+                type="hidden"
+                name="verso"
+                value={contratto?.activationInvoicedAt ? "da_fatturare" : "fatturata"}
+              />
+              <span className="flex-1 text-sm">
+                <strong className="tnum">{formatPrice(contratto!.activationCents)}</strong>{" "}
+                {contratto?.activationInvoicedAt ? (
+                  <>
+                    gia&apos; fatturata il {dataBreve(contratto.activationInvoicedAt)}:
+                    non viene piu&apos; chiesta, ne&apos; in fattura ne&apos; con la carta.
+                  </>
+                ) : (
+                  <>
+                    da fatturare: entra nel prossimo documento e nel primo
+                    pagamento con carta.
+                  </>
+                )}
+              </span>
+              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+                {contratto?.activationInvoicedAt
+                  ? "Rimettila da fatturare"
+                  : "Segnala come gia' fatturata"}
+              </button>
+            </form>
+          </section>
+        )}
 
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
