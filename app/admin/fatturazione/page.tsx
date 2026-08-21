@@ -103,6 +103,21 @@ export default async function FatturazionePage() {
           </div>
         )}
 
+        {/* L'IBAN non blocca l'emissione — una fattura senza resta valida — ma
+            se manca la riga "bonifico a IBAN, causale ..." sparisce dal
+            documento, e il locale si ritrova una fattura da saldare senza
+            sapere dove. Vale un promemoria, non un blocco. */}
+        {mancanze.length === 0 && !emittente.iban && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: "var(--surface-2)", color: "var(--muted)" }}
+          >
+            <strong>Manca l&apos;IBAN</strong> (<code>FATTURAZIONE_IBAN</code>).
+            Si emette lo stesso, ma sui documenti non compare dove pagare: chi
+            salda con bonifico dovra&apos; chiedertelo.
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Ricorrente al mese" value={formatPrice(mrr)} />
           <Stat label="Incassato questo mese" value={formatPrice(incassiMese[0]?.tot ?? 0)} />

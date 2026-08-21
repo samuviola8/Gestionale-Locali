@@ -88,6 +88,12 @@ export default async function FatturazioneLocalePage({
   // fattura che arriva il mese dopo.
   const addonsCents = addons.reduce((s, a) => s + a.priceCents, 0);
   const totale = contratto ? importoAScadenzaCents(contratto, addonsCents) : 0;
+  // L'installazione ancora da incassare. Le due condizioni sono le stesse che
+  // decidono se mandarla a Stripe: c'e' un importo, e non e' gia' finita in
+  // fattura. Tenerle uguali e' quello che evita che la pagina prometta una
+  // cifra e il pagamento ne chieda un'altra.
+  const daInstallare =
+    contratto && !contratto.activationInvoicedAt ? contratto.activationCents : 0;
   const mesiAddon = contratto ? mesiPerScadenza(contratto) : 1;
   const mancanze = mancanzeIntestatario(locale);
   // La fine della prova e' il momento in cui decide. Il riepilogo di quello
@@ -180,6 +186,28 @@ export default async function FatturazioneLocalePage({
                 <span>Totale</span>
                 <span className="tnum">{formatPrice(totale)}</span>
               </div>
+            </div>
+          )}
+
+          {/* L'installazione, finche' non e' stata fatturata.
+              Sta fuori dal riquadro dei totali di proposito: quello dice cosa
+              si paga a ogni scadenza, e sommarci dentro una cifra che si paga
+              una volta sola vorrebbe dire far credere al locale che il canone
+              e' cinque volte tanto. Ma da qualche parte va scritta: finora
+              esisteva solo nel pannello admin, e chi la doveva pagare non la
+              vedeva da nessuna parte. */}
+          {daInstallare > 0 && (
+            <div
+              className="mt-4 flex flex-wrap items-baseline justify-between gap-2 rounded-xl px-4 py-3 text-sm"
+              style={{ background: "var(--surface-2)" }}
+            >
+              <span>
+                <strong>Installazione</strong>
+                <span style={{ color: "var(--muted)" }}>
+                  {" "}— una volta sola, al primo pagamento
+                </span>
+              </span>
+              <span className="tnum font-semibold">{formatPrice(daInstallare)}</span>
             </div>
           )}
 
