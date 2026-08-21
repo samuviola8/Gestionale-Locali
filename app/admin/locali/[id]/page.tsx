@@ -53,7 +53,6 @@ import {
   cambiaIndirizzoWeb,
   toggleSuspend,
   deleteLocale,
-  saveModules,
   saveBranding,
   saveService,
   toggleDueFattori,
@@ -1129,85 +1128,47 @@ export default async function LocaleDetail({
           <div className="disclosure-body space-y-8">
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
-            Moduli e prezzi
+            Moduli
           </h2>
-          <form action={saveModules} className="card p-4">
-            <input type="hidden" name="id" value={t.id} />
-
+          {/* Sola lettura, ed e' il punto: i moduli li decide il pacchetto.
+              Erano spuntabili a mano, e cosi' erano due decisioni separate
+              sulla stessa cosa — che pacchetto ha firmato, e cosa gli e'
+              acceso — che prima o poi si contraddicono. Vedere cosa ha serve
+              ancora; cambiarlo da qui no: si cambia il pacchetto, o se ne
+              compone uno su misura. */}
+          <div className="card p-4">
             <div className="space-y-1">
-              {MODULES.map((m) => {
+              {MODULES.filter((m) => modules[m.key] || inPacco.has(m.key)).map((m) => {
                 const compreso = inPacco.has(m.key);
                 const attivo = addons.find((a) => a.moduleKey === m.key);
-                // Si fattura a parte solo quello che ha un prezzo suo e non e'
-                // gia' dentro il pacchetto. Il resto o e' compreso, o e' di
-                // servizio e non si vende da solo.
-                // La casella del prezzo c'e' solo dove un add-on esiste gia'.
-                //
-                // Prima compariva su ogni modulo fuori pacchetto, e prometteva
-                // una cosa che non succede piu': accendere un modulo non lo
-                // fattura a parte da solo. Una casella dove scrivere un prezzo
-                // che poi non viene applicato e' peggio di nessuna casella —
-                // per una composizione diversa si fa un pacchetto su misura.
-                const sePagante = !!attivo;
                 return (
                   <div
                     key={m.key}
-                    className="flex flex-wrap items-start gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-2)]"
+                    className="flex flex-wrap items-start gap-3 rounded-lg px-2 py-1.5"
                   >
-                    <label className="flex min-w-[220px] flex-1 items-start gap-2.5 text-sm">
-                      <input
-                        type="checkbox"
-                        name={`modulo_${m.key}`}
-                        defaultChecked={modules[m.key]}
-                        disabled={m.comingSoon}
-                        className="mt-1"
-                      />
-                      <span>
-                        <span className="font-medium">{m.label}</span>
-                        {compreso && (
-                          <span className="ml-2 badge badge-muted">
-                            nel pacchetto
-                          </span>
-                        )}
-                        {m.comingSoon && (
-                          <span className="ml-2 text-[10px] text-neutral-400">
-                            in sviluppo
-                          </span>
-                        )}
-                        <span className="mt-0.5 block text-xs text-neutral-500">
-                          {m.description}
-                        </span>
-                      </span>
-                    </label>
-
-                    <div className="flex shrink-0 items-center gap-2 pt-0.5">
-                      {sePagante ? (
-                        <>
-                          <input
-                            name={`prezzo_${m.key}`}
-                            defaultValue={inEuro(
-                              attivo?.priceCents ?? prezziModuli[m.key]
-                            )}
-                            inputMode="decimal"
-                            aria-label={`Prezzo di ${m.label}`}
-                            className="input w-24 text-right"
-                          />
-                          <span
-                            className="w-14 text-xs"
-                            style={{ color: "var(--muted)" }}
-                          >
-                            al mese
-                          </span>
-                        </>
+                    <span className="min-w-[220px] flex-1 text-sm">
+                      <span className="font-medium">{m.label}</span>
+                      {compreso ? (
+                        <span className="ml-2 badge badge-muted">nel pacchetto</span>
+                      ) : attivo ? (
+                        <span className="ml-2 badge badge-warn">concordato a parte</span>
                       ) : (
-                        <span
-                          className="w-[152px] text-right text-xs"
-                          style={{ color: "var(--muted)" }}
-                        >
-                          {compreso ? "nel canone" : "fuori pacchetto"}
-                        </span>
+                        <span className="ml-2 badge badge-warn">fuori pacchetto</span>
                       )}
-                    </div>
+                      <span className="mt-0.5 block text-xs text-neutral-500">
+                        {m.description}
+                      </span>
+                    </span>
+                    <span
+                      className="tnum w-[152px] shrink-0 pt-0.5 text-right text-xs"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      {compreso
+                        ? "nel canone"
+                        : attivo
+                          ? `${formatPrice(attivo.priceCents)} al mese`
+                          : "acceso e non pagato"}
+                    </span>
                   </div>
                 );
               })}
@@ -1219,36 +1180,23 @@ export default async function LocaleDetail({
             >
               <span style={{ color: "var(--muted)" }}>
                 Canone {formatPrice(contratto?.recurringCents ?? 0)}
-                {totaleAddons > 0 && (
-                  <> + add-on {formatPrice(totaleAddons)}</>
-                )}{" "}
+                {totaleAddons > 0 && <> + concordati {formatPrice(totaleAddons)}</>}{" "}
                 ={" "}
                 <strong style={{ color: "var(--fg)" }}>
                   {formatPrice((contratto?.recurringCents ?? 0) + totaleAddons)}
                 </strong>{" "}
                 {contratto ? etichettaPeriodo(contratto) : ""}
               </span>
-              <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
-                Salva moduli e prezzi
-              </button>
             </div>
 
             <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-              Spegnere un modulo toglie anche il suo prezzo: acceso e non
-              fatturato non deve poter succedere. Quelli del pacchetto sono gia&apos;
-              dentro il canone e non si pagano due volte — cambiando pacchetto,
-              chi ci entra smette di essere un add-on. Il prezzo proposto e&apos;
-              quello di{" "}
-              <a
-                href="/admin/fatturazione/listino"
-                className="hover:underline"
-                style={{ color: "var(--brand-text)" }}
-              >
-                listino
-              </a>
-              : correggilo e resta quello concordato con lui.
+              Si accendono e si spengono col pacchetto: cambiando piano qui
+              sopra, i moduli seguono da soli. Se ne serve uno che a listino
+              non c&apos;e&apos;, il modo e&apos; comporre un{" "}
+              <strong>pacchetto su misura</strong> qui sotto — dandogli il suo
+              prezzo si accende nel locale.
             </p>
-          </form>
+          </div>
         </section>
         <section>
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>

@@ -8,12 +8,7 @@ import { tenantBilling, tenants, users } from "@/lib/db/schema";
 import { getAdminUser } from "@/lib/admin-auth";
 import { azzeraDueFattori, resettaPassword } from "@/lib/account";
 import { GIORNI_PASSWORD_TEMPORANEA } from "@/lib/auth";
-import {
-  MODULES,
-  getTenantModules,
-  setTenantModules,
-  type ModuleKey,
-} from "@/lib/modules";
+import { MODULES, getTenantModules } from "@/lib/modules";
 import { getPreset } from "@/lib/themes";
 import { chiaveSkin } from "@/lib/skins";
 import { isValidTheme, safeColor } from "@/lib/branding";
@@ -34,7 +29,7 @@ import {
   salvaContratto,
   segnaAttivazioneFatturata,
 } from "@/lib/billing/contratti";
-import { sincronizzaAddons } from "@/lib/billing/addons";
+import { applicaModuliDelPacco, sincronizzaAddons } from "@/lib/billing/addons";
 import { PACCHETTI } from "@/lib/billing/listino";
 import {
   CHIAVE_SU_MISURA,
@@ -168,36 +163,15 @@ export async function toggleSuspend(formData: FormData): Promise<void> {
   revalidatePath(`/admin/locali/${id}`);
 }
 
-// Cosa ha acceso il locale e quanto lo paga: un salvataggio solo.
+// Accendere e spegnere i moduli a mano non c'e' piu': li decide il pacchetto.
 //
-// Erano due elenchi degli stessi moduli, e due elenchi degli stessi moduli
-// prima o poi si contraddicono: modulo acceso e prezzo mai messo vuol dire
-// regalato, prezzo messo e modulo spento vuol dire fatturato e non consegnato.
-// Nessuno dei due stati e' rappresentabile passando di qui.
-export async function saveModules(formData: FormData): Promise<void> {
-  const admin = await getAdminUser();
-  if (!admin) return;
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-
-  const state: Partial<Record<ModuleKey, boolean>> = {};
-  for (const m of MODULES) state[m.key] = formData.get(`modulo_${m.key}`) === "on";
-
-  // Le caselle dei prezzi compilate adesso. Quelle assenti non finiscono qui
-  // dentro: il modulo appena acceso senza toccarne il prezzo deve prendere
-  // quello concordato o quello di listino, non zero.
-  const prezzi: Partial<Record<ModuleKey, number>> = {};
-  for (const m of MODULES) {
-    const scritto = formData.get(`prezzo_${m.key}`);
-    if (scritto !== null) prezzi[m.key] = euroToCents(String(scritto));
-  }
-
-  await setTenantModules(id, state);
-  await sincronizzaAddons(id, state, prezzi);
-
-  revalidatePath(`/admin/locali/${id}`);
-  revalidatePath("/admin/fatturazione");
-}
+// Erano due decisioni separate sulla stessa cosa — che pacchetto ha firmato, e
+// cosa gli e' acceso — e due decisioni separate sulla stessa cosa prima o poi
+// si contraddicono: un Premium con le prenotazioni spente, un Base con la
+// consegna accesa e non pagata. Nessuno dei due stati e' rappresentabile
+// adesso, perche' l'unico modo di accendere un modulo e' che il pacchetto lo
+// comprenda — e se serve una composizione che a listino non c'e', si compone
+// un pacchetto su misura, che e' una cosa che si concorda e ha un prezzo.
 
 // 2,00 / "2.5" / "2" -> centesimi. Vuoto o non numerico = nessun coperto.
 function euroToCents(v: string): number {
@@ -418,14 +392,18 @@ export async function saveContratto(formData: FormData): Promise<void> {
     notes: String(formData.get("notes") ?? "").trim() || null,
   });
 
-  // Cambiare pacchetto cambia cosa e' compreso: chi ci entra smette di essere
-  // un add-on. Senza questo passaggio, scendere da Tutto a Sala lascerebbe la
-  // consegna a domicilio accesa e non fatturata.
+  // I moduli seguono il pacchetto, e non si accendono piu' a mano.
   //
-  // Chi esce dal pacchetto torna a essere un add-on al prezzo di listino: il
-  // prezzo concordato prima non si puo' ripescare, perche' quando era compreso
-  // nel canone non esisteva piu' come riga. Il pannello lo mostra prima di
-  // salvare, quindi si corregge li'.
+  // Erano due decisioni separate — che pacchetto ha firmato, e cosa gli e'
+  // acceso — e due decisioni separate sulla stessa cosa prima o poi si
+  // contraddicono: pacchetto Premium con le prenotazioni spente, o Base con la
+  // consegna accesa e non pagata. Adesso il pacchetto e' l'unica, e per una
+  // composizione fuori dai tre standard si fa un su misura.
+  const pack = String(formData.get("pack") ?? "sala");
+  await applicaModuliDelPacco(id, pack);
+
+  // Poi si ripuliscono gli add-on: quello che e' entrato nel pacchetto smette
+  // di essere fatturato a parte, o il locale lo pagherebbe due volte.
   await sincronizzaAddons(id, await getTenantModules(id));
 
   // Chiuso il rapporto, si chiude anche l'abbonamento di la'.
@@ -614,6 +592,16 @@ export async function salvaSuMisuraAction(formData: FormData): Promise<void> {
     attivazioneCents: euroToCents(String(formData.get("sm_attivazione") ?? "")),
     assistenzaCents: euroToCents(String(formData.get("sm_assistenza") ?? "")),
   });
+
+  // Se e' il pacchetto che sta usando, i moduli si allineano subito: comporre
+  // il su misura **e'** il modo di accendergli un modulo particolare, e
+  // salvarlo senza che cambi niente nel locale vorrebbe dire farglielo fare
+  // due volte, la seconda senza sapere dove.
+  const contratto = await getContratto(id);
+  if (contratto?.pack === CHIAVE_SU_MISURA) {
+    await applicaModuliDelPacco(id, CHIAVE_SU_MISURA);
+    await sincronizzaAddons(id, await getTenantModules(id));
+  }
 
   revalidatePath(`/admin/locali/${id}`);
 }

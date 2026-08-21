@@ -11,7 +11,6 @@ import {
 } from "@/lib/modules";
 import { getContratto } from "@/lib/billing/contratti";
 import { moduliDelPacco } from "@/lib/billing/sumisura";
-import { getPrezziModuli } from "@/lib/billing/prezzi";
 
 // I moduli che un locale paga a parte, fuori dal pacchetto: l'agent al
 // telefono, la fedelta', il consiglio drink.
@@ -85,33 +84,6 @@ export async function applicaModuliDelPacco(
   const state = await getTenantModules(tenantId);
   for (const m of MODULES) state[m.key] = tenuti.has(m.key);
   await setTenantModules(tenantId, state);
-}
-
-// Cosa si spegnerebbe passando a questo pacchetto. Serve a dirlo prima: un
-// modulo che sparisce senza preavviso e' una prenotazione che nessuno prende
-// piu', non una riga di listino.
-export async function moduliCheSiSpengono(
-  tenantId: string,
-  pack: string
-): Promise<ModuleKey[]> {
-  const compresi = await moduliDelPacco(tenantId, pack);
-  const addons = await getAddons(tenantId);
-  const tenuti = new Set<string>([
-    ...compresi,
-    ...addons.map((a) => a.moduleKey),
-  ]);
-  const state = await getTenantModules(tenantId);
-  return MODULES.filter((m) => state[m.key] && !tenuti.has(m.key)).map((m) => m.key);
-}
-
-// Il prezzo da proporre nel pannello quando si spunta un add-on nuovo: quello
-// di listino, che poi si corregge a mano se la trattativa e' andata altrimenti.
-export async function prezzoProposto(
-  key: ModuleKey,
-  tenantId?: string
-): Promise<number> {
-  const prezzi = await getPrezziModuli(tenantId);
-  return prezzi[key] ?? 0;
 }
 
 // Da moduli accesi a righe da fatturare.
