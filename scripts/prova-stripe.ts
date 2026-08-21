@@ -305,6 +305,72 @@ async function main() {
     "il contratto non si chiude da solo: chiudere un rapporto lo decido io"
   );
 
+  console.log("\n7b. La prova allungata arriva anche a Stripe");
+  const { allineaProvaSuStripe } = await import("@/lib/stripe/abbonamenti");
+  ok(
+    (await allineaProvaSuStripe(tenantId)).startsWith("nessun abbonamento"),
+    "senza abbonamento aperto non c'e' niente da allineare"
+  );
+
+  if (stripeConfigurato() && stripeInProva()) {
+    // Il giro vero: un abbonamento su Stripe con la prova che finisce quando
+    // dice il contratto, la prova allungata dal pannello, e le due date che
+    // devono restare la stessa. Se divergono il locale paga una prova che gli
+    // e' stata regalata, e a scoprirlo e' lui.
+    const Stripe = (await import("stripe")).default;
+    const s = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const { impostaProva } = await import("@/lib/billing/contratti");
+
+    await impostaProva(tenantId, 30);
+    const a30 = (await getContratto(tenantId))!.trialEndsAt!;
+
+    const cliente = await s.customers.create({ name: "Prova allunga" });
+    const pm = await s.paymentMethods.attach("pm_card_visa", { customer: cliente.id });
+    await s.customers.update(cliente.id, {
+      invoice_settings: { default_payment_method: pm.id },
+    });
+    const sub = await s.subscriptions.create({
+      customer: cliente.id,
+      items: [{
+        price_data: {
+          currency: "eur", product: prodottoId("locale", "abbonamento"),
+          unit_amount: 8900, recurring: { interval: "month" },
+        },
+      }],
+      trial_end: Math.floor(a30.getTime() / 1000),
+    });
+    await db
+      .update(tenantBilling)
+      .set({ providerCustomerId: cliente.id, providerSubscriptionId: sub.id })
+      .where(eq(tenantBilling.tenantId, tenantId));
+
+    const suStripe = async () => {
+      const x = await s.subscriptions.retrieve(sub.id);
+      return x.trial_end ? new Date(x.trial_end * 1000).toISOString().slice(0, 10) : null;
+    };
+    ok(
+      (await suStripe()) === a30.toISOString().slice(0, 10),
+      "l'abbonamento nasce con la fine prova che dice il contratto"
+    );
+
+    await impostaProva(tenantId, 60);
+    const esito = await allineaProvaSuStripe(tenantId);
+    const a60 = (await getContratto(tenantId))!.trialEndsAt!.toISOString().slice(0, 10);
+    ok(
+      (await suStripe()) === a60,
+      `allungata a 60 giorni, Stripe la sposta con noi (${esito})`
+    );
+
+    await s.subscriptions.cancel(sub.id);
+    await s.customers.del(cliente.id);
+    await db
+      .update(tenantBilling)
+      .set({ providerCustomerId: null, providerSubscriptionId: null })
+      .where(eq(tenantBilling.tenantId, tenantId));
+  } else {
+    console.log("  --   il giro vero serve una chiave di prova: saltato.");
+  }
+
   console.log("\n8. Stripe vero");
   if (!stripeConfigurato()) {
     console.log(

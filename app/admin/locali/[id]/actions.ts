@@ -18,6 +18,7 @@ import { getPreset } from "@/lib/themes";
 import { chiaveSkin } from "@/lib/skins";
 import { isValidTheme, safeColor } from "@/lib/branding";
 import { verificaIndirizzoWeb } from "@/lib/onboarding";
+import { allineaProvaSuStripe } from "@/lib/stripe/abbonamenti";
 import { saveImage } from "@/lib/uploads";
 import {
   getContratto,
@@ -439,6 +440,11 @@ export async function impostaProvaAction(formData: FormData): Promise<void> {
   await impostaProva(id, giorni);
   // La prova nuova toglie di mezzo il blocco da prova scaduta.
   await aggiornaBloccoLocale(id);
+  // E si dice anche a Stripe, se il locale ha gia' collegato la carta.
+  // Scriverlo solo qui vorrebbe dire regalargli trenta giorni sul nostro
+  // database mentre Stripe glieli addebita lo stesso alla data vecchia: la
+  // prova risulterebbe estesa a tutti tranne che al suo conto corrente.
+  console.log(`[stripe] prova a ${giorni} giorni: ${await allineaProvaSuStripe(id)}`);
 
   revalidatePath(`/admin/locali/${id}`);
   revalidatePath("/admin/fatturazione");

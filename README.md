@@ -487,6 +487,13 @@ paga niente fino al 20 settembre, e su Stripe lo si legge da un totale di zero
 sulla sessione. Le eccezioni sono due: chi e' sospeso paga subito perche' ha un
 arretrato, e un impianto con l'attivazione ancora da incassare paga subito
 perche' l'attivazione non aspetta.
+
+Per lo stesso motivo **allungare la prova dal pannello lo si dice anche a
+Stripe**: un locale che ha gia' collegato la carta ha di la' una data di primo
+addebito congelata, e regalargli trenta giorni solo a database vorrebbe dire
+vederlo pagare una prova che gli era stata promessa gratis. Se ne occupa
+`allineaProvaSuStripe`, che il pannello chiama subito dopo aver scritto la
+prova nuova.
 `/api/stripe/webhook` e' l'unico punto che accetta ordini da fuori senza un
 utente collegato, e per questo controlla la firma prima di qualsiasi altra
 cosa. Quello che scrive e' l'incasso **al lordo**, con la data in cui Stripe
