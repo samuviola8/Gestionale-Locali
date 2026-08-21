@@ -42,6 +42,8 @@ async function main() {
     impostaProva,
     mesiPerScadenza,
     programmaCambioPacco,
+    rimettiAttivazioneDaFatturare,
+    segnaAttivazioneFatturata,
     prossimaScadenza,
     quotaResidua,
     segnaConguaglio,
@@ -559,6 +561,65 @@ async function main() {
     programmato?.pendingFrom !== null,
     "con scritta la data da cui varra', quella che vede in pagina"
   );
+
+  console.log("\n8e-bis. L'impianto segue il pacchetto finche' non e' fatturato");
+  // Impianto Base, attivazione mai fatturata: passando a Premium al rinnovo,
+  // il prezzo dell'impianto deve diventare quello di Premium. Lasciarci quello
+  // di Base vorrebbe dire regalare la differenza per una tendina.
+  const baseImp = (await getPaccoPrezzato("sala", tenantId))!;
+  const premiumImp = (await getPaccoPrezzato("tutto", tenantId))!;
+  await salvaContratto(tenantId, {
+    model: "impianto", pack: "sala", period: "mensile",
+    recurringCents: baseImp.assistenzaCents,
+    activationCents: baseImp.attivazioneCents,
+    transactionBps: 0, status: "attivo", notes: null,
+  });
+  await rimettiAttivazioneDaFatturare(tenantId);
+  await programmaCambioPacco(tenantId, "tutto");
+  await applicaCambioProgrammato(tenantId);
+  const saltoSu = await getContratto(tenantId);
+  ok(
+    saltoSu?.activationCents === premiumImp.attivazioneCents,
+    `impianto mai fatturato: sale con il pacchetto (${(premiumImp.attivazioneCents / 100).toFixed(0)})`
+  );
+  ok(
+    saltoSu?.recurringCents === premiumImp.assistenzaCents,
+    "e l'assistenza pure"
+  );
+
+  // Ora lo stesso salto, ma con l'impianto gia' fatturato: quel lavoro e'
+  // stato fatto una volta e non si rifa' pagare a chi cambia piano.
+  await salvaContratto(tenantId, {
+    model: "impianto", pack: "sala", period: "mensile",
+    recurringCents: baseImp.assistenzaCents,
+    activationCents: baseImp.attivazioneCents,
+    transactionBps: 0, status: "attivo", notes: null,
+  });
+  await segnaAttivazioneFatturata(tenantId);
+  await programmaCambioPacco(tenantId, "tutto");
+  await applicaCambioProgrammato(tenantId);
+  const giaPagato = await getContratto(tenantId);
+  ok(
+    giaPagato?.activationCents === baseImp.attivazioneCents,
+    "impianto gia' fatturato: non si paga la differenza salendo di piano"
+  );
+  ok(
+    giaPagato?.recurringCents === premiumImp.assistenzaCents,
+    "ma l'assistenza sale lo stesso: e' quella a seguire il piano"
+  );
+
+  // Rimesso com'era alla fine di 8e: abbonamento su Locale, col downgrade a
+  // Sala in attesa e il conguaglio segnato. La sezione qui sotto riparte da
+  // li', e provare l'impianto in mezzo non deve spostarle il terreno sotto.
+  await salvaContratto(tenantId, {
+    model: "abbonamento", pack: "locale", period: "mensile",
+    recurringCents: (await getPaccoPrezzato("locale", tenantId))!.mensileCents,
+    activationCents: 0, transactionBps: 0, status: "attivo", notes: null,
+  });
+  await rimettiAttivazioneDaFatturare(tenantId);
+  await applicaModuliDelPacco(tenantId, "locale");
+  await segnaConguaglio(tenantId, Math.round((8900 - 4900) * quota), "Passaggio a locale");
+  await programmaCambioPacco(tenantId, "sala");
 
   console.log("\n8f. Il rinnovo applica il cambio e il conguaglio");
   await segnaProssimaScadenza(tenantId, new Date());

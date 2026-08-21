@@ -217,6 +217,13 @@ export async function applicaCambioProgrammato(
     .set({
       pack: c.pendingPack,
       recurringCents: nuovo.recurringCents,
+      // Come nel cambio immediato: l'impianto segue il pacchetto solo se non
+      // e' ancora stato fatturato. Chi l'ha gia' pagato non paga la differenza
+      // — quel lavoro e' stato fatto una volta — ma chi non l'ha pagato si
+      // vedra' fare l'impianto del pacchetto nuovo, e quello deve costare.
+      activationCents: c.activationInvoicedAt
+        ? c.activationCents
+        : nuovo.activationCents,
       pendingPack: null,
       pendingFrom: null,
       updatedAt: new Date(),

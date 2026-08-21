@@ -98,7 +98,21 @@ export async function cambiaPiano(formData: FormData): Promise<void> {
       pack: scelto,
       period: contratto.period as Periodo,
       recurringCents: nuovo.recurringCents,
-      activationCents: contratto.activationCents,
+      // L'impianto segue il pacchetto solo finche' non e' stato fatturato.
+      //
+      // Sono due situazioni diverse che sembrano la stessa. Chi ha gia' pagato
+      // l'impianto e sale di piano **non** paga la differenza: quel lavoro e'
+      // stato fatto una volta e non lo si rifa' perche' accende le
+      // prenotazioni — a salire, quello che cresce e' l'assistenza. Ma chi
+      // l'impianto non l'ha ancora pagato non ha comprato niente: l'impianto
+      // che gli faro' e' quello del pacchetto nuovo, e deve costare quello.
+      //
+      // Senza questa distinzione restava scritto il prezzo del piano vecchio:
+      // un Premium con l'attivazione di Base, cioe' 800 euro di lavoro
+      // regalati per una tendina.
+      activationCents: contratto.activationInvoicedAt
+        ? contratto.activationCents
+        : nuovo.activationCents,
       transactionBps: contratto.transactionBps,
       status: contratto.status as StatoContratto,
       notes: contratto.notes,
