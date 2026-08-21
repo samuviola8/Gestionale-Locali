@@ -80,17 +80,44 @@ export async function cambiaPiano(formData: FormData): Promise<void> {
   const sale = nuovo.recurringCents > contratto.recurringCents;
 
   if (contratto.status === "prova" || sale) {
-    if (sale && contratto.status !== "prova" && contratto.nextInvoiceAt) {
-      const quota = quotaResidua(
-        contratto.nextInvoiceAt,
-        new Date(),
-        contratto.period as Periodo
+    if (contratto.status !== "prova") {
+      // Due differenze da mettere in conto salendo di piano, e vanno in un
+      // conguaglio solo perche' `adjustmentNote` e' una riga sola: chiamarlo
+      // due volte perderebbe la prima nota.
+      //
+      // Il canone si conguaglia per i giorni che restano: chi sale il primo
+      // giorno paga tutto, chi sale a due giorni dalla scadenza paga due
+      // giorni.
+      const quota =
+        sale && contratto.nextInvoiceAt
+          ? quotaResidua(contratto.nextInvoiceAt, new Date(), contratto.period as Periodo)
+          : 0;
+      const diffCanone = Math.round(
+        (nuovo.recurringCents - contratto.recurringCents) * quota
       );
-      await segnaConguaglio(
-        session.tenantId,
-        Math.round((nuovo.recurringCents - contratto.recurringCents) * quota),
-        `Passaggio a ${scelto} — differenza per i giorni che restano`
-      );
+
+      // L'impianto no: si conguaglia **intero**, e non si divide per i giorni.
+      // Passare da Base a Premium vuol dire farci sopra il lavoro che separa i
+      // due impianti, e quel lavoro costa uguale a inizio o a fine mese. Si
+      // paga solo la differenza pero': i 890 di Base li ha gia' versati, e
+      // rifargli pagare 1690 pieni sarebbe fargli pagare due volte lo stesso
+      // impianto.
+      const diffImpianto = contratto.activationInvoicedAt
+        ? Math.max(0, nuovo.activationCents - contratto.activationCents)
+        : 0;
+
+      const voci = [
+        diffCanone > 0 ? "differenza di canone per i giorni che restano" : null,
+        diffImpianto > 0 ? "differenza sull'impianto" : null,
+      ].filter(Boolean);
+
+      if (diffCanone + diffImpianto > 0) {
+        await segnaConguaglio(
+          session.tenantId,
+          diffCanone + diffImpianto,
+          `Passaggio a ${scelto} — ${voci.join(" e ")}`
+        );
+      }
     }
 
     await salvaContratto(session.tenantId, {
@@ -98,21 +125,16 @@ export async function cambiaPiano(formData: FormData): Promise<void> {
       pack: scelto,
       period: contratto.period as Periodo,
       recurringCents: nuovo.recurringCents,
-      // L'impianto segue il pacchetto solo finche' non e' stato fatturato.
+      // L'impianto e' sempre quello del pacchetto che ha adesso: un Premium
+      // con l'attivazione di Base racconta un contratto che non esiste.
       //
-      // Sono due situazioni diverse che sembrano la stessa. Chi ha gia' pagato
-      // l'impianto e sale di piano **non** paga la differenza: quel lavoro e'
-      // stato fatto una volta e non lo si rifa' perche' accende le
-      // prenotazioni — a salire, quello che cresce e' l'assistenza. Ma chi
-      // l'impianto non l'ha ancora pagato non ha comprato niente: l'impianto
-      // che gli faro' e' quello del pacchetto nuovo, e deve costare quello.
-      //
-      // Senza questa distinzione restava scritto il prezzo del piano vecchio:
-      // un Premium con l'attivazione di Base, cioe' 800 euro di lavoro
-      // regalati per una tendina.
-      activationCents: contratto.activationInvoicedAt
-        ? contratto.activationCents
-        : nuovo.activationCents,
+      // Quello che cambia con `activation_invoiced_at` non e' questa cifra ma
+      // **come si incassa**. Se non e' ancora stata fatturata si chiede
+      // intera, perche' non ha comprato niente. Se e' gia' stata pagata si
+      // chiede solo la differenza, che e' finita in conguaglio qui sopra:
+      // gli 890 di Base li ha gia' versati, e chiedergli 1690 pieni sarebbe
+      // fargli pagare due volte lo stesso impianto.
+      activationCents: nuovo.activationCents,
       transactionBps: contratto.transactionBps,
       status: contratto.status as StatoContratto,
       notes: contratto.notes,

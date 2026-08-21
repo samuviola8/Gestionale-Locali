@@ -212,18 +212,30 @@ export async function applicaCambioProgrammato(
     tenantId
   );
 
+  // Salendo di piano con l'impianto gia' pagato si paga la differenza, e la
+  // si paga intera: il lavoro che separa i due impianti si fa tutto, e costa
+  // uguale a inizio o a fine periodo — non e' un canone da dividere per i
+  // giorni. Scendendo non si rimborsa niente, e per questo `max(0, ...)`.
+  const diffImpianto = c.activationInvoicedAt
+    ? Math.max(0, nuovo.activationCents - c.activationCents)
+    : 0;
+  if (diffImpianto > 0) {
+    await segnaConguaglio(
+      tenantId,
+      diffImpianto,
+      `Passaggio a ${c.pendingPack} — differenza sull'impianto`
+    );
+  }
+
   await db
     .update(tenantBilling)
     .set({
       pack: c.pendingPack,
       recurringCents: nuovo.recurringCents,
-      // Come nel cambio immediato: l'impianto segue il pacchetto solo se non
-      // e' ancora stato fatturato. Chi l'ha gia' pagato non paga la differenza
-      // — quel lavoro e' stato fatto una volta — ma chi non l'ha pagato si
-      // vedra' fare l'impianto del pacchetto nuovo, e quello deve costare.
-      activationCents: c.activationInvoicedAt
-        ? c.activationCents
-        : nuovo.activationCents,
+      // L'impianto e' sempre quello del pacchetto che ha adesso. Se non e'
+      // ancora stato fatturato si chiedera' intero; se lo e' gia', qui sopra
+      // e' andata in conguaglio la sola differenza.
+      activationCents: nuovo.activationCents,
       pendingPack: null,
       pendingFrom: null,
       updatedAt: new Date(),

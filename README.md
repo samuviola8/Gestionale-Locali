@@ -495,6 +495,16 @@ un importo, e non e' gia' stata fatturata. **Non dipende dal modello di
 contratto** — `activation_cents` si scrive a mano dal pannello, e un
 abbonamento con un impianto iniziale e' un contratto normalissimo.
 
+Salendo di piano l'impianto **segue il pacchetto**, e come si incassa dipende
+da `activation_invoiced_at`: se non e' ancora stato fatturato si chiede
+intero, perche' il locale non ha comprato niente; se e' gia' stato pagato si
+chiede la **sola differenza**, che va in conguaglio sulla prossima fattura —
+gli 890 di Base li ha gia' versati e chiedergli i 1690 di Premium sarebbe
+fargli pagare due volte lo stesso impianto. La differenza si conguaglia
+intera, senza dividerla per i giorni che restano: il lavoro che separa i due
+impianti si fa tutto, e costa uguale a inizio o a fine mese. Scendendo di
+piano non si rimborsa niente.
+
 ### Quando le due parti si devono parlare
 
 Ogni volta che una decisione presa di qua vale anche di la', va ripetuta a

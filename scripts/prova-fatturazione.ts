@@ -33,6 +33,7 @@ async function main() {
   const { getTenantModules, setTenantModules } = await import("@/lib/modules");
   const {
     annullaCambioProgrammato,
+    azzeraConguaglio,
     applicaCambioProgrammato,
     canoneDaListino,
     canoneMensileCents,
@@ -587,8 +588,8 @@ async function main() {
     "e l'assistenza pure"
   );
 
-  // Ora lo stesso salto, ma con l'impianto gia' fatturato: quel lavoro e'
-  // stato fatto una volta e non si rifa' pagare a chi cambia piano.
+  // Ora lo stesso salto, ma con l'impianto gia' pagato: si paga la differenza
+  // fra i due, non l'impianto intero e nemmeno niente.
   await salvaContratto(tenantId, {
     model: "impianto", pack: "sala", period: "mensile",
     recurringCents: baseImp.assistenzaCents,
@@ -596,16 +597,31 @@ async function main() {
     transactionBps: 0, status: "attivo", notes: null,
   });
   await segnaAttivazioneFatturata(tenantId);
+  await azzeraConguaglio(tenantId);
   await programmaCambioPacco(tenantId, "tutto");
   await applicaCambioProgrammato(tenantId);
   const giaPagato = await getContratto(tenantId);
+  const differenza = premiumImp.attivazioneCents - baseImp.attivazioneCents;
   ok(
-    giaPagato?.activationCents === baseImp.attivazioneCents,
-    "impianto gia' fatturato: non si paga la differenza salendo di piano"
+    giaPagato?.adjustmentCents === differenza,
+    `impianto gia' pagato: in conguaglio va la sola differenza (${(differenza / 100).toFixed(0)})`
+  );
+  ok(
+    giaPagato?.activationCents === premiumImp.attivazioneCents,
+    "e sul contratto resta scritto l'impianto del piano che ha adesso"
   );
   ok(
     giaPagato?.recurringCents === premiumImp.assistenzaCents,
-    "ma l'assistenza sale lo stesso: e' quella a seguire il piano"
+    "l'assistenza sale come sempre"
+  );
+
+  // Scendere non rimborsa: l'impianto grande e' stato fatto.
+  await azzeraConguaglio(tenantId);
+  await programmaCambioPacco(tenantId, "sala");
+  await applicaCambioProgrammato(tenantId);
+  ok(
+    (await getContratto(tenantId))?.adjustmentCents === 0,
+    "scendendo di piano non si rimborsa niente dell'impianto"
   );
 
   // Rimesso com'era alla fine di 8e: abbonamento su Locale, col downgrade a
