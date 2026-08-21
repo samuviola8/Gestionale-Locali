@@ -18,7 +18,10 @@ import { getPreset } from "@/lib/themes";
 import { chiaveSkin } from "@/lib/skins";
 import { isValidTheme, safeColor } from "@/lib/branding";
 import { verificaIndirizzoWeb } from "@/lib/onboarding";
-import { allineaProvaSuStripe } from "@/lib/stripe/abbonamenti";
+import {
+  allineaProvaSuStripe,
+  chiudiAbbonamentoSuStripe,
+} from "@/lib/stripe/abbonamenti";
 import { saveImage } from "@/lib/uploads";
 import {
   getContratto,
@@ -422,6 +425,17 @@ export async function saveContratto(formData: FormData): Promise<void> {
   // nel canone non esisteva piu' come riga. Il pannello lo mostra prima di
   // salvare, quindi si corregge li'.
   await sincronizzaAddons(id, await getTenantModules(id));
+
+  // Chiuso il rapporto, si chiude anche l'abbonamento di la'.
+  //
+  // Senza, il locale sparisce dai miei conti e la sua carta continua a essere
+  // addebitata: sono soldi presi a un cliente che per me non esiste piu', e a
+  // scoprirlo e' lui. E' lo stesso motivo per cui la prova allungata va
+  // ripetuta a Stripe — un dato che vive in due posti va scritto in tutti e
+  // due, o il secondo continua per conto suo.
+  if (isStato(status) && status === "chiuso") {
+    console.log(`[stripe] contratto chiuso: ${await chiudiAbbonamentoSuStripe(id)}`);
+  }
 
   revalidatePath(`/admin/locali/${id}`);
   revalidatePath("/admin/fatturazione");

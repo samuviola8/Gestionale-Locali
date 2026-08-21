@@ -123,6 +123,35 @@ async function main() {
     "un'attivazione gia' fatturata non si fa pagare due volte"
   );
 
+  // Il caso che mancava: un abbonamento con un impianto iniziale da pagare.
+  // `activation_cents` si scrive a mano dal pannello e non e' roba del solo
+  // modello "impianto" — legarcela voleva dire non incassarla mai.
+  const abbConAttivazione = righeDelContratto(
+    finto({ model: "abbonamento", recurringCents: 8900, activationCents: 50000 })
+  );
+  ok(
+    abbConAttivazione?.length === 2,
+    "un abbonamento con attivazione manda due righe, non una"
+  );
+  ok(
+    !!abbConAttivazione?.some(
+      (r) => !r.price_data?.recurring && r.price_data?.unit_amount === 50000
+    ),
+    "l'attivazione c'e' anche se il modello e' abbonamento"
+  );
+  ok(
+    !!abbConAttivazione?.some(
+      (r) => r.price_data?.recurring?.interval === "month" && r.price_data?.unit_amount === 8900
+    ),
+    "e il canone mensile ci sta accanto: al primo pagamento vanno insieme"
+  );
+  ok(
+    righeDelContratto(
+      finto({ recurringCents: 0, activationCents: 50000 })
+    )?.length === 1,
+    "solo attivazione, senza canone: una riga sola"
+  );
+
   ok(
     righeDelContratto(finto({ recurringCents: 0 })) === null,
     "un contratto a zero non apre nessun abbonamento"
@@ -361,11 +390,62 @@ async function main() {
       `allungata a 60 giorni, Stripe la sposta con noi (${esito})`
     );
 
-    await s.subscriptions.cancel(sub.id);
+    console.log("\n7c. Disdetta e ripensamento");
+    const { disdiciAbbonamento, riattivaAbbonamento, chiudiAbbonamentoSuStripe } =
+      await import("@/lib/stripe/abbonamenti");
+
+    const esitoDisdetta = await disdiciAbbonamento(tenantId);
+    const disdettoDb = (await getContratto(tenantId))!.providerCancelAt;
+    const disdettoLa = (await s.subscriptions.retrieve(sub.id)).cancel_at_period_end;
+    ok(disdettoLa === true, `Stripe la registra (${esitoDisdetta})`);
+    ok(!!disdettoDb, "e la data di fine si scrive subito, senza aspettare l'avviso");
+    ok(
+      (await getContratto(tenantId))!.providerSubscriptionId === sub.id,
+      "l'abbonamento resta vivo: disdire non e' sparire, vale a fine periodo"
+    );
+
+    // L'avviso che Stripe manda davvero quando si disdice: non "deleted" ma
+    // "updated". E' quello che fa sapere della disdetta il giorno stesso.
+    const daStripe = await s.subscriptions.retrieve(sub.id);
+    console.log(
+      "  " +
+        (await gestisciEvento(evento("customer.subscription.updated", {
+          id: sub.id,
+          customer: cliente.id,
+          cancel_at_period_end: true,
+          cancel_at: daStripe.cancel_at,
+        })))
+    );
+    ok(
+      !!(await getContratto(tenantId))!.providerCancelAt,
+      "l'avviso di Stripe conferma la stessa data"
+    );
+
+    await riattivaAbbonamento(tenantId);
+    ok(
+      (await s.subscriptions.retrieve(sub.id)).cancel_at_period_end === false,
+      "ci ripensa e il rinnovo riparte"
+    );
+    ok(
+      (await getContratto(tenantId))!.providerCancelAt === null,
+      "e la data di fine sparisce"
+    );
+
+    console.log("\n7d. Il contratto chiuso chiude anche l'abbonamento");
+    console.log("  " + (await chiudiAbbonamentoSuStripe(tenantId)));
+    ok(
+      (await s.subscriptions.retrieve(sub.id)).status === "canceled",
+      "chiudere il rapporto ferma l'addebito: niente soldi presi a un cliente che non c'e' piu'"
+    );
+
     await s.customers.del(cliente.id);
     await db
       .update(tenantBilling)
-      .set({ providerCustomerId: null, providerSubscriptionId: null })
+      .set({
+        providerCustomerId: null,
+        providerSubscriptionId: null,
+        providerCancelAt: null,
+      })
       .where(eq(tenantBilling.tenantId, tenantId));
   } else {
     console.log("  --   il giro vero serve una chiave di prova: saltato.");

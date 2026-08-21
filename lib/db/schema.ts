@@ -865,6 +865,17 @@ export const tenantBilling = pgTable("tenant_billing", {
   // da PayPal. Restano nulli finche' il locale non mette un metodo.
   providerCustomerId: text("provider_customer_id"),
   providerSubscriptionId: text("provider_subscription_id"),
+  // Il locale ha disdetto, e l'abbonamento morira' questo giorno.
+  //
+  // Una disdetta non e' immediata: vale a fine periodo, perche' quel periodo
+  // l'ha gia' pagato. Serve una colonna perche' fra il giorno in cui disdice e
+  // il giorno in cui se ne va puo' passare un anno, e in mezzo il pannello
+  // deve dire che se ne sta andando — e' l'unica finestra in cui lo si puo'
+  // ancora richiamare. Senza, lo si scoprirebbe l'ultimo giorno.
+  //
+  // Null vuol dire che l'abbonamento non ha una fine programmata: o non c'e',
+  // o va avanti.
+  providerCancelAt: timestamp("provider_cancel_at", { withTimezone: true }),
 
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

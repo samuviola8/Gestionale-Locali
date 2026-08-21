@@ -14,10 +14,16 @@ import type { EsitoPagamento } from "@/app/dashboard/fatturazione/actions";
 export default function PagaConCarta({
   apri,
   collegata,
+  disdetto = false,
+  fineIl,
 }: {
   apri: () => Promise<EsitoPagamento>;
   /** Ha gia' un abbonamento aperto: allora questo bottone porta al portale. */
   collegata: boolean;
+  /** Ha disdetto: l'abbonamento c'e' ancora ma ha una data di scadenza. */
+  disdetto?: boolean;
+  /** Il giorno in cui finisce, gia' scritto per esteso. */
+  fineIl?: string;
 }) {
   const [errore, setErrore] = useState<string | null>(null);
   const [inCorso, avvia] = useTransition();
@@ -28,8 +34,12 @@ export default function PagaConCarta({
           gli parte un addebito da solo o se deve ricordarsi di fare un
           bonifico: e' la domanda vera, e va risposta prima di offrirgli un
           bottone. */}
-      <p>
-        {collegata ? "Addebito automatico sulla carta." : "Con bonifico."}
+      <p style={disdetto ? { color: "var(--warn)" } : undefined}>
+        {!collegata
+          ? "Con bonifico."
+          : disdetto
+            ? `Disdetto: l'abbonamento finisce il ${fineIl}.`
+            : "Addebito automatico sulla carta."}
       </p>
 
       <button
@@ -58,9 +68,11 @@ export default function PagaConCarta({
       </button>
 
       <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
-        {collegata
-          ? "Da qui cambi la carta, scarichi le ricevute o disdici."
-          : "Cosi' non devi ricordartene ogni mese. Si paga sulla pagina di Stripe: la carta non passa da qui."}
+        {!collegata
+          ? "Cosi' non devi ricordartene ogni mese. Si paga sulla pagina di Stripe: la carta non passa da qui."
+          : disdetto
+            ? "Fino a quel giorno resta tutto acceso: l'hai gia' pagato."
+            : "Da qui cambi la carta o scarichi le ricevute."}
       </p>
 
       {errore && (

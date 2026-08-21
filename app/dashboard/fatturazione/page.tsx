@@ -34,9 +34,12 @@ import {
 } from "@/lib/billing/stati";
 import { stripeConfigurato } from "@/lib/stripe/client";
 import PagaConCarta from "@/components/PagaConCarta";
+import ConfirmSubmit from "@/components/ConfirmSubmit";
 import {
   apriPagamentoCarta,
   cambiaPiano,
+  disdiciAbbonamentoAction,
+  riattivaAbbonamentoAction,
   salvaDatiFatturazione,
 } from "./actions";
 
@@ -207,10 +210,40 @@ export default async function FatturazioneLocalePage({
                 Come paghi
               </div>
               {stripeConfigurato() && contratto.provider !== "paypal" ? (
-                <PagaConCarta
-                  apri={apriPagamentoCarta}
-                  collegata={!!contratto.providerSubscriptionId}
-                />
+                <>
+                  <PagaConCarta
+                    apri={apriPagamentoCarta}
+                    collegata={!!contratto.providerSubscriptionId}
+                    disdetto={!!contratto.providerCancelAt}
+                    fineIl={dataBreve(contratto.providerCancelAt)}
+                  />
+                  {/* Disdire e ripensarci. Si potrebbe gia' fare dal portale
+                      di Stripe, ma mandare il locale su un altro sito per
+                      chiudere e' il genere di attrito che trasforma una
+                      disdetta in una telefonata. Meglio che se ne vada da
+                      solo e io lo sappia subito. */}
+                  {contratto.providerSubscriptionId && (
+                    <form
+                      action={
+                        contratto.providerCancelAt
+                          ? riattivaAbbonamentoAction
+                          : disdiciAbbonamentoAction
+                      }
+                      className="mt-2"
+                    >
+                      {contratto.providerCancelAt ? (
+                        <button className="btn btn-sm" style={{ border: "1px solid var(--border)" }}>
+                          Riprendi l&apos;abbonamento
+                        </button>
+                      ) : (
+                        <ConfirmSubmit
+                          label="Disdici l'abbonamento"
+                          confirmLabel="Sì, disdici"
+                        />
+                      )}
+                    </form>
+                  )}
+                </>
               ) : (
                 <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
                   {contratto.provider === "paypal"

@@ -76,14 +76,16 @@ export function intervallo(
   return period === "annuale" ? "year" : "month";
 }
 
-/** La voce ricorrente e quella una tantum di un contratto. */
-export function vociDelContratto(model: ModelloContratto): {
-  ricorrente: VoceCatalogo;
-  unaTantum: VoceCatalogo | null;
-} {
-  return model === "impianto"
-    ? { ricorrente: "assistenza", unaTantum: "attivazione" }
-    : { ricorrente: "abbonamento", unaTantum: null };
+/**
+ * Come si chiama la voce che si ripete, per questo modello di contratto.
+ *
+ * Decide solo il nome sulla ricevuta: "Assistenza" su un impianto, dove il
+ * canone paga il fatto che qualcuno risponda al telefono, "Abbonamento" su
+ * tutto il resto. L'attivazione non passa di qui — non dipende dal modello,
+ * dipende dall'avercela.
+ */
+export function voceRicorrente(model: ModelloContratto): VoceCatalogo {
+  return model === "impianto" ? "assistenza" : "abbonamento";
 }
 
 /**
@@ -95,7 +97,7 @@ export function vociDelContratto(model: ModelloContratto): {
  */
 export function righeDelContratto(c: Contratto): Stripe.Checkout.SessionCreateParams.LineItem[] | null {
   const model = c.model as ModelloContratto;
-  const { ricorrente, unaTantum } = vociDelContratto(model);
+  const ricorrente = voceRicorrente(model);
   const righe: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
   if (c.recurringCents > 0) {
@@ -116,15 +118,23 @@ export function righeDelContratto(c: Contratto): Stripe.Checkout.SessionCreatePa
   // cose sullo stesso documento invece di mandare al locale due incassi
   // separati per la stessa firma.
   //
-  // Si salta se e' gia' stata fatturata: `activationInvoicedAt` esiste
-  // apposta, e rifarla pagare a chi rientra da Checkout una seconda volta
-  // sarebbe il tipo di errore che si scopre da un cliente arrabbiato.
-  if (unaTantum && c.activationCents > 0 && !c.activationInvoicedAt) {
+  // Le condizioni sono due, e sono queste due soltanto: c'e' un importo, e non
+  // e' gia' stata fatturata. **Non dipende dal modello di contratto.** Legarla
+  // all'impianto era sbagliato: `activation_cents` si scrive a mano dal
+  // pannello e un abbonamento con un impianto iniziale da pagare e' un
+  // contratto normalissimo — Noya e' esattamente cosi'. Con il vincolo sul
+  // modello quella riga non compariva in Checkout, e l'attivazione non veniva
+  // incassata mai: il locale metteva la carta e pagava solo il canone.
+  //
+  // `activationInvoicedAt` e' l'altra meta': rifarla pagare a chi rientra da
+  // Checkout una seconda volta e' il tipo di errore che si scopre da un
+  // cliente arrabbiato.
+  if (c.activationCents > 0 && !c.activationInvoicedAt) {
     righe.push({
       quantity: 1,
       price_data: {
         currency: "eur",
-        product: prodottoId(c.pack, unaTantum),
+        product: prodottoId(c.pack, "attivazione"),
         unit_amount: c.activationCents,
       },
     });

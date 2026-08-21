@@ -10,6 +10,7 @@ import {
   type Periodo,
 } from "@/lib/billing/contratti";
 import { registraIncasso } from "@/lib/billing/documenti";
+import { segnaFine } from "@/lib/stripe/abbonamenti";
 
 // Cosa fare quando Stripe ci racconta che e' successo qualcosa.
 //
@@ -27,6 +28,12 @@ export const EVENTI_ASCOLTATI = [
   "checkout.session.completed",
   "invoice.paid",
   "invoice.payment_failed",
+  // Serve per sapere che il locale ha disdetto il giorno in cui lo fa. Una
+  // disdetta vale a fine periodo, quindi Stripe non manda "deleted" subito: lo
+  // manda alla scadenza, che puo' essere fra un anno. In mezzo c'e' l'unica
+  // finestra in cui si puo' ancora richiamare il cliente, e senza questo
+  // evento la si perde tutta.
+  "customer.subscription.updated",
   "customer.subscription.deleted",
 ] as const;
 
@@ -38,6 +45,8 @@ export async function gestisciEvento(evento: Stripe.Event): Promise<string> {
       return incassato(evento.data.object as Stripe.Invoice);
     case "invoice.payment_failed":
       return fallito(evento.data.object as Stripe.Invoice);
+    case "customer.subscription.updated":
+      return aggiornato(evento.data.object as Stripe.Subscription);
     case "customer.subscription.deleted":
       return disdetto(evento.data.object as Stripe.Subscription);
     default:
@@ -145,6 +154,30 @@ async function fallito(f: Stripe.Invoice): Promise<string> {
   return `locale ${tenantId}: pagamento rifiutato su ${f.id ?? "?"}, Stripe riprovera'`;
 }
 
+// L'abbonamento e' cambiato di la'. Di tutto quello che puo' essere cambiato
+// ci interessa una cosa sola: se ha una fine programmata.
+//
+// E' cosi' che si scopre una disdetta il giorno in cui viene fatta. Il locale
+// che disdice — dal portale di Stripe o dal bottone in dashboard — non fa
+// sparire niente: l'abbonamento resta vivo fino a scadenza e cambia solo
+// `cancel_at`. Se non si guardasse qui, il pannello continuerebbe a mostrarlo
+// come un cliente contento fino all'ultimo giorno.
+async function aggiornato(s: Stripe.Subscription): Promise<string> {
+  const clienteId = idDi(s.customer);
+  const tenantId = clienteId ? await tenantDalCliente(clienteId) : null;
+  if (!tenantId) return "ignorato: nessun locale per questo abbonamento";
+
+  await segnaFine(tenantId, s.cancel_at_period_end ? s.cancel_at : null);
+
+  if (!s.cancel_at_period_end) {
+    return `locale ${tenantId}: abbonamento ${s.id} senza disdette in corso`;
+  }
+  const quando = s.cancel_at
+    ? new Date(s.cancel_at * 1000).toISOString().slice(0, 10)
+    : "data ignota";
+  return `locale ${tenantId}: HA DISDETTO, l'abbonamento finisce il ${quando}`;
+}
+
 // Il locale ha disdetto, o l'abbonamento e' morto dopo troppi tentativi.
 async function disdetto(s: Stripe.Subscription): Promise<string> {
   const clienteId = idDi(s.customer);
@@ -159,6 +192,8 @@ async function disdetto(s: Stripe.Subscription): Promise<string> {
   // stesso — e l'ultima cosa che serve e' che sparisca dal pannello da solo,
   // di notte, senza che nessuno l'abbia deciso.
   await agganciaProvider(tenantId, { provider: "manuale", subscriptionId: null });
+  // La fine programmata non serve piu': e' arrivata.
+  await segnaFine(tenantId, null);
   return `locale ${tenantId}: abbonamento ${s.id} disdetto, contratto da chiudere a mano`;
 }
 

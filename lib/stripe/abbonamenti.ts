@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { tenantBilling } from "@/lib/db/schema";
 import { getContratto } from "@/lib/billing/contratti";
 import { stripe, stripeConfigurato } from "@/lib/stripe/client";
 import { daQuandoAddebitare } from "@/lib/stripe/checkout";
@@ -59,4 +62,100 @@ export async function allineaProvaSuStripe(tenantId: string): Promise<string> {
   } catch (e) {
     return `ATTENZIONE: non sono riuscito a spostare ${c.providerSubscriptionId} — ${(e as Error).message}`;
   }
+}
+
+/**
+ * Il locale disdice. Vale a fine periodo, non adesso.
+ *
+ * Adesso sarebbe togliergli un servizio che ha gia' pagato: fino alla
+ * scadenza continua a usarlo, e alla scadenza Stripe non rinnova. E' anche il
+ * comportamento che il portale di Stripe ha gia' — qui c'e' perche' il
+ * bottone deve stare dove il locale sta guardando, non dietro un altro sito.
+ *
+ * Fino alla scadenza si puo' tornare indietro: vedi `riattivaAbbonamento`.
+ */
+export async function disdiciAbbonamento(tenantId: string): Promise<string> {
+  const c = await getContratto(tenantId);
+  if (!c?.providerSubscriptionId) return "nessun abbonamento da disdire";
+  if (!stripeConfigurato()) return "ATTENZIONE: Stripe non e' configurato";
+
+  try {
+    const sub = await stripe().subscriptions.update(c.providerSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+    // La data si scrive subito invece di aspettare l'avviso di Stripe: chi ha
+    // appena premuto il bottone deve vedere l'effetto ricaricando la pagina,
+    // non fra qualche secondo. Quando l'avviso arriva riscrive lo stesso
+    // valore, e non fa danno.
+    await segnaFine(tenantId, sub.cancel_at);
+    return `abbonamento ${sub.id}: disdetto, finisce il ${giorno(sub.cancel_at)}`;
+  } catch (e) {
+    return `ATTENZIONE: non sono riuscito a disdire — ${(e as Error).message}`;
+  }
+}
+
+/** Ci ha ripensato. Si puo' finche' il periodo non e' finito. */
+export async function riattivaAbbonamento(tenantId: string): Promise<string> {
+  const c = await getContratto(tenantId);
+  if (!c?.providerSubscriptionId) return "nessun abbonamento da riattivare";
+  if (!stripeConfigurato()) return "ATTENZIONE: Stripe non e' configurato";
+
+  try {
+    const sub = await stripe().subscriptions.update(c.providerSubscriptionId, {
+      cancel_at_period_end: false,
+    });
+    await segnaFine(tenantId, null);
+    return `abbonamento ${sub.id}: riattivato, il rinnovo riparte`;
+  } catch (e) {
+    return `ATTENZIONE: non sono riuscito a riattivare — ${(e as Error).message}`;
+  }
+}
+
+/**
+ * Il rapporto e' chiuso da noi: l'abbonamento si ferma **adesso**.
+ *
+ * Diverso dalla disdetta del locale, e la differenza non e' una finezza. Se
+ * chiudo un contratto dal pannello e l'abbonamento resta aperto, Stripe
+ * continua ad addebitare la carta di un cliente che per me non esiste piu':
+ * sono soldi presi a torto, e me lo scrive lui.
+ *
+ * Si chiama da chi chiude il contratto. Non lo fa salvaContratto da solo
+ * perche' contratti.ts non conosce Stripe — e non deve: e' Stripe che importa
+ * il contratto per sapere cosa fatturare, e farsi importare a sua volta
+ * sarebbe un giro chiuso.
+ */
+export async function chiudiAbbonamentoSuStripe(tenantId: string): Promise<string> {
+  const c = await getContratto(tenantId);
+  if (!c?.providerSubscriptionId) return "nessun abbonamento aperto";
+  if (!stripeConfigurato()) {
+    return "ATTENZIONE: Stripe non e' configurato, l'abbonamento resta aperto e continuera' ad addebitare";
+  }
+
+  try {
+    await stripe().subscriptions.cancel(c.providerSubscriptionId);
+    // Non si tocca il contratto: a staccarlo ci pensa il webhook, che riceve
+    // customer.subscription.deleted da questa stessa chiamata. Scriverlo
+    // anche qui vorrebbe dire due punti che scrivono la stessa colonna.
+    return `abbonamento ${c.providerSubscriptionId}: chiuso, non addebitera' piu'`;
+  } catch (e) {
+    return `ATTENZIONE: non sono riuscito a chiuderlo — ${(e as Error).message}`;
+  }
+}
+
+/** La data in cui l'abbonamento morira', o null se non ne ha una. */
+export async function segnaFine(
+  tenantId: string,
+  quando: number | null
+): Promise<void> {
+  await db
+    .update(tenantBilling)
+    .set({
+      providerCancelAt: quando ? new Date(quando * 1000) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+function giorno(unix: number | null): string {
+  return unix ? new Date(unix * 1000).toISOString().slice(0, 10) : "?";
 }

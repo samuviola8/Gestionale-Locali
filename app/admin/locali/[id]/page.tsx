@@ -593,6 +593,21 @@ export default async function LocaleDetail({
                 {contratto?.nextInvoiceAt && (
                   <> Prossima scadenza: {dataBreve(contratto.nextInvoiceAt)}.</>
                 )}
+                {/* La disdetta va detta qui e non lasciata scoprire dal
+                    silenzio di un rinnovo che non arriva: fra il giorno in cui
+                    disdice e il giorno in cui se ne va c'e' l'unica finestra
+                    per richiamarlo, e puo' durare un anno. */}
+                {contratto?.providerCancelAt && (
+                  <>
+                    {" "}
+                    <strong style={{ color: "var(--warn)" }}>
+                      Ha disdetto: l&apos;abbonamento finisce il{" "}
+                      {dataBreve(contratto.providerCancelAt)}.
+                    </strong>{" "}
+                    Fino ad allora paga e usa tutto. Se non lo si richiama, dopo
+                    quella data il contratto va chiuso a mano.
+                  </>
+                )}
               </>
             }
           />

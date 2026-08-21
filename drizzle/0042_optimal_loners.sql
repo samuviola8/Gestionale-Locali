@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_billing" ADD COLUMN "provider_cancel_at" timestamp with time zone;

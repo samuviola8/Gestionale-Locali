@@ -26,6 +26,7 @@ import {
 import { getTenantModules } from "@/lib/modules";
 import { stripeConfigurato } from "@/lib/stripe/client";
 import { creaSessioneAbbonamento, urlPortale } from "@/lib/stripe/checkout";
+import { disdiciAbbonamento, riattivaAbbonamento } from "@/lib/stripe/abbonamenti";
 
 // Il locale sceglie il suo piano.
 //
@@ -254,5 +255,29 @@ export async function salvaDatiFatturazione(formData: FormData): Promise<void> {
 
   // Niente redirect: da una server action della dashboard rimbalzerebbe al
   // login. Si resta in pagina e si rilegge quello che si e' appena scritto.
+  revalidatePath("/dashboard/fatturazione");
+}
+
+// Il locale disdice da solo, dalla sua pagina.
+//
+// Si puo' gia' fare dal portale di Stripe, ma il bottone deve stare dove il
+// locale sta guardando: mandarlo su un altro sito per disdire e' il genere di
+// attrito che fa finire la disdetta in una telefonata a me.
+//
+// Vale a fine periodo, non adesso: quel periodo l'ha pagato e continua a
+// usarlo. Fino ad allora puo' tornare indietro.
+export async function disdiciAbbonamentoAction(): Promise<void> {
+  const session = await getSessionUser();
+  if (!session || session.role !== "owner") return;
+
+  console.log(`[stripe] disdetta dal locale: ${await disdiciAbbonamento(session.tenantId)}`);
+  revalidatePath("/dashboard/fatturazione");
+}
+
+export async function riattivaAbbonamentoAction(): Promise<void> {
+  const session = await getSessionUser();
+  if (!session || session.role !== "owner") return;
+
+  console.log(`[stripe] ripensamento: ${await riattivaAbbonamento(session.tenantId)}`);
   revalidatePath("/dashboard/fatturazione");
 }

@@ -488,12 +488,36 @@ sulla sessione. Le eccezioni sono due: chi e' sospeso paga subito perche' ha un
 arretrato, e un impianto con l'attivazione ancora da incassare paga subito
 perche' l'attivazione non aspetta.
 
-Per lo stesso motivo **allungare la prova dal pannello lo si dice anche a
-Stripe**: un locale che ha gia' collegato la carta ha di la' una data di primo
-addebito congelata, e regalargli trenta giorni solo a database vorrebbe dire
-vederlo pagare una prova che gli era stata promessa gratis. Se ne occupa
-`allineaProvaSuStripe`, che il pannello chiama subito dopo aver scritto la
-prova nuova.
+L'**attivazione una tantum** entra nella stessa sessione del canone: al primo
+pagamento il locale salda impianto e primo mese insieme, non con due incassi
+separati per la stessa firma. Le condizioni sono due e sono solo queste: c'e'
+un importo, e non e' gia' stata fatturata. **Non dipende dal modello di
+contratto** — `activation_cents` si scrive a mano dal pannello, e un
+abbonamento con un impianto iniziale e' un contratto normalissimo.
+
+### Quando le due parti si devono parlare
+
+Ogni volta che una decisione presa di qua vale anche di la', va ripetuta a
+Stripe: un dato che vive in due posti e viene scritto in uno solo continua per
+conto suo, e la differenza la paga il locale.
+
+- **Prova allungata dal pannello** → `allineaProvaSuStripe`. Chi ha gia' la
+  carta ha di la' una data di primo addebito congelata: regalargli trenta
+  giorni solo a database vorrebbe dire vederlo pagare una prova promessa
+  gratis.
+- **Contratto chiuso** → `chiudiAbbonamentoSuStripe`, subito. Senza, il locale
+  sparisce dai conti e la sua carta continua a essere addebitata: soldi presi
+  a un cliente che non esiste piu'.
+- **Il locale disdice** → lo dice Stripe a noi, con
+  `customer.subscription.updated`. Una disdetta vale a fine periodo, quindi
+  `deleted` arriva alla scadenza e puo' essere fra un anno: nel mezzo c'e'
+  l'unica finestra per richiamarlo, e `provider_cancel_at` e' quello che la
+  rende visibile nel pannello.
+
+Disdire si fa **dalla dashboard del locale**, non solo dal portale di Stripe:
+mandarlo su un altro sito per chiudere e' il genere di attrito che trasforma
+una disdetta in una telefonata. Vale a fine periodo — quel periodo l'ha pagato
+e continua a usarlo — e fino ad allora puo' riprendere l'abbonamento da solo.
 `/api/stripe/webhook` e' l'unico punto che accetta ordini da fuori senza un
 utente collegato, e per questo controlla la firma prima di qualsiasi altra
 cosa. Quello che scrive e' l'incasso **al lordo**, con la data in cui Stripe
