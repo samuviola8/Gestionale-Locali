@@ -1044,9 +1044,11 @@ export default async function LocaleDetail({
             ))}
           </div>
 
+          {/* Niente encType: quando l'action e' una server action lo decide
+              React, e scriverlo qui fa solo un avviso in console. I file
+              arrivano lo stesso — la codifica multipart la mette lui. */}
           <form
             action={caricaFileAction}
-            encType="multipart/form-data"
             className="card mt-3 grid gap-3 p-4 sm:grid-cols-2"
           >
             <input type="hidden" name="id" value={t.id} />

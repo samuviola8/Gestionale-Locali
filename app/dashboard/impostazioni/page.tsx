@@ -185,9 +185,10 @@ export default async function ImpostazioniPage() {
           scansiona il QR. Senza, si vede la lettera iniziale del nome.
         </p>
 
+        {/* Come per i documenti in /admin: con una server action l'encType lo
+            mette React, e dichiararlo qui fa solo un avviso. */}
         <form
           action={salvaLogo}
-          encType="multipart/form-data"
           className="mt-3 flex flex-wrap items-center gap-4"
         >
           <div
