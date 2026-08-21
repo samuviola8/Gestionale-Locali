@@ -96,11 +96,6 @@ export async function creaSessioneAbbonamento(
   }
 
   const customer = await clienteStripe(tenantId);
-  // Se fra le righe ce n'e' una senza `recurring`, e' l'attivazione: va
-  // incassata adesso, e allora non si rimanda niente. Si ricava da quello che
-  // si sta per mandare invece di ricalcolarlo: due conti sulla stessa cosa
-  // prima o poi si contraddicono.
-  const conUnaTantum = line_items.some((r) => !r.price_data?.recurring);
 
   const sessione = await stripe().checkout.sessions.create({
     mode: "subscription",
@@ -123,7 +118,7 @@ export async function creaSessioneAbbonamento(
         model: contratto.model,
         period: contratto.period,
       },
-      ...daQuandoAddebitare(contratto, conUnaTantum),
+      ...daQuandoAddebitare(contratto),
     },
   });
 
@@ -163,17 +158,20 @@ export async function urlPortale(tenantId: string, returnUrl: string): Promise<s
  * Stripe chiama questo campo `trial_end` perche' dal suo punto di vista e' il
  * giorno in cui comincia a fatturare: e' lo stesso che si usa per portargli
  * dentro abbonamenti che prima vivevano da un'altra parte.
+ *
+ * **L'attivazione non c'entra**, e per un po' qui c'era un vincolo che diceva
+ * il contrario: se c'era una riga una tantum si rinunciava al rinvio, per
+ * paura che rimandasse anche quella. Il presupposto era sbagliato — verificato
+ * chiedendolo a Stripe invece che immaginandolo: in una sessione a
+ * sottoscrizione le righe senza `recurring` si incassano subito comunque,
+ * anche con la fatturazione rinviata. Quindi un locale ancora in prova che
+ * decide di partire paga l'impianto oggi e il canone quando la prova finisce,
+ * che e' esattamente quello che gli si e' promesso.
  */
 export function daQuandoAddebitare(
   c: Pick<Contratto, "status" | "trialEndsAt" | "nextInvoiceAt">,
-  /** C'e' una riga una tantum da incassare adesso (l'attivazione di un impianto). */
-  conUnaTantum: boolean,
   adesso: Date = new Date()
 ): { trial_end?: number } {
-  // L'attivazione non aspetta: e' il motivo per cui si firma un impianto, e
-  // con la fatturazione rimandata slitterebbe anche lei.
-  if (conUnaTantum) return {};
-
   const coperto =
     c.status === "prova"
       ? c.trialEndsAt

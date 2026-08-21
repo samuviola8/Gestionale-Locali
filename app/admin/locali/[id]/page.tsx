@@ -163,6 +163,30 @@ export default async function LocaleDetail({
   // Il pacchetto da proporre a chi non ha ancora un contratto: il primo del
   // listino, che e' anche il piu' piccolo.
   const paccoProposto = pacchetti[0];
+
+  // Quando un pacchetto piu' grande costerebbe meno di quello firmato con gli
+  // add-on attaccati sopra.
+  //
+  // Succede da solo: si accende un modulo alla volta, ognuno sembra poca cosa,
+  // e a un certo punto un Base con cinque add-on costa 130 al mese mentre
+  // Premium — che li comprende tutti — ne costa 45. Il conto e' giusto, il
+  // prezzo no, e a farlo per primo non deve essere il cliente.
+  const oraPaga = contratto
+    ? importoAScadenzaCents(contratto, totaleAddons)
+    : 0;
+  const accesi = MODULES.filter((m) => modules[m.key]).map((m) => m.key);
+  const conviene =
+    contratto && contratto.status !== "chiuso"
+      ? (pacchetti
+          .filter((p) => accesi.every((k) => p.moduli.includes(k)))
+          .map((p) => ({
+            pacco: p,
+            costo:
+              contratto.model === "impianto" ? p.assistenzaCents : p.mensileCents,
+          }))
+          .filter((x) => x.costo < oraPaga)
+          .sort((a, b) => a.costo - b.costo)[0] ?? null)
+      : null;
   const haSuoi = await haPrezziSuoi(id);
   const suMisura = await getSuMisura(id);
   const file = await fileDelLocale(id);
@@ -830,6 +854,22 @@ export default async function LocaleDetail({
             </form>
           )}
         </section>
+
+        {conviene && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: "var(--warn-bg)", color: "var(--warn)" }}
+          >
+            <strong>
+              Sta pagando {formatPrice(oraPaga)} al mese, e {conviene.pacco.label}{" "}
+              gli costerebbe {formatPrice(conviene.costo)}.
+            </strong>{" "}
+            Ha {pacchetti.find((p) => p.key === contratto?.pack)?.label ?? "un pacchetto"}{" "}
+            con {formatPrice(totaleAddons)} di add-on attaccati sopra, e{" "}
+            {conviene.pacco.label} li comprende gia&apos;. Il conto e&apos; giusto,
+            il prezzo no: meglio proporglielo prima che lo scopra lui.
+          </div>
+        )}
 
         {(contratto?.activationCents ?? 0) > 0 && (
           <section>

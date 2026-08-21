@@ -39,7 +39,7 @@ export async function allineaProvaSuStripe(tenantId: string): Promise<string> {
   // La stessa regola che decide da quando si addebita aprendo l'abbonamento.
   // `false` perche' un'attivazione una tantum si paga alla firma e qui la
   // firma e' gia' passata: non c'e' niente da incassare adesso.
-  const { trial_end } = daQuandoAddebitare(c, false);
+  const { trial_end } = daQuandoAddebitare(c);
 
   if (!trial_end) {
     // La data nuova e' passata, o e' entro due giorni. Non si tocca niente di

@@ -166,8 +166,7 @@ async function main() {
   const fra = (giorni: number) => new Date(oggi.getTime() + giorni * 86400000);
   const daQuando = (
     stato: string,
-    date: { trialEndsAt?: Date | null; nextInvoiceAt?: Date | null },
-    unaTantum = false
+    date: { trialEndsAt?: Date | null; nextInvoiceAt?: Date | null }
   ) =>
     daQuandoAddebitare(
       {
@@ -175,7 +174,6 @@ async function main() {
         trialEndsAt: date.trialEndsAt ?? null,
         nextInvoiceAt: date.nextInvoiceAt ?? null,
       } as Parameters<typeof daQuandoAddebitare>[0],
-      unaTantum,
       oggi
     ).trial_end ?? null;
 
@@ -203,9 +201,13 @@ async function main() {
     daQuando("sospeso", { nextInvoiceAt: fra(30) }) === null,
     "il sospeso paga subito: non ha coperto niente"
   );
+  // Chiesto a Stripe invece che immaginato: in una sessione a sottoscrizione
+  // le righe una tantum si incassano subito anche con la fatturazione
+  // rinviata. Quindi chi e' in prova e decide di partire paga l'impianto oggi
+  // e il canone a fine prova — l'attivazione non tocca questo conto.
   ok(
-    daQuando("prova", { trialEndsAt: fra(30) }, true) === null,
-    "con un'attivazione da incassare non si rimanda niente"
+    daQuando("prova", { trialEndsAt: fra(30) }) === Math.floor(fra(30).getTime() / 1000),
+    "l'attivazione da incassare non annulla il rinvio del canone"
   );
   ok(
     daQuando("attivo", { trialEndsAt: fra(60), nextInvoiceAt: fra(30) }) ===
