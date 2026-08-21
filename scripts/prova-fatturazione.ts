@@ -69,7 +69,7 @@ async function main() {
     salvaPrezzoModulo,
     salvaPrezzoPacco,
   } = await import("@/lib/billing/prezzi");
-  const { applicaModuliDelPacco, getAddons, sincronizzaAddons, totaleAddonsCents } =
+  const { applicaModuliDelPacco, getAddons, salvaAddons, sincronizzaAddons, totaleAddonsCents } =
     await import("@/lib/billing/addons");
   const { getImpostazioni, salvaImpostazioni } = await import(
     "@/lib/billing/impostazioni"
@@ -352,19 +352,25 @@ async function main() {
   await cambia({ delivery: false });
   ok((await getAddons(tenantId)).length === 0, "modulo spento: nessun add-on");
 
+  // Il metodo vecchio era sommare add-on a listino, e faceva un prezzo che non
+  // avevo deciso io: un Base con cinque moduli accesi finiva a 130 al mese
+  // mentre Premium, che li comprende tutti, ne costa 45. Adesso una
+  // composizione fuori dai tre standard e' un pacchetto su misura.
   await cambia({ delivery: true });
   ok(
-    (await getAddons(tenantId))[0]?.priceCents === 2900,
-    "acceso senza toccare il prezzo: entra a listino, non a zero"
+    (await getAddons(tenantId)).length === 0,
+    "acceso un modulo fuori pacchetto: non diventa un add-on da solo"
   );
 
-  await cambia({ delivery: true }, { delivery: 2000 });
-  ok((await totaleAddonsCents(tenantId)) === 2000, "col prezzo scritto a mano: 20,00");
+  // Quelli concordati esistono ancora, e si scrivono a mano: il prezzo e'
+  // quello che ho detto io, non quello che esce da una somma.
+  await salvaAddons(tenantId, [{ moduleKey: "delivery", priceCents: 2000 }]);
+  ok((await totaleAddonsCents(tenantId)) === 2000, "concordato a mano: 20,00");
 
   await cambia({ delivery: true });
   ok(
     (await totaleAddonsCents(tenantId)) === 2000,
-    "risalvando senza toccarlo resta il prezzo concordato, non torna a listino"
+    "risalvando i moduli resta il prezzo concordato, non torna a listino"
   );
 
   await cambia({ counter_orders: true });
@@ -374,6 +380,8 @@ async function main() {
   );
 
   // Passando al pacchetto che comprende la consegna, smette di pagarla a parte.
+  // Questo pezzo resta: senza, chi sale a un piano che comprende un modulo
+  // continuerebbe a pagarlo anche a parte, cioe' due volte.
   const comeEra = {
     model: "impianto" as const, period: "mensile" as const,
     recurringCents: 3900, activationCents: 149000, transactionBps: 40,
@@ -387,8 +395,15 @@ async function main() {
   );
 
   await salvaContratto(tenantId, { ...comeEra, pack: "locale" });
-  await cambia({}, { delivery: 2000 });
-  ok((await totaleAddonsCents(tenantId)) === 2000, "e tornando indietro ricompare");
+  await cambia({});
+  ok(
+    (await totaleAddonsCents(tenantId)) === 0,
+    "e tornando indietro non ricompare da solo: era compreso, adesso non si paga"
+  );
+
+  // Rimesso a mano per le prove sulla fattura qui sotto.
+  await salvaAddons(tenantId, [{ moduleKey: "delivery", priceCents: 2000 }]);
+  ok((await totaleAddonsCents(tenantId)) === 2000, "riconcordato a mano: 20,00");
 
   console.log("\n8b. L'add-on in fattura");
   // Riporto la scadenza a oggi per farmi preparare il rinnovo successivo.

@@ -135,18 +135,30 @@ export async function sincronizzaAddons(
   const compresi = new Set<string>(
     contratto ? await moduliDelPacco(tenantId, contratto.pack) : []
   );
-  const listino = await getPrezziModuli(tenantId);
   const concordati = await getAddons(tenantId);
 
-  const daFatturare = MODULES.filter(
-    (m) => state[m.key] && !compresi.has(m.key) && listino[m.key] > 0
-  ).map((m) => ({
-    moduleKey: m.key,
-    priceCents:
-      prezziScritti[m.key] ??
-      concordati.find((a) => a.moduleKey === m.key)?.priceCents ??
-      listino[m.key],
-  }));
+  // Non se ne creano di nuovi, e questo e' il cambio: accendere un modulo
+  // fuori pacchetto non lo fattura piu' a parte.
+  //
+  // Sommare add-on a listino era il metodo vecchio, e faceva un prezzo che non
+  // avevo deciso io: un Base con cinque moduli accesi finiva a 130 al mese
+  // mentre Premium, che li comprende tutti, ne costa 45. Adesso una
+  // composizione fuori dai tre standard e' un **pacchetto su misura**, con il
+  // suo prezzo e il suo nome — che e' una cosa che si concorda, non una somma
+  // che esce da sola.
+  //
+  // Quelli gia' concordati restano, e restano al loro prezzo: un add-on che
+  // gli ho fatto a 59 vale 59 anche adesso, e toglierglielo d'ufficio vorrebbe
+  // dire cambiargli il contratto senza dirglielo.
+  const restano = concordati
+    // Ma si toglie quello che non ha piu' motivo di esserci: modulo spento, o
+    // entrato nel pacchetto. Senza questo, chi passa a un piano che comprende
+    // le prenotazioni continuerebbe a pagarle a parte — cioe' due volte.
+    .filter((a) => state[a.moduleKey] && !compresi.has(a.moduleKey))
+    .map((a) => ({
+      moduleKey: a.moduleKey,
+      priceCents: prezziScritti[a.moduleKey] ?? a.priceCents,
+    }));
 
-  await salvaAddons(tenantId, daFatturare);
+  await salvaAddons(tenantId, restano);
 }

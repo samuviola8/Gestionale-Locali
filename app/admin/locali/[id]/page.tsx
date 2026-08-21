@@ -164,29 +164,6 @@ export default async function LocaleDetail({
   // listino, che e' anche il piu' piccolo.
   const paccoProposto = pacchetti[0];
 
-  // Quando un pacchetto piu' grande costerebbe meno di quello firmato con gli
-  // add-on attaccati sopra.
-  //
-  // Succede da solo: si accende un modulo alla volta, ognuno sembra poca cosa,
-  // e a un certo punto un Base con cinque add-on costa 130 al mese mentre
-  // Premium — che li comprende tutti — ne costa 45. Il conto e' giusto, il
-  // prezzo no, e a farlo per primo non deve essere il cliente.
-  const oraPaga = contratto
-    ? importoAScadenzaCents(contratto, totaleAddons)
-    : 0;
-  const accesi = MODULES.filter((m) => modules[m.key]).map((m) => m.key);
-  const conviene =
-    contratto && contratto.status !== "chiuso"
-      ? (pacchetti
-          .filter((p) => accesi.every((k) => p.moduli.includes(k)))
-          .map((p) => ({
-            pacco: p,
-            costo:
-              contratto.model === "impianto" ? p.assistenzaCents : p.mensileCents,
-          }))
-          .filter((x) => x.costo < oraPaga)
-          .sort((a, b) => a.costo - b.costo)[0] ?? null)
-      : null;
   const haSuoi = await haPrezziSuoi(id);
   const suMisura = await getSuMisura(id);
   const file = await fileDelLocale(id);
@@ -855,22 +832,6 @@ export default async function LocaleDetail({
           )}
         </section>
 
-        {conviene && (
-          <div
-            className="rounded-xl px-4 py-3 text-sm"
-            style={{ background: "var(--warn-bg)", color: "var(--warn)" }}
-          >
-            <strong>
-              Sta pagando {formatPrice(oraPaga)} al mese, e {conviene.pacco.label}{" "}
-              gli costerebbe {formatPrice(conviene.costo)}.
-            </strong>{" "}
-            Ha {pacchetti.find((p) => p.key === contratto?.pack)?.label ?? "un pacchetto"}{" "}
-            con {formatPrice(totaleAddons)} di add-on attaccati sopra, e{" "}
-            {conviene.pacco.label} li comprende gia&apos;. Il conto e&apos; giusto,
-            il prezzo no: meglio proporglielo prima che lo scopra lui.
-          </div>
-        )}
-
         {(contratto?.activationCents ?? 0) > 0 && (
           <section>
             <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--muted)" }}>
@@ -1180,7 +1141,14 @@ export default async function LocaleDetail({
                 // Si fattura a parte solo quello che ha un prezzo suo e non e'
                 // gia' dentro il pacchetto. Il resto o e' compreso, o e' di
                 // servizio e non si vende da solo.
-                const sePagante = !compreso && prezziModuli[m.key] > 0;
+                // La casella del prezzo c'e' solo dove un add-on esiste gia'.
+                //
+                // Prima compariva su ogni modulo fuori pacchetto, e prometteva
+                // una cosa che non succede piu': accendere un modulo non lo
+                // fattura a parte da solo. Una casella dove scrivere un prezzo
+                // che poi non viene applicato e' peggio di nessuna casella —
+                // per una composizione diversa si fa un pacchetto su misura.
+                const sePagante = !!attivo;
                 return (
                   <div
                     key={m.key}
@@ -1236,7 +1204,7 @@ export default async function LocaleDetail({
                           className="w-[152px] text-right text-xs"
                           style={{ color: "var(--muted)" }}
                         >
-                          {compreso ? "nel canone" : "senza costo"}
+                          {compreso ? "nel canone" : "fuori pacchetto"}
                         </span>
                       )}
                     </div>
