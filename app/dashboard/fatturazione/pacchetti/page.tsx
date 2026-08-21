@@ -95,7 +95,8 @@ export default async function PacchettiLocalePage() {
       >
         {pacchetti.map((p) => {
           const attuale = p.key === contratto?.pack;
-          const suggerito = p.key === consigliato && !attuale;
+          const programmato = p.key === contratto?.pendingPack;
+          const suggerito = p.key === consigliato && !attuale && !programmato;
           const prezzo = prezzoDi(p);
           const sale = contratto ? prezzo > contratto.recurringCents : false;
           return (
@@ -113,16 +114,27 @@ export default async function PacchettiLocalePage() {
             >
               <input type="hidden" name="pack" value={p.key} />
 
-              {(attuale || suggerito) && (
+              {/* Il piano gia' scelto per il rinnovo va segnato prima del
+                  consiglio: una scelta che il locale ha gia' fatto conta piu'
+                  di un suggerimento nostro, e vedersi consigliare un piano
+                  senza sapere di averne gia' preso un altro e' il modo per
+                  sceglierlo due volte. */}
+              {(attuale || programmato || suggerito) && (
                 <span
                   className="absolute -top-2.5 left-5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                   style={
                     attuale
                       ? { background: "var(--brand)", color: "var(--brand-on)" }
-                      : { background: "var(--ok)", color: "var(--surface)" }
+                      : programmato
+                        ? { background: "var(--warn)", color: "var(--surface)" }
+                        : { background: "var(--ok)", color: "var(--surface)" }
                   }
                 >
-                  {attuale ? "il tuo piano" : "ti basta questo"}
+                  {attuale
+                    ? "il tuo piano"
+                    : programmato
+                      ? "dal prossimo rinnovo"
+                      : "ti basta questo"}
                 </span>
               )}
 
@@ -139,7 +151,7 @@ export default async function PacchettiLocalePage() {
                 {p.descrizione}
               </p>
 
-              {!attuale && (
+              {!attuale && !programmato && (
                 <button
                   className={`btn btn-sm mt-4 w-full ${suggerito || sale ? "btn-primary" : ""}`}
                   style={
@@ -155,12 +167,31 @@ export default async function PacchettiLocalePage() {
                       : "Passa al rinnovo"}
                 </button>
               )}
-              {attuale && (
+              {/* Sul piano che ha adesso il bottone compare solo se c'e' un
+                  cambio da annullare: sceglierlo di nuovo, senza niente in
+                  attesa, non farebbe nulla. */}
+              {attuale &&
+                (contratto?.pendingPack ? (
+                  <button
+                    className="btn btn-sm mt-4 w-full"
+                    style={{ border: "1px solid var(--border)" }}
+                  >
+                    Resta su {p.label}
+                  </button>
+                ) : (
+                  <div
+                    className="mt-4 text-center text-xs"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    ce l&apos;hai adesso
+                  </div>
+                ))}
+              {programmato && (
                 <div
                   className="mt-4 text-center text-xs"
                   style={{ color: "var(--muted)" }}
                 >
-                  ce l&apos;hai adesso
+                  gia&apos; scelto per il rinnovo
                 </div>
               )}
             </form>

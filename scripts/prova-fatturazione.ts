@@ -186,6 +186,10 @@ async function main() {
   ok(firmato?.status === "attivo", "passa ad attivo");
   ok(!!firmato?.startedAt, "segna l'inizio del rapporto");
   ok(!!firmato?.nextInvoiceAt, "e la prima scadenza da fatturare");
+  ok(
+    firmato?.trialEndsAt === null,
+    "e cancella la fine prova: chi ha firmato non e' piu' in prova"
+  );
 
   // Un salvataggio che non cambia lo stato non deve spostare il rinnovo.
   const primaScadenza = firmato!.nextInvoiceAt!.getTime();

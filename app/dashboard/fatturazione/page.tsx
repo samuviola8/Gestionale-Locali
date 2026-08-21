@@ -385,6 +385,12 @@ export default async function FatturazioneLocalePage({
           <div className="grid gap-3 sm:grid-cols-3">
             {pacchetti.map((p) => {
               const attuale = p.key === contratto.pack;
+              // Il piano che scattera' al rinnovo. Senza segnarlo qui, chi ha
+              // un cambio in attesa vede due riquadri identici col bottone
+              // "Passa al rinnovo" e non ha modo di sapere quale dei due ha
+              // gia' scelto: il messaggio sopra lo dice a parole, ma la
+              // griglia lo smentisce col silenzio.
+              const programmato = p.key === contratto.pendingPack;
               const prezzo =
                 contratto.model === "impianto"
                   ? p.assistenzaCents
@@ -404,9 +410,14 @@ export default async function FatturazioneLocalePage({
                   }
                 >
                   <input type="hidden" name="pack" value={p.key} />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{p.label}</span>
                     {attuale && <span className="badge badge-brand">il tuo</span>}
+                    {programmato && (
+                      <span className="badge badge-warn">
+                        dal {dataBreve(contratto.pendingFrom)}
+                      </span>
+                    )}
                   </div>
                   <div className="tnum mt-1 text-xl font-semibold">
                     {formatPrice(prezzo)}
@@ -417,17 +428,36 @@ export default async function FatturazioneLocalePage({
                   <p className="mt-2 flex-1 text-xs" style={{ color: "var(--muted)" }}>
                     {p.descrizione}
                   </p>
-                  {!attuale && (
-                    <button className={`btn btn-sm mt-3 ${sale ? "btn-primary" : ""}`}
-                      style={sale ? undefined : { border: "1px solid var(--border)" }}
-                    >
-                      {contratto.status === "prova"
-                        ? "Scegli questo"
-                        : sale
-                          ? "Passa subito"
-                          : "Passa al rinnovo"}
-                    </button>
-                  )}
+                  {/* Sul piano che ha gia' scelto per il rinnovo non c'e'
+                      niente da premere: sceglierlo di nuovo non cambia nulla.
+                      Su quello attuale il bottone compare solo se c'e' un
+                      cambio da annullare — ed e' il bottone che mancava:
+                      il riquadro sopra dice "per annullare riscegli il piano
+                      che hai adesso", ma il piano che ha adesso non era
+                      cliccabile, quindi quel consiglio non si poteva seguire.
+                      Passa dalla stessa azione: cambiaPiano, ricevendo il
+                      pacchetto gia' in corso, toglie il cambio in attesa. */}
+                  {attuale
+                    ? contratto.pendingPack && (
+                        <button
+                          className="btn btn-sm mt-3"
+                          style={{ border: "1px solid var(--border)" }}
+                        >
+                          Resta su {p.label}
+                        </button>
+                      )
+                    : !programmato && (
+                        <button
+                          className={`btn btn-sm mt-3 ${sale ? "btn-primary" : ""}`}
+                          style={sale ? undefined : { border: "1px solid var(--border)" }}
+                        >
+                          {contratto.status === "prova"
+                            ? "Scegli questo"
+                            : sale
+                              ? "Passa subito"
+                              : "Passa al rinnovo"}
+                        </button>
+                      )}
                 </form>
               );
             })}

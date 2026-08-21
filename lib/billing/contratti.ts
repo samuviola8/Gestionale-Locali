@@ -307,8 +307,20 @@ export async function salvaContratto(
         ? (attuale?.nextInvoiceAt ?? new Date())
         : (attuale?.nextInvoiceAt ?? null);
 
+  // Un contratto attivo non ha una fine prova: la prova e' finita quando ha
+  // firmato, ed e' `started_at` a dire da quando paga. Lasciarcela scritta
+  // vuol dire tenere in giro un dato che racconta il passato come se valesse
+  // ancora, e prima o poi qualcuno lo legge e ci crede — e' successo: davanti
+  // a un attivo con la fine prova a settembre si conclude che fino a
+  // settembre non paga, che e' il contrario di quello che dice il contratto.
+  //
+  // Si azzera solo passando ad attivo. Il sospeso se la tiene: e' quella che
+  // dice se e' stato spento per una prova scaduta, e la guarda blocco.ts.
+  const trialEndsAt = attivo ? null : (attuale?.trialEndsAt ?? null);
+
   const values = {
     ...dati,
+    trialEndsAt,
     pack: isPaccoKey(dati.pack) ? dati.pack : "su_misura",
     provider: dati.provider ?? attuale?.provider ?? "manuale",
     startedAt,
