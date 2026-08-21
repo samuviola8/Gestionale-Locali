@@ -1,15 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tenantBilling, tenants } from "@/lib/db/schema";
+import { tenants } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import {
   annullaCambioProgrammato,
   canoneDaListino,
   getContratto,
-  isProvider,
   programmaCambioPacco,
   quotaResidua,
   salvaContratto,
@@ -24,6 +24,8 @@ import {
   sincronizzaAddons,
 } from "@/lib/billing/addons";
 import { getTenantModules } from "@/lib/modules";
+import { stripeConfigurato } from "@/lib/stripe/client";
+import { creaSessioneAbbonamento, urlPortale } from "@/lib/stripe/checkout";
 
 // Il locale sceglie il suo piano.
 //
@@ -113,25 +115,80 @@ export async function cambiaPiano(formData: FormData): Promise<void> {
   revalidatePath("/dashboard");
 }
 
-// Con cosa paga il locale. E' una scelta sua e sta qui, non in /admin: e' il
-// suo conto corrente, e deciderla al posto suo vuol dire ritrovarsi a chiedere
-// per telefono una cosa che lui sa gia'.
+// Con cosa paga il locale non si sceglie piu' da una tendina.
 //
-// Carta e PayPal oggi si possono scegliere ma non addebitano niente: manca
-// l'integrazione. La pagina lo dice, invece di far finta.
-export async function salvaMetodoPagamento(formData: FormData): Promise<void> {
+// C'era, e chiedeva di dichiarare "carta" e salvare prima di poter collegare
+// davvero una carta: due passi per una cosa sola, e nel mezzo un contratto che
+// diceva "stripe" mentre di carte non ce n'era nessuna — cioe' un dato che
+// diceva il desiderio invece del fatto. Adesso il provider lo scrive chi lo
+// sa: agganciaProvider dal webhook, quando l'abbonamento nasce o muore, e il
+// pannello admin quando lo decido io. La dashboard mostra come stanno le cose
+// e offre l'unica azione che serve: collegare la carta, o gestirla.
+
+export type EsitoPagamento =
+  | { ok: true; url: string }
+  | { ok: false; errore: string };
+
+// Il locale collega la carta, o va a gestirla se ce l'ha gia'.
+//
+// Torna l'indirizzo invece di andarci: un `redirect()` da una server action
+// della dashboard rimbalza al login — e' lo stesso motivo per cui non c'e' in
+// salvaDatiFatturazione qui sotto. A spostarsi ci pensa il bottone, che sta
+// nel browser e quel problema non ce l'ha.
+//
+// Chi ha gia' un abbonamento non va a un secondo Checkout ma al portale di
+// Stripe: la' si cambia la carta scaduta, si scaricano le ricevute e si
+// disdice da soli. Mandarlo di nuovo a pagare vorrebbe dire aprirgli un
+// secondo abbonamento sullo stesso locale, e accorgersene al doppio addebito.
+export async function apriPagamentoCarta(): Promise<EsitoPagamento> {
   const session = await getSessionUser();
-  if (!session || session.role !== "owner") return;
+  // Il conto del locale e' del titolare: chi sta in sala per il turno non
+  // mette la carta dell'azienda.
+  if (!session || session.role !== "owner") {
+    return { ok: false, errore: "Solo il titolare puo' collegare il pagamento." };
+  }
+  if (!stripeConfigurato()) {
+    return {
+      ok: false,
+      errore: "Il pagamento con carta non e' ancora attivo. Riprova piu' tardi.",
+    };
+  }
 
-  const scelto = String(formData.get("provider") ?? "");
-  if (!isProvider(scelto)) return;
+  const contratto = await getContratto(session.tenantId);
+  if (!contratto) {
+    return { ok: false, errore: "Non c'e' ancora un contratto da pagare." };
+  }
 
-  await db
-    .update(tenantBilling)
-    .set({ provider: scelto, updatedAt: new Date() })
-    .where(eq(tenantBilling.tenantId, session.tenantId));
+  // Si torna da dove si e' partiti, non a un indirizzo ricostruito: il locale
+  // sta sul suo sottodominio, e rimandarlo al dominio radice vorrebbe dire
+  // buttarlo fuori dalla sua dashboard dopo aver pagato.
+  const h = await headers();
+  const host = h.get("host") ?? "";
+  const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+  const pagina = `${proto}://${host}/dashboard/fatturazione`;
 
-  revalidatePath("/dashboard/fatturazione");
+  // Nessun controllo su `serviceBlocked`, e non e' una dimenticanza: il locale
+  // col servizio spento per morosita' e' esattamente quello che deve poter
+  // pagare. E' scritto nello schema — quel blocco lascia entrare il titolare
+  // apposta.
+  try {
+    const url = contratto.providerSubscriptionId
+      ? await urlPortale(session.tenantId, pagina)
+      : await creaSessioneAbbonamento(session.tenantId, {
+          successUrl: `${pagina}?carta=collegata`,
+          cancelUrl: pagina,
+        });
+    return { ok: true, url };
+  } catch (e) {
+    // Il motivo vero finisce nei log, al locale arriva una frase che puo'
+    // usare: "Invalid API key" sullo schermo di un ristoratore non aiuta
+    // nessuno, e dice a chi passa di li' piu' di quanto serva.
+    console.error("[stripe] apertura pagamento:", e);
+    return {
+      ok: false,
+      errore: "Non riesco ad aprire il pagamento. Riprova, o scrivimi.",
+    };
+  }
 }
 
 // I dati di fatturazione li scrive il locale, non io.

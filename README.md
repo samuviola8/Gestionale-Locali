@@ -443,16 +443,65 @@ sopra i 77,47, `ordinario` applica il 22%.
 L'invio allo **SDI** non c'e' ancora: le colonne (`sdi_status`, `sdi_id`) e
 tutti i dati per farlo — partita IVA, codice destinatario, PEC del locale —
 sono gia' raccolti, cosi' collegare un provider domani non chiede di rimettere
-mano ai documenti gia' emessi. Anche **Stripe** e **PayPal** hanno il loro
-posto pronto (`provider`, `provider_customer_id`, `provider_subscription_id`
-sul contratto, `provider_ref` sull'incasso) ma nessuna chiamata: oggi gli
-incassi si segnano a mano.
+mano ai documenti gia' emessi. **PayPal** ha il suo posto pronto sul contratto
+ma nessuna chiamata: li' l'incasso si segna a mano.
 
 Il giro completo si prova con un locale finto che alla fine sparisce:
 
 ```
 npx tsx scripts/prova-fatturazione.ts
 ```
+
+### Incasso con carta (Stripe)
+
+Stripe incassa il canone dai locali. **Non emette le fatture**: quelle restano
+di Comanda, con la numerazione di sopra. Non e' una mancanza da colmare — in
+regime forfettario la fattura elettronica passa dallo SDI, e una seconda
+numerazione parallela su Stripe sarebbe solo un modo per litigare col
+commercialista.
+
+Il pezzo che vale la pena sapere prima di leggere il codice: **a Stripe si
+mandano i prodotti, non i prezzi**. I prodotti sono i nomi che finiscono sulla
+ricevuta e si creano una volta con `scripts/stripe-catalogo.ts`; il prezzo
+invece parte ogni volta da `recurring_cents` sul contratto, costruito al volo.
+Cosi' non esistono due listini da tenere allineati, e il prezzo fondatori, lo
+scostamento per singolo locale e il pacchetto su misura funzionano senza casi
+speciali — nessuno dei tre sta in un listino.
+
+Il locale collega la carta da solo, dalla sua pagina Abbonamento: un bottone
+che diventa "Gestisci il pagamento" appena l'abbonamento e' aperto, e da li'
+si cambia la carta scaduta, si scaricano le ricevute e si disdice senza
+chiamarmi — che e' anche quello che chiede la legge sui rinnovi automatici.
+L'indirizzo di Stripe torna dalla server action e ci si sposta dal browser: un
+`redirect()` da li' rimbalzerebbe al login, come per i dati di fatturazione.
+
+Si paga sulla pagina di Stripe, non su una nostra: la carta non passa mai da
+qui, e SCA, 3-D Secure e i rinnovi falliti li gestisce Stripe.
+
+**Da quando si addebita** e' la regola che merita attenzione, perche' sbagliarla
+vuol dire incassare due volte lo stesso mese. Collegare la carta non fa partire
+il conto da oggi: parte da quando finisce il periodo gia' coperto — la fine
+della prova per chi e' in prova, `next_invoice_at` per chi e' gia' attivo. Un
+locale che collega la carta il 21 agosto con la scadenza al 20 settembre non
+paga niente fino al 20 settembre, e su Stripe lo si legge da un totale di zero
+sulla sessione. Le eccezioni sono due: chi e' sospeso paga subito perche' ha un
+arretrato, e un impianto con l'attivazione ancora da incassare paga subito
+perche' l'attivazione non aspetta.
+`/api/stripe/webhook` e' l'unico punto che accetta ordini da fuori senza un
+utente collegato, e per questo controlla la firma prima di qualsiasi altra
+cosa. Quello che scrive e' l'incasso **al lordo**, con la data in cui Stripe
+ha incassato davvero: il forfettario e' un regime per cassa e non deduce i
+costi, quindi segnare il netto vorrebbe dire dichiarare meno di quanto e'
+entrato.
+
+```
+npx tsx scripts/stripe-catalogo.ts      # i prodotti, una volta
+npx tsx scripts/prova-stripe.ts         # il giro dell'incasso su un locale finto
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+Senza `STRIPE_SECRET_KEY` la piattaforma funziona lo stesso e gli incassi si
+segnano a mano, come per SMTP e Telegram.
 
 ## Roadmap
 

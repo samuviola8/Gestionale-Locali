@@ -32,10 +32,12 @@ import {
   etichettaContratto,
   etichettaDocumento,
 } from "@/lib/billing/stati";
+import { stripeConfigurato } from "@/lib/stripe/client";
+import PagaConCarta from "@/components/PagaConCarta";
 import {
+  apriPagamentoCarta,
   cambiaPiano,
   salvaDatiFatturazione,
-  salvaMetodoPagamento,
 } from "./actions";
 
 // Cosa vede il locale del proprio conto: quanto paga, quando scade, e i
@@ -43,10 +45,17 @@ import {
 // per lui, e vedersi arrivare un importo che poi cambia e' il modo migliore
 // per ricevere una telefonata inutile.
 
-export default async function FatturazioneLocalePage() {
+export default async function FatturazioneLocalePage({
+  searchParams,
+}: {
+  // Ci torna chi ha appena pagato su Stripe: serve solo a dirgli che e'
+  // andata, perche' l'addebito lo registra il webhook e non questa pagina.
+  searchParams: Promise<{ carta?: string }>;
+}) {
   const session = await getSessionUser();
   if (!session) redirect("/login");
   if (session.role !== "owner") redirect("/dashboard");
+  const { carta } = await searchParams;
 
   const [contratto, tutti, moduli, allegati, addons, pacchetti, locali] =
     await Promise.all([
@@ -187,33 +196,39 @@ export default async function FatturazioneLocalePage() {
                 )}
               </div>
             </div>
-            {/* La scelta e' sua: e' il suo conto corrente, e chiedergliela per
-                telefono per poi scriverla io dall'altra parte era un giro
-                inutile. */}
-            <form action={salvaMetodoPagamento}>
-              <label className="text-xs" style={{ color: "var(--muted)" }}>
-                Come vuoi pagare
-                <select
-                  name="provider"
-                  defaultValue={contratto.provider}
-                  className="input mt-1 w-full"
-                >
-                  <option value="manuale">Bonifico</option>
-                  <option value="stripe">Carta, addebito automatico</option>
-                  <option value="paypal">PayPal</option>
-                </select>
-              </label>
-              <button className="btn btn-sm mt-2" style={{ border: "1px solid var(--border)" }}>
-                Salva
-              </button>
-            </form>
+            {/* Come paga non e' piu' una tendina da scegliere e salvare.
+                Chiedergli di dichiarare "carta" per poi fargli premere un
+                secondo bottone che collega la carta erano due passi per una
+                cosa sola, e in mezzo restava un contratto che diceva "carta"
+                mentre di carte non ce n'era nessuna. Adesso lo stato lo
+                racconta il fatto: o l'addebito c'e', o si paga a bonifico. */}
+            <div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>
+                Come paghi
+              </div>
+              {stripeConfigurato() && contratto.provider !== "paypal" ? (
+                <PagaConCarta
+                  apri={apriPagamentoCarta}
+                  collegata={!!contratto.providerSubscriptionId}
+                />
+              ) : (
+                <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+                  {contratto.provider === "paypal"
+                    ? "PayPal non e' ancora collegato: te lo scriviamo appena lo attiviamo. Fino ad allora le fatture si saldano con bonifico."
+                    : "Con bonifico, sui riferimenti che trovi in fattura."}
+                </p>
+              )}
+            </div>
           </div>
 
-          {contratto.provider !== "manuale" && (
-            <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>
-              {contratto.provider === "stripe" ? "La carta" : "PayPal"} non e&apos;
-              ancora collegato: te lo scriviamo appena lo attiviamo. Fino ad
-              allora le fatture si saldano con bonifico, come sempre.
+          {/* Chi e' appena tornato da Stripe ha pagato ma potrebbe non vederlo
+              ancora: l'avviso di la' e la sua schermata corrono in parallelo, e
+              a volte arriva prima lui. Meglio dirglielo che lasciargli credere
+              di aver pagato a vuoto e farlo pagare due volte. */}
+          {carta === "collegata" && (
+            <p role="status" className="mt-3 text-xs" style={{ color: "var(--ok)" }}>
+              Carta collegata. L&apos;addebito compare qui sopra appena Stripe ce
+              lo conferma, di solito in pochi secondi.
             </p>
           )}
 

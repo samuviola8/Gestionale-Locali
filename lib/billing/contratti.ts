@@ -340,6 +340,59 @@ export async function segnaAttivazioneFatturata(tenantId: string): Promise<void>
     .where(eq(tenantBilling.tenantId, tenantId));
 }
 
+// Il locale ha messo la carta: si annota chi e' di la'.
+//
+// Non tocca lo stato del contratto, ed e' voluto. Chi e' in prova e mette la
+// carta resta in prova fino a quando la prova finisce — la carta e' una
+// promessa di pagare, non un pagamento — e ad attivarlo sara' il primo
+// incasso vero. Il contrario vorrebbe dire un locale "attivo" che non ha
+// ancora versato un euro, e non e' quello che si va a leggere nel pannello
+// quando si chiede chi paga.
+export async function agganciaProvider(
+  tenantId: string,
+  dati: { provider: Provider; customerId?: string | null; subscriptionId?: string | null }
+): Promise<void> {
+  await db
+    .update(tenantBilling)
+    .set({
+      provider: dati.provider,
+      // `undefined` lascia la colonna dov'e', `null` la svuota: servono
+      // tutti e due, perche' una disdetta stacca l'abbonamento ma il cliente
+      // di la' resta — e' lo stesso a cui si rivende domani.
+      ...(dati.customerId !== undefined ? { providerCustomerId: dati.customerId } : {}),
+      ...(dati.subscriptionId !== undefined
+        ? { providerSubscriptionId: dati.subscriptionId }
+        : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
+// Il primo incasso e' arrivato: il contratto parte davvero.
+//
+// Si chiama dall'incasso e non dalla firma perche' e' li' che il rapporto
+// comincia a valere. Le date non si riscrivono se ci sono gia': un rinnovo
+// incassato a marzo non deve spostare a marzo l'inizio di un rapporto nato a
+// gennaio, o il conto degli anni non torna piu'.
+export async function attivaDaIncasso(
+  tenantId: string,
+  scadenza: Date
+): Promise<void> {
+  const c = await getContratto(tenantId);
+  if (!c || c.status === "chiuso") return;
+  await db
+    .update(tenantBilling)
+    .set({
+      status: "attivo",
+      startedAt: c.startedAt ?? new Date(),
+      trialEndsAt: null,
+      nextInvoiceAt: scadenza,
+      endedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantBilling.tenantId, tenantId));
+}
+
 // La scadenza dopo questa. Sul mensile si somma un mese vero, non trenta
 // giorni: chi firma il 31 gennaio si aspetta di pagare a fine febbraio, non
 // il 2 marzo. Quando il giorno non esiste nel mese nuovo si arretra alla fine
