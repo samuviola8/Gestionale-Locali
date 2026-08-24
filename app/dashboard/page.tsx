@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -13,6 +14,12 @@ import { STATI_ATTIVI } from "@/lib/prenotazioni";
 import { seduteAperte } from "@/lib/sedute";
 import ChecklistAvvio from "@/components/ChecklistAvvio";
 import ProblemiLocale from "@/components/ProblemiLocale";
+import ChiediTestimonianza from "@/components/ChiediTestimonianza";
+import { chiediAlGestore, COOKIE_RIMANDA } from "@/lib/recensioni";
+import {
+  inviaTestimonianza,
+  rimandaTestimonianza,
+} from "./testimonianza-actions";
 import {
   IconOrders,
   IconBill,
@@ -135,6 +142,15 @@ export default async function DashboardHome() {
       ? await problemiDelLocale(session.tenantId, modules)
       : [];
 
+  // La domanda al gestore, dopo il primo mese. Solo al titolare: e' lui che
+  // il servizio l'ha scelto, e a un turno di sala non si chiede se rifarebbe
+  // l'acquisto. Chi ha gia' risposto, o ha appena detto «non adesso», non la
+  // vede.
+  const chiediMia =
+    session.role === "owner" &&
+    !(await cookies()).get(COOKIE_RIMANDA) &&
+    (await chiediAlGestore(session.tenantId));
+
   // Come nel menu di sinistra: con piu' moduli basta averne uno acceso.
   const links: {
     href: string;
@@ -201,6 +217,14 @@ export default async function DashboardHome() {
       <ProblemiLocale problemi={problemi} />
 
       {avvio && <ChecklistAvvio avvio={avvio} />}
+
+      {chiediMia && (
+        <ChiediTestimonianza
+          nomeLocale={session.tenantName}
+          invia={inviaTestimonianza}
+          rimanda={rimandaTestimonianza}
+        />
+      )}
 
       <div
         className={

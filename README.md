@@ -544,6 +544,74 @@ chiederla per non mandare niente e' prometterla, ed e' una promessa per canale:
 un locale puo' scrivere a chi ritira e non a chi si fa consegnare. Se la mail
 non parte l'ordine vale lo stesso, come per le prenotazioni.
 
+### La firma
+
+In fondo alle pagine del cliente c'è una riga piccola: «Menu con **Comanda**»
+al tavolo, «Ordina con **Comanda**» su `/ordina` e sulla pagina dell'ordine.
+Porta alla vetrina, ed è lo stesso interruttore per tutte
+(`tenants.menu_branding`, `Impostazioni → Menu al tavolo`): quelle pagine il
+locale le presenta come sue, e chi non la vuole deve poter dire di no senza
+chiamarmi. È in coda e non fissa — chi ordina non deve averla fra i piedi — e
+non compare nel carrello né nella conferma.
+
+## Com'è andata
+
+A cose fatte si chiede al cliente com'è andata: sulla pagina dell'ordine dal
+sito quando l'ordine è chiuso, e al tavolo subito dopo l'invio — lì è una riga
+sola che si chiude, perché chi sta mangiando non deve trovarsi un questionario
+addosso. Si accende in `Impostazioni → Com'è andata` e nasce **spenta**: è una
+domanda che il locale fa ai suoi clienti, e la decide lui.
+
+Sono **due domande con due padroni**, e per questo due tabelle.
+
+| Tabella | Di chi è | Dove si legge |
+| --- | --- | --- |
+| `reviews` | del locale | `Dashboard → Recensioni`, e basta: non le pubblica nessuno |
+| `testimonials` | di Comanda | servono alla vetrina, e ci finiscono solo col consenso |
+
+La recensione del locale è legata all'ordine, **una per ordine**: è quello che
+la rende verificata — dietro c'è qualcuno che ha consumato davvero — ed è anche
+il motivo per cui non serve chiedere chi sei. Un secondo invio non ne scrive
+una seconda e non riscrive la prima. Serve al locale per accorgersi che la
+carbonara di venerdì non andava **prima** che quella frase finisca su Google, e
+a quel punto una telefonata vale più di una risposta pubblica.
+
+Le testimonianze invece sopravvivono al locale che se ne va: il legame è debole
+(`on delete set null`) e il nome è copiato accanto, così restano leggibili. Non
+si pubblica niente senza un consenso esplicito, registrato con **la data e il
+testo approvato in quel momento** — un consenso senza il testo è un ricordo — e
+la pubblicazione resta una scelta a mano: `published` nasce falso.
+
+### La testimonianza del gestore
+
+L'altra metà, e quella che conta per la vetrina: un cliente racconta com'è
+stato ordinare — «comodo, non ho telefonato» — e fa volume; un gestore racconta
+com'è lavorarci, e a un altro gestore interessa la seconda. La chiede la
+dashboard dopo il primo mese (`GIORNI_PRIMA_DI_CHIEDERE`), solo al titolare —
+a un turno di sala non si chiede se rifarebbe l'acquisto — una volta sola, e
+«non adesso» la rimanda di due mesi con un cookie. Chi ha risposto non la vede
+più.
+
+Anche qui la pubblicazione è una scelta a mano: le raccolgo tutte, `published`
+nasce falso, e in vetrina ci va quello che ha senso.
+
+### Due regole che non sono opinioni
+
+**Il link al profilo pubblico si mostra a chiunque abbia risposto, con
+qualunque voto.** Mandarci solo i contenti e tenersi le lamentele in casa si
+chiama *review gating*, ed è vietato dalle regole di Google e di Trustpilot.
+Per questo in impostazioni non c'è nessuna soglia da configurare: non è una
+dimenticanza.
+
+**Una recensione non si scrive mai al posto del cliente.** Su Google non esiste
+nemmeno il modo — l'API della scheda le fa leggere e rispondere, non scrivere —
+e comunque sarebbe una recensione falsa: pratica commerciale scorretta, non una
+scorciatoia. L'unica strada è il link, che il cliente apre col suo account.
+
+Finché le recensioni restano nella dashboard del locale sono un suo strumento
+di lavoro. Se Comanda le pubblicasse diventerebbe una piattaforma di
+recensioni, con l'obbligo di dichiarare come le verifica e il divieto di
+filtrare le negative: per questo restano dentro.
 ## Fatturazione
 
 Due mestieri diversi, due posti diversi.

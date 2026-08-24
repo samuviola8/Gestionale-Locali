@@ -240,3 +240,11 @@ export function IconAiuto(p: Props) {
     </Base>
   );
 }
+
+export function IconStella(p: Props) {
+  return (
+    <Base {...p}>
+      <path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z" />
+    </Base>
+  );
+}

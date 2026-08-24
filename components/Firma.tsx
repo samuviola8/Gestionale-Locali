@@ -51,13 +51,20 @@ export default function Firma({
   );
 }
 
-// La riga in fondo al menu del cliente. Piccola e in coda alla lista, non
-// fissa: chi ordina non deve averla fra i piedi. Porta alla vetrina, dove chi
-// e' curioso trova il prodotto per intero — e la firma.
+// La riga in fondo alla pagina del cliente. Piccola e in coda, non fissa: chi
+// ordina non deve averla fra i piedi. Porta alla vetrina, dove chi e' curioso
+// trova il prodotto per intero — e la firma.
 //
-// Si spegne per locale (`tenants.menu_branding`): il menu il locale lo
-// presenta come suo, e chi non la vuole deve poter dire di no senza chiamarmi.
-export function MarchioMenu() {
+// Si spegne per locale (`tenants.menu_branding`): il menu, e il sito da cui si
+// ordina, il locale li presenta come suoi, e chi non la vuole deve poter dire
+// di no senza chiamarmi.
+export function MarchioMenu({
+  /** Il verbo di questa pagina: al tavolo si sfoglia un menu, da /ordina si
+      ordina. La riga e' la stessa firma, ma dice la cosa giusta. */
+  cosa = "Menu",
+}: {
+  cosa?: string;
+}) {
   const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "localhost:3000";
   const proto = process.env.NODE_ENV === "production" ? "https" : "http";
   const vetrina = root.includes("localhost")
@@ -75,7 +82,7 @@ export function MarchioMenu() {
         rel="noreferrer"
         style={{ color: "inherit" }}
       >
-        Menu con <span className="marchio-link font-medium">Comanda</span>
+        {cosa} con <span className="marchio-link font-medium">Comanda</span>
       </a>
     </p>
   );

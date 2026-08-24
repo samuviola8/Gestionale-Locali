@@ -386,6 +386,28 @@ export function guidaDelTab(
         ],
       };
 
+    case "recensioni":
+      return {
+        titolo: "Recensioni",
+        passi: [
+          {
+            titolo: "Quello che vi hanno risposto",
+            testo:
+              "Un voto da una a cinque stelle e, quando ne hanno voglia, due righe. Arrivano da chi ordina dal sito quando l'ordine e' chiuso e dal tavolo dopo l'invio, una sola per ordine: dietro ognuna c'e' qualcuno che ha consumato davvero.",
+            punti: [
+              "Le leggete solo voi: non finiscono su nessuna pagina pubblica, ne' nostra ne' vostra.",
+              "Aprendo la pagina si segnano lette. Il testo resta dov'e': sparisce solo il pallino.",
+              "Una stella bassa non e' una brutta figura, e' un vantaggio: l'avete saputa prima che la stessa persona la scrivesse da un'altra parte. Se ha lasciato il nome e il numero, chiamarla e' la risposta migliore.",
+            ],
+          },
+          {
+            titolo: "Se non arriva niente",
+            testo:
+              "Controllate in «Impostazioni → Com'e' andata» che la domanda sia accesa: nasce spenta. Li' si mette anche il link al vostro profilo Google o Trustpilot, che viene proposto a chi ha appena risposto.",
+          },
+        ],
+      };
+
     case "rubrica":
       return {
         titolo: "Rubrica",
@@ -643,6 +665,16 @@ export function guidaDelTab(
               "Le comande escono appena l'ordine arriva, non quando si paga: chi prepara deve partire subito. Ogni canale ha il suo interruttore.",
             punti: [
               "In fondo alla pagina c'e' «Postazione di stampa»: il computer attaccato alla stampante deve avere questa pagina aperta e i reparti giusti selezionati, o le comande restano ferme in coda — e se restano ferme, qui te lo diciamo.",
+            ],
+          },
+          {
+            titolo: "Com'e' andata",
+            testo:
+              "A cose fatte al cliente si chiede un voto: sulla pagina del suo ordine dal sito quando l'ordine e' chiuso, e al tavolo dopo l'invio. Nasce spenta, e chi risponde lo fa una volta sola per ordine. Le leggete solo voi, in «Recensioni».",
+            punti: [
+              "Servono a voi, non alla vetrina: una stella bassa qui arriva prima che la stessa frase finisca su Google, e a quel punto una telefonata vale piu' di una risposta pubblica.",
+              "Nel campo del link mettete l'indirizzo del vostro profilo Google o Trustpilot: chi ha risposto se lo trova subito dopo e la scrive li' col suo account. Nessuno puo' scriverla al posto suo — su Google non esiste proprio il modo, e sarebbe comunque una recensione falsa.",
+              "Il link lo vede chiunque abbia risposto, anche chi vi ha dato due stelle. Mandarci solo i contenti e' vietato dalle regole di Google e Trustpilot, quindi qui non c'e' nessuna soglia da impostare.",
             ],
           },
           {

@@ -78,6 +78,15 @@ export const tenants = pgTable("tenants", {
   // regala al primo sopracciglio alzato.
   menuBranding: boolean("menu_branding").notNull().default(true),
 
+  // Se al cliente, a cose fatte, si chiede com'e' andata. Nasce spenta: e'
+  // una domanda che il locale fa ai suoi clienti, e la decide lui.
+  reviewsEnabled: boolean("reviews_enabled").notNull().default(false),
+  // Il profilo pubblico dove chi vuole puo' lasciarla anche fuori: Google,
+  // Trustpilot, TripAdvisor. Il link lo si mostra a chiunque, e a prescindere
+  // dal voto — mandarci solo i contenti si chiama review gating, e Google e
+  // Trustpilot lo vietano scritto nero su bianco. Vuoto = nessun rimando.
+  reviewUrl: text("review_url"),
+
   // Durata della sessione tavolo aperta scansionando il QR.
   tableSessionMinutes: integer("table_session_minutes").notNull().default(120),
 
@@ -1243,3 +1252,79 @@ export const tenantCustomPacks = pgTable("tenant_custom_packs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// --- Recensioni e testimonianze ---------------------------------------------
+//
+// Due cose diverse con due padroni diversi, e per questo due tabelle.
+//
+// `reviews` e' del locale: com'e' andata la sua cena, il suo asporto, il suo
+// ritiro. La legge lui in dashboard e non la pubblica nessuno — e' lo strumento
+// per accorgersi di cosa non va *prima* che diventi una stella su Google. Vale
+// una per ordine, e l'ordine c'e' davvero: e' una recensione verificata, che
+// e' esattamente la cosa che le vetrine pubbliche non sanno garantire.
+//
+// `testimonials` e' di Comanda: serve a me per la vetrina. Sopravvive al locale
+// che se ne va — per questo il legame e' debole e il nome resta scritto qui — e
+// non si pubblica niente senza un consenso esplicito, che si registra con la
+// data e col testo approvato in quel momento.
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    // L'ordine da cui arriva. Una recensione per ordine: e' il lucchetto che
+    // tiene fuori chi ne scriverebbe venti, e la prova che ha consumato.
+    orderId: uuid("order_id")
+      .notNull()
+      .unique()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    channel: text("channel").notNull().default("tavolo"),
+    // Da 1 a 5. Il testo e' facoltativo: la stella la lasciano tutti, due
+    // righe le scrive uno su dieci, e obbligarlo vuol dire perdere anche la
+    // stella.
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    // Quando lo staff l'ha letta. Serve a far sparire dal pallino quelle
+    // gia' viste, non a nascondere niente.
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("reviews_tenant_idx").on(table.tenantId, table.createdAt)]
+);
+
+export const testimonials = pgTable(
+  "testimonials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Da quale locale arriva. Debole di proposito: se il locale chiude, la
+    // testimonianza resta — e resta leggibile, perche' il nome e' copiato qui
+    // accanto invece di essere solo un riferimento.
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
+    tenantName: text("tenant_name"),
+    // "cliente" o "gestore". Sono due voci diverse e valgono cose diverse:
+    // il cliente racconta com'e' stato ordinare, il gestore racconta com'e'
+    // lavorarci. In vetrina la seconda pesa dieci volte la prima.
+    role: text("role").notNull().default("cliente"),
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    // Come firmarla, se e' stato dato il permesso di pubblicarla. Nome di
+    // battesimo, iniziali, quello che ha scritto lui.
+    signature: text("signature"),
+    // Il consenso: quando e' stato dato, e su quale testo. Senza data e senza
+    // testo non e' un consenso, e' un ricordo.
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    consentText: text("consent_text"),
+    // Scelta mia, a mano: raccolgo tutto, pubblico quello che ha senso.
+    published: boolean("published").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("testimonials_role_idx").on(table.role, table.createdAt)]
+);

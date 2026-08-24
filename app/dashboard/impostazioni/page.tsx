@@ -32,6 +32,7 @@ import {
   salvaChiamate,
   salvaChiusure,
   salvaMenuAlTavolo,
+  salvaRecensioni,
   salvaOrari,
   salvaConsegna,
   salvaOrdiniWeb,
@@ -1007,6 +1008,48 @@ export default async function ImpostazioniPage() {
         </section>
       )}
 
+      {/* --- Com'è andata --- */}
+      <section className="card p-4">
+        <div className="text-sm font-medium">Com&apos;è andata</div>
+        <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+          La domanda che si fa a cose fatte: a chi ha ordinato dal sito quando
+          l&apos;ordine è chiuso, e al tavolo dopo l&apos;invio.
+        </p>
+
+        <form action={salvaRecensioni} className="mt-3">
+          <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+            <Interruttore
+              nome="recensioni"
+              etichetta="Chiedi una recensione"
+              descrizione="Cinque stelle e due righe facoltative, una sola volta per ordine. Le leggete solo voi, qui in dashboard: servono a sapere cosa non va prima che lo scriva qualcun altro da un'altra parte."
+              acceso={locale.reviewsEnabled}
+            />
+          </div>
+
+          <Field
+            label="Dove lasciarla anche fuori"
+            hint="Il link al vostro profilo Google, Trustpilot o TripAdvisor. Chi ha risposto se lo trova subito dopo, e ci arriva con il suo account: la recensione la scrive lui, nessuno può scriverla al posto suo. Lasciate vuoto per non proporlo."
+            className="mt-3"
+          >
+            <input
+              name="linkrecensioni"
+              type="url"
+              defaultValue={locale.reviewUrl ?? ""}
+              placeholder="https://g.page/r/…"
+              className="input"
+            />
+          </Field>
+
+          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+            Il link lo vede chiunque abbia risposto, qualunque voto abbia dato.
+            Mandarci solo i contenti e tenersi le lamentele in casa è vietato
+            dalle regole di Google e di Trustpilot, e non è una cosa che si può
+            impostare qui.
+          </p>
+
+          <button className="btn btn-primary btn-sm mt-3">Salva</button>
+        </form>
+      </section>
       {/* --- Chiamate al tavolo --- */}
       {modules.waiter_call && (
         <section className="card p-4">

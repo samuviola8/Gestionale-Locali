@@ -4,6 +4,10 @@ import { localeDalSito, ordinePerToken } from "@/lib/ordini-web";
 import { formatKm, formatPrice } from "@/lib/format";
 import { getChannel } from "@/lib/channels";
 import StatoLive from "@/components/ordina/StatoLive";
+import { MarchioMenu } from "@/components/Firma";
+import Recensione from "@/components/Recensione";
+import { daChiedere } from "@/lib/recensioni";
+import { lasciaRecensione, lasciaTestimonianza } from "../actions";
 import { STILE_PRENOTA } from "@/components/prenota/stile";
 import { STILE_ORDINA } from "@/components/ordina/stile";
 
@@ -36,6 +40,13 @@ export default async function OrdinePage({
   const canale = getChannel(ordine.canale);
   const domicilio = ordine.canale === "domicilio";
   const imponibile = ordine.totaleCents - ordine.consegnaCents;
+
+  // La domanda si fa a cose fatte, e non un minuto prima: a un ordine ancora
+  // in preparazione non si chiede com'e' andata, perche' non e' ancora andata.
+  const recensione =
+    ordine.fase === "chiuso"
+      ? await daChiedere(locale.tenantId, ordine.id)
+      : { chiedi: false, url: null, dove: null };
 
   return (
     <main className="pr">
@@ -172,6 +183,24 @@ export default async function OrdinePage({
           Tieni da parte questo indirizzo: è l&apos;unico modo per ritrovare
           l&apos;ordine. Se ci hai lasciato la mail, ce l&apos;hai anche lì.
         </p>
+
+        {recensione.chiedi && (
+          <Recensione
+            nomeLocale={locale.nome}
+            url={recensione.url}
+            dove={recensione.dove}
+            salva={async (voto, testo) => {
+              "use server";
+              return lasciaRecensione(token, voto, testo);
+            }}
+            salvaComanda={async (voto, testo, firma, pubblicabile) => {
+              "use server";
+              return lasciaTestimonianza(token, voto, testo, firma, pubblicabile);
+            }}
+          />
+        )}
+
+        {locale.marchio && <MarchioMenu cosa="Ordina" />}
       </div>
     </main>
   );

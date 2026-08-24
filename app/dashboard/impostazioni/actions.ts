@@ -21,6 +21,7 @@ import {
 } from "@/lib/ordini-web";
 import { leggiFasce, type FasciaConsegna } from "@/lib/consegna";
 import { getTenantModules } from "@/lib/modules";
+import { linkRecensioni } from "@/lib/recensioni";
 import { mittenteLocale } from "@/lib/prenotazioni-mail";
 import { inviaMailLocale, provaMailLocale } from "@/lib/mail";
 import { cifra, cifraturaDisponibile } from "@/lib/segreti";
@@ -362,6 +363,24 @@ export async function salvaMenuAlTavolo(formData: FormData): Promise<void> {
   await db
     .update(tenants)
     .set({ menuBranding: formData.get("marchio") === "on" })
+    .where(eq(tenants.id, tenantId));
+  revalidatePath("/dashboard/impostazioni");
+}
+
+// Se ai clienti, a cose fatte, si chiede com'e' andata — e dove mandarli se
+// vogliono lasciarla anche fuori.
+//
+// Il link vale per tutti quelli che rispondono, con qualunque voto: mostrarlo
+// solo ai contenti si chiama review gating, e Google e Trustpilot lo vietano.
+// Per questo qui non c'e' nessuna soglia da impostare: non e' una dimenticanza.
+export async function salvaRecensioni(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  await db
+    .update(tenants)
+    .set({
+      reviewsEnabled: formData.get("recensioni") === "on",
+      reviewUrl: linkRecensioni(formData.get("linkrecensioni")),
+    })
     .where(eq(tenants.id, tenantId));
   revalidatePath("/dashboard/impostazioni");
 }

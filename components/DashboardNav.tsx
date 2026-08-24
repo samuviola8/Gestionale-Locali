@@ -16,6 +16,7 @@ import {
   IconCalendar,
   IconRubrica,
   IconSala,
+  IconStella,
   IconSettings,
   IconFattura,
 } from "@/components/icons";
@@ -74,6 +75,11 @@ const items: {
     label: "Rubrica",
     Icon: IconRubrica,
     module: "customers",
+  },
+  {
+    href: "/dashboard/recensioni",
+    label: "Recensioni",
+    Icon: IconStella,
   },
   { href: "/dashboard/analytics", label: "Analytics", Icon: IconChart },
   { href: "/dashboard/menu", label: "Menu", Icon: IconMenu },

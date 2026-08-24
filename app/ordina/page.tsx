@@ -15,6 +15,7 @@ import { raggioMassimo } from "@/lib/consegna";
 import { getChannel, type Channel } from "@/lib/channels";
 import { pilloleGiorni, type GiornoScelta } from "@/lib/format";
 import ModuloOrdine from "@/components/ordina/ModuloOrdine";
+import { MarchioMenu } from "@/components/Firma";
 import { STILE_PRENOTA } from "@/components/prenota/stile";
 import { STILE_ORDINA } from "@/components/ordina/stile";
 
@@ -186,6 +187,8 @@ export default async function OrdinaPage() {
             </div>
           )}
         </footer>
+
+        {ctx.marchio && <MarchioMenu cosa="Ordina" />}
       </div>
     </main>
   );

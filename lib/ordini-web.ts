@@ -618,6 +618,9 @@ export type ContestoOrdineWeb = {
   // cliente diventa obbligatorio: e' il modo in cui gli arriva la conferma, e
   // chiederlo "se vuoi" vorrebbe dire prometterla e non mandarla.
   mailAttiva: boolean;
+  // La riga «Ordina con Comanda» in fondo: e' la stessa spunta del menu
+  // (`tenants.menu_branding`), perche' e' la stessa firma sullo stesso sito.
+  marchio: boolean;
 };
 
 export async function contestoOrdineWeb(): Promise<ContestoOrdineWeb | null> {
@@ -641,6 +644,7 @@ export async function contestoOrdineWeb(): Promise<ContestoOrdineWeb | null> {
       smtpHost: tenants.smtpHost,
       smtpUser: tenants.smtpUser,
       smtpPass: tenants.smtpPass,
+      menuBranding: tenants.menuBranding,
     })
     .from(tenants)
     .where(eq(tenants.id, tenant.id))
@@ -669,6 +673,7 @@ export async function contestoOrdineWeb(): Promise<ContestoOrdineWeb | null> {
       ? row.webOrdersPausedUntil
       : null,
     mailAttiva: !!(row.smtpHost && row.smtpUser && row.smtpPass),
+    marchio: row.menuBranding,
   };
 }
 
@@ -922,6 +927,7 @@ export type LocaleDelSito = {
   logoUrl: string | null;
   telefono: string | null;
   indirizzo: string | null;
+  marchio: boolean;
 };
 
 export async function localeDalSito(): Promise<LocaleDelSito | null> {
@@ -931,6 +937,7 @@ export async function localeDalSito(): Promise<LocaleDelSito | null> {
   const [row] = await db
     .select({
       phone: tenants.phone,
+      menuBranding: tenants.menuBranding,
       address: tenants.address,
       city: tenants.city,
     })
@@ -945,6 +952,7 @@ export async function localeDalSito(): Promise<LocaleDelSito | null> {
     telefono: row?.phone ?? null,
     indirizzo:
       [row?.address, row?.city].filter(Boolean).join(", ") || null,
+    marchio: row?.menuBranding ?? true,
   };
 }
 

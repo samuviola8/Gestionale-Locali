@@ -26,7 +26,8 @@ import { isChannel, type Channel } from "@/lib/channels";
 import type { IncomingItem } from "@/lib/order-create";
 import { formatKm, formatPrice } from "@/lib/format";
 import { troppeRichieste } from "@/lib/limite";
-import { NOME_COOKIE } from "@/lib/ordini-web";
+import { NOME_COOKIE, localeDalSito } from "@/lib/ordini-web";
+import { salvaRecensione, salvaTestimonianza } from "@/lib/recensioni";
 
 // Le azioni della pagina pubblica d'ordinazione. Sono aperte a chiunque
 // conosca l'indirizzo del locale: qui dentro non ci si fida di niente di
@@ -39,6 +40,9 @@ const FINESTRA_MS = 30 * 60 * 1000;
 // aggiunta al carrello: la mano piu' larga e' li' perche' e' li' che si usa.
 const LIMITE_INVII = 5;
 const LIMITE_STIME = 40;
+// Le recensioni: una per ordine la tiene il database, ma un indirizzo che ne
+// prova venti in un'ora sta tentando qualcos'altro.
+const LIMITE_RECENSIONI = 10;
 
 async function chiChiama(): Promise<string> {
   const h = await headers();
@@ -463,4 +467,65 @@ export async function inviaOrdine(dati: DatiOrdine): Promise<EsitoInvio> {
   // deve esserci gia' al primo sguardo.
   revalidatePath("/dashboard/orders");
   return { ok: true, token: esito.token };
+}
+
+// --- Com'e' andata ----------------------------------------------------------
+//
+// La chiave e' il token dell'ordine: chi ce l'ha ha ordinato davvero, ed e'
+// per questo che la recensione e' verificata. Non serve nessun accesso, e non
+// si puo' recensire un ordine che non e' tuo.
+
+export async function lasciaRecensione(
+  token: string,
+  voto: number,
+  testo: string
+): Promise<{ ok: true } | { ok: false; errore: string }> {
+  const locale = await localeDalSito();
+  if (!locale) return { ok: false, errore: "Locale non trovato." };
+
+  // Una raffica di voti da uno stesso indirizzo non e' un cliente contento.
+  if (troppeRichieste(`rec:${await chiChiama()}`, LIMITE_RECENSIONI, 60 * 60 * 1000)) {
+    return { ok: false, errore: "Hai gia' scritto. Riprova piu' tardi." };
+  }
+
+  const ordine = await ordinePerToken(locale.tenantId, token);
+  if (!ordine) return { ok: false, errore: "Ordine non trovato." };
+
+  return await salvaRecensione({
+    tenantId: locale.tenantId,
+    orderId: ordine.id,
+    canale: ordine.canale,
+    voto,
+    testo,
+  });
+}
+
+export async function lasciaTestimonianza(
+  token: string,
+  voto: number,
+  testo: string,
+  firma: string,
+  pubblicabile: boolean
+): Promise<{ ok: true } | { ok: false; errore: string }> {
+  const locale = await localeDalSito();
+  if (!locale) return { ok: false, errore: "Locale non trovato." };
+
+  if (troppeRichieste(`tes:${await chiChiama()}`, LIMITE_RECENSIONI, 60 * 60 * 1000)) {
+    return { ok: false, errore: "Hai gia' scritto. Riprova piu' tardi." };
+  }
+
+  // Il token serve lo stesso: e' la prova che dietro c'e' un ordine vero, e
+  // tiene fuori chi riempirebbe la vetrina di frasi scritte da nessuno.
+  const ordine = await ordinePerToken(locale.tenantId, token);
+  if (!ordine) return { ok: false, errore: "Ordine non trovato." };
+
+  return await salvaTestimonianza({
+    tenantId: locale.tenantId,
+    nomeLocale: locale.nome,
+    ruolo: "cliente",
+    voto,
+    testo,
+    firma,
+    pubblicabile,
+  });
 }

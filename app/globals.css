@@ -728,3 +728,81 @@ input[type="radio"]:disabled {
   text-underline-offset: 2px;
 }
 .dark .marchio-link { color: #7db3ff; }
+
+/* --- «Com'è andata?»: il riquadro delle recensioni -------------------------
+   Sta in due posti molto diversi — la pagina dell'ordine dal sito e il menu
+   al tavolo — quindi vive qui e non nei fogli di una delle due, e usa solo
+   variabili di tema: quello che scrive il locale sui suoi colori, lo segue. */
+.rec {
+  margin-top: 24px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 16px;
+}
+.rec-titolo { font-size: 16px; font-weight: 600; }
+.rec-detto {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.rec-stelle { display: flex; gap: 4px; margin-top: 10px; }
+/* Grandi abbastanza da prenderle col pollice al primo colpo: una stella da
+   sbagliare è una recensione che non arriva. */
+.rec-stella {
+  font-size: 30px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--border);
+  transition: color .12s, transform .12s;
+}
+.rec-stella[data-piena="si"] { color: #f0a500; }
+.rec-stella:active { transform: scale(.9); }
+.rec-tasti {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.rec-salta {
+  font-size: 12px;
+  text-decoration: underline;
+  color: var(--muted);
+}
+.rec-altra {
+  display: block;
+  margin-top: 16px;
+  font-size: 13px;
+  text-decoration: underline;
+  color: var(--muted);
+}
+.rec-comanda {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.rec-consenso {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.rec-consenso input { margin-top: 2px; }
+.rec-errore { margin-top: 10px; font-size: 12px; color: var(--danger); }
+/* La riga chiusa, quella del tavolo: un invito, non un modulo. */
+.rec-invito {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}

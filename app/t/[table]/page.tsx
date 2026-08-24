@@ -12,7 +12,14 @@ import TableStatus from "@/components/TableStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import { MarchioMenu } from "@/components/Firma";
 import GuidaTavolo from "@/components/GuidaTavolo";
-import { createOrder, callWaiter, chiudiCondiviso } from "./order-actions";
+import {
+  callWaiter,
+  chiudiCondiviso,
+  createOrder,
+  recensisciDalTavolo,
+  testimoniaDalTavolo,
+} from "./order-actions";
+import { dovePorta } from "@/lib/recensioni";
 
 // La pagina del tavolo non si ingrandisce: e' gia' fatta per il telefono, e
 // una pizzicata mentre si scorre lascia il menu storto a meta' schermo. Vale
@@ -143,6 +150,13 @@ export default async function TablePage({
         callWaiter={callWaiter}
         chiudiCondiviso={chiudiCondiviso}
         ricordo={ricordo}
+        recensioni={
+          t.reviewsEnabled
+            ? { url: t.reviewUrl, dove: dovePorta(t.reviewUrl) }
+            : undefined
+        }
+        recensisci={recensisciDalTavolo}
+        testimonia={testimoniaDalTavolo}
       />
       <TableStatus tableNumber={tableNumber} splitBill={modules.split_bill} />
 

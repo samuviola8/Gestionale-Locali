@@ -20,6 +20,10 @@ export type Tenant = {
   menuSkin: string;
   // Se in fondo al menu compare la riga di chi ha fatto il software.
   menuBranding: boolean;
+  // Se a cose fatte al cliente si chiede com'e' andata, e dove mandarlo se
+  // vuole lasciarla anche su un profilo pubblico.
+  reviewsEnabled: boolean;
+  reviewUrl: string | null;
   // Come si annuncia una chiamata dal tavolo sugli schermi dello staff.
   callSound: string;
   callBlink: boolean;
@@ -42,6 +46,8 @@ const columns = {
   coverChargeCents: tenants.coverChargeCents,
   menuSkin: tenants.menuSkin,
   menuBranding: tenants.menuBranding,
+  reviewsEnabled: tenants.reviewsEnabled,
+  reviewUrl: tenants.reviewUrl,
   callSound: tenants.callSound,
   callBlink: tenants.callBlink,
 };
@@ -52,10 +58,16 @@ type Row = {
     | "serviceBlocked"
     | "callBlink"
     | "menuBranding"
+    | "reviewsEnabled"
     ? boolean
     : K extends "tableSessionMinutes" | "coverChargeCents"
       ? number
-      : K extends "brandColor" | "brandAccent" | "logoUrl" | "blockedReason"
+      : K extends
+            | "brandColor"
+            | "brandAccent"
+            | "logoUrl"
+            | "blockedReason"
+            | "reviewUrl"
         ? string | null
         : string;
 };
@@ -73,6 +85,8 @@ function toTenant(row: Row): Tenant {
     coverChargeCents: row.coverChargeCents,
     menuSkin: row.menuSkin,
     menuBranding: row.menuBranding,
+    reviewsEnabled: row.reviewsEnabled,
+    reviewUrl: row.reviewUrl,
     callSound: row.callSound,
     callBlink: row.callBlink,
     branding: {

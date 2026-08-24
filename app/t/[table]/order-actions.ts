@@ -8,12 +8,16 @@ import { requireTableSession } from "@/lib/table-session";
 import { getTenantModules } from "@/lib/modules";
 import { createOrderRows, type IncomingItem } from "@/lib/order-create";
 import { staccaCondiviso } from "@/lib/condiviso";
+import { salvaRecensione, salvaTestimonianza } from "@/lib/recensioni";
 
 export async function createOrder(
   tableNumber: number,
   items: IncomingItem[],
   partySize?: number
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; orderId?: string }> {
+  // `orderId` torna indietro perche' la pagina, subito dopo, puo' chiedere
+  // com'e' andata: e' l'unico modo che ha di dire a quale ordine si riferisce
+  // la risposta. Senza, la domanda al tavolo non saprebbe cosa recensire.
   const tenant = await getTenantFromHost();
   if (!tenant || tenant.suspended || tenant.serviceBlocked) return { ok: false };
   if (!Number.isInteger(tableNumber) || tableNumber <= 0) return { ok: false };
@@ -74,4 +78,60 @@ export async function callWaiter(
 
   await db.insert(waiterCalls).values({ tenantId: tenant.id, tableNumber });
   return { ok: true };
+}
+
+// --- Com'e' andata, al tavolo ------------------------------------------------
+//
+// Si chiede dopo l'invio, ed e' una riga sola che si chiude: chi sta mangiando
+// non deve trovarsi un questionario addosso. La chiave e' la sessione del
+// tavolo, la stessa con cui si ordina — chi puo' mettere una consumazione sul
+// conto puo' anche dire com'e' andata.
+
+export async function recensisciDalTavolo(
+  tableNumber: number,
+  orderId: string,
+  voto: number,
+  testo: string
+): Promise<{ ok: true } | { ok: false; errore: string }> {
+  const tenant = await getTenantFromHost();
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) {
+    return { ok: false, errore: "Locale non trovato." };
+  }
+  if (!(await requireTableSession(tenant.id, tableNumber))) {
+    return { ok: false, errore: "Sessione scaduta: riscansiona il QR." };
+  }
+
+  return salvaRecensione({
+    tenantId: tenant.id,
+    orderId,
+    canale: "tavolo",
+    voto,
+    testo,
+  });
+}
+
+export async function testimoniaDalTavolo(
+  tableNumber: number,
+  voto: number,
+  testo: string,
+  firma: string,
+  pubblicabile: boolean
+): Promise<{ ok: true } | { ok: false; errore: string }> {
+  const tenant = await getTenantFromHost();
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) {
+    return { ok: false, errore: "Locale non trovato." };
+  }
+  if (!(await requireTableSession(tenant.id, tableNumber))) {
+    return { ok: false, errore: "Sessione scaduta: riscansiona il QR." };
+  }
+
+  return salvaTestimonianza({
+    tenantId: tenant.id,
+    nomeLocale: tenant.name,
+    ruolo: "cliente",
+    voto,
+    testo,
+    firma,
+    pubblicabile,
+  });
 }
