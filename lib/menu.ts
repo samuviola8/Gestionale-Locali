@@ -1,4 +1,5 @@
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import type { Channel } from "@/lib/channels";
 import { db } from "@/lib/db";
 import {
   menuCategories,
@@ -28,6 +29,11 @@ export type MenuProduct = {
   acceptsNote: boolean;
   // Si serve in bottiglia: prima di ordinarlo si chiede quanti calici portare.
   requiresGlasses: boolean;
+  // Se esce dal locale. Il cocktail versato non viaggia, la birra alla spina
+  // nemmeno: quello che resta in sala si segna qui, e le pagine di asporto e
+  // domicilio non lo mostrano nemmeno.
+  takeawayAvailable: boolean;
+  deliveryAvailable: boolean;
   // In cima alla cassa al banco. Non cambia niente lato cliente.
   pinned: boolean;
   // Valorizzata solo dalla ricerca: fuori dalla propria sezione, una riga
@@ -94,9 +100,38 @@ export async function getMenu(tenantId: string): Promise<MenuCategory[]> {
         variants: byProduct.get(p.id) ?? [],
         acceptsNote: p.acceptsNote,
         requiresGlasses: p.requiresGlasses,
+        takeawayAvailable: p.takeawayAvailable,
+        deliveryAvailable: p.deliveryAvailable,
         pinned: p.pinned,
       })),
   }));
+}
+
+// Il menu di piu' canali insieme: serve alla pagina pubblica, che li tiene
+// tutti e due in memoria e cambia elenco quando il cliente passa da "ritiro" a
+// "consegna". Ogni prodotto si porta dietro le sue due spunte, cosi' il
+// passaggio non costa un altro viaggio al server.
+export function perCanali(
+  menu: MenuCategory[],
+  canali: Channel[]
+): MenuCategory[] {
+  // Le due spunte dicono cosa **esce** dal locale: dentro — al tavolo, al banco
+  // — si serve tutto, e un canale senza restrizioni non toglie niente.
+  const esce = (p: MenuProduct, canale: Channel) =>
+    canale === "asporto"
+      ? p.takeawayAvailable
+      : canale === "domicilio"
+        ? p.deliveryAvailable
+        : true;
+
+  return menu
+    .map((c) => ({
+      ...c,
+      products: c.products.filter(
+        (p) => p.available && canali.some((k) => esce(p, k))
+      ),
+    }))
+    .filter((c) => c.products.length > 0);
 }
 
 // --- Backoffice: il menu si sfoglia una categoria per volta -----------------
@@ -251,6 +286,8 @@ async function conVarianti(
     variants: byProduct.get(p.id) ?? [],
     acceptsNote: p.acceptsNote,
     requiresGlasses: p.requiresGlasses,
+    takeawayAvailable: p.takeawayAvailable,
+    deliveryAvailable: p.deliveryAvailable,
     pinned: p.pinned,
     categoryId: p.categoryId,
   }));

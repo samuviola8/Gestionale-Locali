@@ -5,9 +5,8 @@ import {
   dataISO,
   giorniPrenotabili,
 } from "@/lib/prenotazioni";
-import ModuloPrenotazione, {
-  type GiornoScelta,
-} from "@/components/prenota/ModuloPrenotazione";
+import { pilloleGiorni } from "@/lib/format";
+import ModuloPrenotazione from "@/components/prenota/ModuloPrenotazione";
 import { STILE_PRENOTA } from "@/components/prenota/stile";
 
 // Prenotazione di un tavolo dal sito del locale. E' una pagina pubblica: ci si
@@ -24,40 +23,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-function scelteGiorno(giorni: Date[], adesso: Date): GiornoScelta[] {
-  return giorni.map((d) => {
-    const diff = Math.round(
-      (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() -
-        new Date(
-          adesso.getFullYear(),
-          adesso.getMonth(),
-          adesso.getDate()
-        ).getTime()) /
-        86400000
-    );
-    return {
-      iso: dataISO(d),
-      nome:
-        diff === 0
-          ? "Oggi"
-          : diff === 1
-            ? "Domani"
-            : d.toLocaleDateString("it-IT", { weekday: "short" }),
-      numero: String(d.getDate()),
-      mese: d.toLocaleDateString("it-IT", { month: "short" }).replace(".", ""),
-    };
-  });
-}
-
 export default async function PrenotaPage() {
   const ctx = await contestoPrenotazione();
   if (!ctx) notFound();
 
   const adesso = new Date();
-  const giorni = scelteGiorno(
-    giorniPrenotabili(ctx.orari, adesso, ctx.cfg),
-    adesso
-  );
+  const giorni = pilloleGiorni(giorniPrenotabili(ctx.orari, adesso, ctx.cfg), adesso);
   const ultimo = new Date(
     adesso.getFullYear(),
     adesso.getMonth(),

@@ -50,16 +50,11 @@ export async function createCounterOrder(
     return { ok: false };
   }
 
-  const esito = await createOrderRows(
-    session.tenantId,
-    null,
-    items,
-    modules,
-    undefined,
+  const esito = await createOrderRows(session.tenantId, null, items, modules, {
     channel,
     cliente,
-    stampa.comanda
-  );
+    stampaComanda: stampa.comanda,
+  });
   if (!esito.ok) return { ok: false };
 
   if (stampa.scontrino) {

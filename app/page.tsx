@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { slugFromHost } from "@/lib/tenant-host";
 import { getTenant } from "@/lib/tenants";
 import { MODULES, getTenantModules } from "@/lib/modules";
+import { contestoOrdineWeb } from "@/lib/ordini-web";
 import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
 import Scena from "@/components/landing/Scena";
@@ -63,6 +64,9 @@ export default async function Home() {
     // Cosa puo' fare chi arriva sul sito del locale dipende dai moduli accesi:
     // dove si prenota, la prenotazione e' la ragione per cui uno e' finito qui.
     const moduli = await getTenantModules(tenant.id);
+    // E dove si ordina, il tasto per ordinare: il contesto torna null da solo
+    // quando il locale dal sito non vende, e allora il tasto non esiste.
+    const ordini = await contestoOrdineWeb();
 
     return (
       <main className="mx-auto max-w-md px-6 py-20 text-center">
@@ -83,6 +87,28 @@ export default async function Home() {
             <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
               Scegli quante persone siete, il giorno e l&apos;ora. Vedi solo gli
               orari con un tavolo davvero libero.
+            </p>
+          </div>
+        )}
+
+        {ordini && (
+          <div className="mt-6">
+            <a
+              href="/ordina"
+              className={
+                moduli.reservations ? "btn w-full" : "btn btn-primary w-full"
+              }
+            >
+              {ordini.canali.includes("domicilio")
+                ? ordini.canali.includes("asporto")
+                  ? "Ordina: ritiro o consegna"
+                  : "Ordina a domicilio"
+                : "Ordina e passa a ritirare"}
+            </a>
+            <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+              {ordini.sospesoFino
+                ? "Stasera non prendiamo altri ordini dal sito: riaprono domani."
+                : "Scegli dal menu e l'ora. Gli orari che vedi sono quelli in cui la cucina ce la fa davvero."}
             </p>
           </div>
         )}

@@ -222,17 +222,27 @@ async function google(q: string, ctx: Contesto): Promise<Suggerimento[]> {
     .filter((s) => s.via);
 }
 
-// Dove sta un locale, dal suo indirizzo. Si chiama una volta sola nella vita
-// del locale e il risultato si salva: e' una richiesta che non ha senso
-// ripetere a ogni tasto premuto da un cassiere.
+// Le coordinate di un indirizzo scritto per esteso: quello del locale, che si
+// cerca una volta sola nella sua vita, e quello del cliente che ordina a
+// domicilio, da cui escono la distanza e quindi il costo di consegna.
+//
+// `vicino` sposta la ricerca intorno a un punto, e per la consegna non e' un
+// dettaglio: "Via Roma 12" esiste in ogni comune d'Italia, e prendere quella
+// del comune sbagliato vuol dire rispondere "fuori zona" a un cliente che sta
+// a due isolati.
 export async function geolocalizza(
-  indirizzo: string
+  indirizzo: string,
+  vicino?: { lat: number; lon: number } | null
 ): Promise<{ lat: number; lon: number } | null> {
   if (!indirizzo.trim()) return null;
   try {
     const url = new URL("https://photon.komoot.io/api/");
     url.searchParams.set("q", indirizzo);
     url.searchParams.set("limit", "1");
+    if (vicino) {
+      url.searchParams.set("lat", String(vicino.lat));
+      url.searchParams.set("lon", String(vicino.lon));
+    }
     const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return null;
     const d = (await r.json()) as {

@@ -105,6 +105,10 @@ export const PREZZI_MODULI: Record<ModuleKey, number> = {
   reservations: 2500,
   takeaway: 1900,
   delivery: 2900,
+  // Sta sopra asporto e consegna: da solo non fa niente, ma e' quello che
+  // toglie la telefonata — il cliente ordina dal sito e il locale accetta.
+  // Prezzato come la prenotazione web, che e' la stessa cosa per il tavolo.
+  web_orders: 2500,
   customers: 900,
   payments: 0,
   ai_suggestions: 2900,

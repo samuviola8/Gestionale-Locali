@@ -1,9 +1,14 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { orders, orderItems } from "@/lib/db/schema";
+import { orders, orderItems, tenants } from "@/lib/db/schema";
 import { getSessionUser, repartoAttivo } from "@/lib/auth";
+import { creaComande } from "@/lib/stampa";
+import { fineGiornata, ordinePerToken } from "@/lib/ordini-web";
+import { avvisaClienteOrdine, avvisoDa } from "@/lib/ordini-mail";
+import { mittenteLocale } from "@/lib/mittente";
 
 const VALID = ["new", "preparing", "served"];
 
@@ -19,11 +24,14 @@ export async function advanceOrderStatus(
   if (!VALID.includes(status)) return;
 
   const suo = await db
-    .select({ id: orders.id })
+    .select({ id: orders.id, status: orders.status })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)))
     .limit(1);
   if (!suo.length) return;
+  // Un ordine dal web ancora da accettare non si fa avanzare di nascosto:
+  // passa da `accettaOrdine`, che e' il posto dove parte anche la comanda.
+  if (suo[0].status === "pending") return;
 
   // Chi non ha un reparto (titolare, cassa) muove tutto l'ordine.
   const mio = repartoAttivo(session);
@@ -135,4 +143,167 @@ export async function setItemPrice(
   if (!cambiate.length)
     return { ok: false, error: "Riga già pagata: il prezzo non si tocca più." };
   return { ok: true };
+}
+
+// --- Gli ordini arrivati dal web --------------------------------------------
+//
+// Un ordine battuto in cassa e' gia' accettato da chi l'ha battuto. Quello che
+// arriva dal sito no: arriva mentre la cucina e' in ginocchio, o con la
+// mozzarella finita, o da un indirizzo che si e' rivelato dall'altra parte del
+// fiume. Per questo nasce "pending" e per questo la comanda parte adesso, non
+// quando il cliente ha premuto invia.
+
+// Com'e' andata la mail al cliente. "non-richiesta" e' il caso normale di chi
+// non ha la posta configurata o di chi ha ordinato senza lasciare un
+// indirizzo: non e' un guasto, e non va detto. "fallita" invece si', perche'
+// il cliente sta aspettando una conferma che non arrivera'.
+export type EsitoMail = "inviata" | "non-richiesta" | "fallita";
+
+async function avvisa(
+  tenantId: string,
+  token: string | null,
+  tipo: "confermato" | "spostato" | "rifiutato",
+  precedente?: Date | null
+): Promise<EsitoMail> {
+  if (!token) return "non-richiesta";
+
+  const salvato = await ordinePerToken(tenantId, token);
+  const avviso = salvato ? avvisoDa(salvato, precedente) : null;
+  if (!avviso?.email) return "non-richiesta";
+
+  // La riga in fondo alla mail e' quella del canale dell'ordine.
+  const mittente = await mittenteLocale(
+    tenantId,
+    avviso.canale === "domicilio" ? "domicilio" : "asporto"
+  );
+  if (!mittente?.smtp) return "non-richiesta";
+
+  return (await avvisaClienteOrdine(tipo, avviso, mittente))
+    ? "inviata"
+    : "fallita";
+}
+
+export type EsitoAccettazione =
+  | { ok: true; comande: number; mail: EsitoMail }
+  | { ok: false; error: string };
+
+export async function accettaOrdine(
+  orderId: string,
+  correzioni?: {
+    // Il costo di consegna corretto a mano, dove la distanza in linea d'aria
+    // ha mentito. In centesimi.
+    consegnaCents?: number;
+    // Quanto spostare l'ora concordata: "per le 20:30 non ce la faccio, per le
+    // 21 si'". Il cliente lo vede sulla sua pagina.
+    spostaMinuti?: number;
+  }
+): Promise<EsitoAccettazione> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+
+  const [o] = await db
+    .select({
+      id: orders.id,
+      status: orders.status,
+      channel: orders.channel,
+      dueAt: orders.dueAt,
+      webToken: orders.webToken,
+    })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)))
+    .limit(1);
+  if (!o) return { ok: false, error: "Ordine non trovato." };
+  if (o.status !== "pending") {
+    return { ok: false, error: "Questo ordine è già stato accettato." };
+  }
+
+  const consegna = correzioni?.consegnaCents;
+  const sposta = correzioni?.spostaMinuti;
+
+  await db
+    .update(orders)
+    .set({
+      status: "new",
+      ...(o.channel === "domicilio" &&
+      Number.isInteger(consegna) &&
+      consegna! >= 0 &&
+      consegna! <= 5000
+        ? { deliveryFeeCents: consegna! }
+        : {}),
+      ...(o.dueAt && Number.isInteger(sposta) && Math.abs(sposta!) <= 240
+        ? { dueAt: new Date(o.dueAt.getTime() + sposta! * 60000) }
+        : {}),
+    })
+    .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
+
+  // Adesso la comanda: segue l'impostazione del canale, come ogni altro
+  // ordine. Quante ne sono partite torna a chi ha accettato, perche' "non
+  // stampa niente" e' l'unica cosa che non deve scoprire da solo.
+  const comande = await creaComande(session.tenantId, orderId);
+
+  // La conferma al cliente. Se l'ora e' stata spostata glielo si dice, invece
+  // di mandargli una conferma con dentro un orario diverso da quello che
+  // ricordava: quella e' la mail che fa arrivare la gente all'ora sbagliata.
+  const spostato = !!(o.dueAt && sposta);
+  const mail = await avvisa(
+    session.tenantId,
+    o.webToken,
+    spostato ? "spostato" : "confermato",
+    spostato ? o.dueAt : null
+  );
+
+  revalidatePath("/dashboard/bill");
+  return { ok: true, comande, mail };
+}
+
+// Il locale non ce la fa, o il cliente non e' raggiungibile: l'ordine si
+// chiude senza preparare niente. Resta scritto — il cliente lo vede sulla sua
+// pagina, e in coda non ci torna piu'.
+export async function rifiutaOrdine(
+  orderId: string
+): Promise<{ ok: boolean; mail: EsitoMail }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, mail: "non-richiesta" };
+
+  const cambiati = await db
+    .update(orders)
+    .set({ status: "rejected", closedAt: new Date() })
+    .where(
+      and(
+        eq(orders.id, orderId),
+        eq(orders.tenantId, session.tenantId),
+        eq(orders.status, "pending")
+      )
+    )
+    .returning({ id: orders.id, webToken: orders.webToken });
+
+  if (!cambiati.length) return { ok: false, mail: "non-richiesta" };
+
+  // Il rifiuto e' la mail che conta piu' di tutte: chi non la riceve si
+  // presenta lo stesso, all'ora che si era segnato.
+  const mail = await avvisa(
+    session.tenantId,
+    cambiati[0].webToken,
+    "rifiutato"
+  );
+
+  return { ok: true, mail };
+}
+
+// Il rubinetto: stasera non se ne prendono altri. Si riapre da solo a
+// mezzanotte, perche' l'interruttore che resta giu' e' quello che tiene un
+// locale chiuso al web per una settimana senza che nessuno se ne accorga.
+export async function sospendiOrdiniWeb(
+  sospendi: boolean
+): Promise<{ fino: string | null }> {
+  const session = await getSessionUser();
+  if (!session) return { fino: null };
+
+  const fino = sospendi ? fineGiornata() : null;
+  await db
+    .update(tenants)
+    .set({ webOrdersPausedUntil: fino })
+    .where(eq(tenants.id, session.tenantId));
+
+  return { fino: fino?.toISOString() ?? null };
 }

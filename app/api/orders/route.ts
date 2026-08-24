@@ -16,7 +16,10 @@ export async function GET() {
     .where(
       and(
         eq(orders.tenantId, session.tenantId),
-        inArray(orders.status, ["new", "preparing"])
+        // "pending" e' l'ordine arrivato dal web che nessuno ha ancora
+        // accettato: non e' roba da preparare, ma e' la prima cosa che chi
+        // guarda la coda deve vedere.
+        inArray(orders.status, ["pending", "new", "preparing"])
       )
     )
     .orderBy(asc(orders.createdAt));
@@ -33,7 +36,16 @@ export async function GET() {
     // attesa, perche' un domicilio e un tavolo non aspettano allo stesso modo.
     channel: o.channel,
     customerName: o.customerName,
+    customerPhone: o.customerPhone,
     customerAddress: o.customerAddress,
+    // Il costo di consegna e la distanza da cui e' uscito: chi accetta
+    // l'ordine li guarda insieme, perche' dove la linea d'aria mente e' lui a
+    // correggere il prezzo.
+    deliveryFeeCents: o.deliveryFeeCents,
+    deliveryKm: o.deliveryKm,
+    // Se e' arrivato dal sito. Un ordine battuto in cassa non si "accetta":
+    // l'ha gia' accettato chi l'ha battuto.
+    dalWeb: !!o.webToken,
     dueAt: o.dueAt?.toISOString() ?? null,
     status: o.status,
     createdAt: o.createdAt.toISOString(),

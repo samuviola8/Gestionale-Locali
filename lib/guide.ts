@@ -111,6 +111,26 @@ export function guidaDelTab(
             testo:
               "Tocca «modifica» in alto nella scheda, poi «annulla» sulla riga. Esce dal conto e il cliente se lo ritrova barrato sul telefono, quindi lo sa prima di pagare. «ripristina» lo rimette. Finito, tocca «fine»: le crocette sempre a schermo si toccano per sbaglio proprio mentre si corre.",
           },
+          ...(modules.web_orders && (modules.takeaway || modules.delivery)
+            ? [
+                {
+                  titolo: "Gli ordini dal sito si accettano",
+                  testo:
+                    "Quelli arrivati dal sito stanno in cima, sotto «Da accettare», e finche' non li accetti non e' partita nessuna comanda: nessuno ha cominciato a preparare niente. Accettandoli entrano in coda come tutti gli altri e la comanda parte in quel momento.",
+                  punti: [
+                    "«+15» e «+30» spostano l'ora concordata prima di accettare: se per le 20:30 non ce la fai, gliela sposti — e il cliente lo vede sulla sua pagina.",
+                    "A domicilio il costo di consegna si corregge li': accanto all'indirizzo c'e' la distanza da cui e' uscito, e dove la linea d'aria mente — un fiume, una tangenziale — il numero giusto lo sai tu.",
+                    "«Rifiuta» chiude l'ordine senza preparare niente. Il cliente lo legge sulla sua pagina, ma se puoi chiamalo: il suo numero e' li' accanto al nome.",
+                    "Quando arriva un ordine dal sito la pagina suona, con lo stesso suono delle chiamate dal tavolo.",
+                  ],
+                },
+                {
+                  titolo: "Le pillole e il rubinetto",
+                  testo:
+                    "Le pillole in alto filtrano per canale: chi impacchetta gli asporti non deve scorrere i tavoli. E «Sospendi per stasera» chiude il rubinetto degli ordini dal sito quando la cucina e' al completo: la pagina resta in piedi e dice ai clienti di chiamare. Si riapre da sola a mezzanotte.",
+                },
+              ]
+            : []),
         ],
       };
 
@@ -409,6 +429,18 @@ export function guidaDelTab(
               "«Segna esaurito» lo lascia a menu ma non ordinabile: e' quello che si tocca a meta' serata, non «Elimina».",
             ],
           },
+          ...(modules.web_orders && (modules.takeaway || modules.delivery)
+            ? [
+                {
+                  titolo: "Cosa esce dal locale",
+                  testo:
+                    "Dentro «Modifica» ci sono «Si porta via» e «Si consegna». Nascono accese — la regola e' che un prodotto si porta a casa — e si spengono per quello che resta qui: il cocktail versato, la birra alla spina, il fritto che a domicilio arriva molle.",
+                  punti: [
+                    "Sulla riga l'etichetta compare solo quando c'e' un'eccezione: «non in asporto», «non a domicilio», «solo in sala». Un menu dove ogni riga dice «si porta via» non si leggerebbe piu'.",
+                  ],
+                },
+              ]
+            : []),
           {
             titolo: "Il coperto sta qui",
             testo:
@@ -541,6 +573,36 @@ export function guidaDelTab(
                   titolo: "Prenotazione online",
                   testo:
                     "Quanto tiene occupato un tavolo, quante persone si accettano dal sito, con quanto preavviso e fino a quanti giorni in avanti, e se le prenotazioni si confermano da sole. Qui si dice anche quanti tavoli si possono accostare e quante sedie in piu' ci stanno: e' da li' che esce il gruppo piu' grande che riuscite ad accettare.",
+                },
+              ]
+            : []),
+          ...(modules.web_orders && (modules.takeaway || modules.delivery)
+            ? [
+                {
+                  titolo: "Ordini dal sito",
+                  testo:
+                    "Un blocco per canale, e si accendono uno alla volta: si puo' vendere il ritiro dal sito e tenere le consegne al telefono. Acceso, il locale ha la sua pagina pubblica su /ordina — il link da mettere su Google, sui social e sul volantino.",
+                  punti: [
+                    "Ogni canale ha le sue regole: preavviso, passo delle fasce, giorni in avanti, minimo d'ordine, accettazione automatica e la riga da mostrare al cliente. Il ritiro si prepara in venti minuti e la consegna in quaranta: un numero solo per tutti e due vorrebbe dire tararlo sul peggiore.",
+                    "I pezzi per fascia sono l'unica cosa in comune, ed e' giusto cosi': sono il tetto della cucina, il forno e' lo stesso, e due numeri separati direbbero venti dove il vero e' dieci. Un pezzo e' una pizza, una birra, un tagliere.",
+                    "Come funziona: tetto 10, e per le 20:00 avete gia' preso 6 pizze e 2 birre. Chi arriva con 2 pezzi vede ancora le 20:00; chi ne ha 4 vede le 20:15; chi ne ordina 11 in una volta non vede nessun orario e la pagina gli dice di chiamarvi. Occupano la fascia anche gli ordini battuti in cassa e quelli ancora da accettare.",
+                    "E' per fascia, non all'ora: con fasce da 15 minuti un tetto di 10 vuol dire fino a 40 pezzi in un'ora.",
+                    "Con l'accettazione automatica gli ordini di quel canale entrano in cucina da soli. Spenta, restano «da accettare» in coda e la comanda parte quando li accettate: e' quello che serve il sabato sera.",
+                    "Il minimo d'ordine del domicilio si somma a quello delle zone: fra i due comanda il piu' alto.",
+                  ],
+                },
+              ]
+            : []),
+          ...(modules.web_orders && modules.delivery
+            ? [
+                {
+                  titolo: "Zone di consegna",
+                  testo:
+                    "Righe «fino a X km»: una sola vuol dire costo fisso per tutti, e l'ultima e' il confine oltre il quale non si consegna — a chi resta fuori si propone il ritiro. Ogni riga ha il suo minimo d'ordine, e sotto c'e' la soglia oltre la quale il viaggio e' offerto.",
+                  punti: [
+                    "La distanza e' quella in linea d'aria piu' il 30%, che e' lo scarto medio delle strade: scrivete i chilometri come li fareste in macchina.",
+                    "Dove l'aria mente — un fiume, una tangenziale — la distanza si legge sull'ordine e il costo si corregge prima di accettarlo.",
+                  ],
                 },
               ]
             : []),

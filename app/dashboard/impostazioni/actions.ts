@@ -14,6 +14,13 @@ import {
   type OrariApertura,
 } from "@/lib/orari";
 import { normalizzaImpostazioni } from "@/lib/prenotazioni";
+import {
+  leggiImpostazioniWeb,
+  normalizzaCanale,
+  normalizzaPezzi,
+} from "@/lib/ordini-web";
+import { leggiFasce, type FasciaConsegna } from "@/lib/consegna";
+import { getTenantModules } from "@/lib/modules";
 import { mittenteLocale } from "@/lib/prenotazioni-mail";
 import { inviaMailLocale, provaMailLocale } from "@/lib/mail";
 import { cifra, cifraturaDisponibile } from "@/lib/segreti";
@@ -162,6 +169,101 @@ export async function salvaPrenotazioni(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard/impostazioni");
   revalidatePath("/dashboard/prenotazioni");
+}
+
+// Le regole degli ordini dal web: quando si puo' ritirare, quanti pezzi tiene
+// una fascia, se entrano in cucina da soli. Si ripuliscono prima di scrivere
+// come quelle delle prenotazioni: un passo a zero o un preavviso di un mese non
+// lascerebbero una sola fascia da proporre, e il locale se ne accorgerebbe
+// dagli ordini che non arrivano.
+export async function salvaOrdiniWeb(formData: FormData): Promise<void> {
+  const tenantId = await requireOwner();
+  const numero = (k: string) => parseInt(String(formData.get(k) ?? ""), 10);
+  const inCents = (k: string) => {
+    const raw = String(formData.get(k) ?? "").trim();
+    if (!raw) return 0;
+    const n = parseFloat(raw.replace(",", ".").replace(/[^0-9.]/g, ""));
+    return Number.isNaN(n) ? 0 : Math.round(n * 100);
+  };
+
+  const dalModulo = (canale: "asporto" | "domicilio") =>
+    normalizzaCanale(
+      {
+        attivo: formData.get(`${canale}-attivo`) === "on",
+        passoMinuti: numero(`${canale}-passo`),
+        preavvisoMinuti: numero(`${canale}-preavviso`),
+        giorniAvanti: numero(`${canale}-giorni`),
+        minimoCents: inCents(`${canale}-minimo`),
+        accettazioneAutomatica: formData.get(`${canale}-auto`) === "on",
+        nota: String(formData.get(`${canale}-nota`) ?? ""),
+      },
+      canale
+    );
+
+  // Il blocco di un canale spento a livello di modulo non compare nel modulo, e
+  // quindi non torna indietro: senza questo controllo salvare le regole del
+  // ritiro azzererebbe quelle della consegna di un locale a cui la consegna e'
+  // stata tolta per un mese, e riaccendendogliela si ritroverebbe tutto da
+  // riscrivere senza sapere perche'.
+  const modules = await getTenantModules(tenantId);
+  const [riga] = await db
+    .select({
+      webOrderChannels: tenants.webOrderChannels,
+      webOrderPiecesPerSlot: tenants.webOrderPiecesPerSlot,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  const attuali = leggiImpostazioniWeb(
+    riga ?? { webOrderChannels: {}, webOrderPiecesPerSlot: 0 }
+  );
+
+  await db
+    .update(tenants)
+    .set({
+      webOrderChannels: {
+        asporto: modules.takeaway ? dalModulo("asporto") : attuali.asporto,
+        domicilio: modules.delivery ? dalModulo("domicilio") : attuali.domicilio,
+      },
+      webOrderPiecesPerSlot: normalizzaPezzi(numero("pezzi")),
+    })
+    .where(eq(tenants.id, tenantId));
+
+  revalidatePath("/dashboard/impostazioni");
+  // Accendere o spegnere un canale cambia gli avvisi in panoramica: un asporto
+  // web acceso su un menu tutto escluso e' un guasto, e va detto subito.
+  revalidatePath("/dashboard");
+}
+
+// Le zone di consegna e la soglia della consegna offerta. Si ripuliscono prima
+// di scrivere come gli orari: una riga storta qui dentro non da' errore,
+// diventa una zona in cui non si consegna o una che si consegna gratis, e il
+// locale se ne accorgerebbe dal fattorino che torna senza soldi.
+export async function salvaConsegna(
+  fasce: FasciaConsegna[],
+  gratisSopraCents: number
+): Promise<FasciaConsegna[]> {
+  const tenantId = await requireOwner();
+  const soglia = Math.round(gratisSopraCents);
+  const pulite = leggiFasce(fasce);
+
+  await db
+    .update(tenants)
+    .set({
+      deliveryBands: pulite,
+      deliveryFreeOverCents:
+        Number.isFinite(soglia) && soglia > 0 ? Math.min(soglia, 100000) : 0,
+    })
+    .where(eq(tenants.id, tenantId));
+
+  revalidatePath("/dashboard/impostazioni");
+  // Le zone mancanti sono un guasto che si legge in panoramica: senza nessuna
+  // fascia, ogni indirizzo risulta fuori zona.
+  revalidatePath("/dashboard");
+
+  // Torna quello che e' stato scritto davvero: la pagina si rimette in pari
+  // senza ricaricare, e una riga rifiutata non resta a schermo a mentire.
+  return pulite;
 }
 
 // La casella del locale, da cui partono le conferme di prenotazione.

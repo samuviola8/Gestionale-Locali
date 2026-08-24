@@ -21,6 +21,7 @@ import {
   mittenteLocale,
   riepilogoBreve,
 } from "@/lib/prenotazioni-mail";
+import { troppeRichieste } from "@/lib/limite";
 
 // Le azioni della pagina pubblica di prenotazione. Sono aperte a chiunque
 // conosca l'indirizzo del locale: qui dentro non ci si fida di niente di
@@ -29,27 +30,9 @@ import {
 const LIMITE_PER_FINESTRA = 5;
 const FINESTRA_MS = 30 * 60 * 1000;
 
-// Contatore in memoria, come per le richieste dalla vetrina: il sito gira su
-// un processo solo, e serve a fermare chi rilancia lo stesso modulo in ciclo.
-const invii = new Map<string, number[]>();
-
-function troppeRichieste(ip: string): boolean {
-  const ora = Date.now();
-  const recenti = (invii.get(ip) ?? []).filter((t) => ora - t < FINESTRA_MS);
-  if (recenti.length >= LIMITE_PER_FINESTRA) {
-    invii.set(ip, recenti);
-    return true;
-  }
-  recenti.push(ora);
-  invii.set(ip, recenti);
-
-  if (invii.size > 500) {
-    for (const [chiave, tempi] of invii) {
-      if (tempi.every((t) => ora - t >= FINESTRA_MS)) invii.delete(chiave);
-    }
-  }
-  return false;
-}
+// Il contatore vive in lib/limite.ts: lo stesso freno lo usano l'ordine dal
+// sito e la ricerca degli indirizzi, e tre copie della stessa funzione sono
+// tre posti dove sistemarla il giorno che non basta piu'.
 
 async function chiChiama(): Promise<string> {
   const h = await headers();
@@ -218,7 +201,7 @@ export async function inviaPrenotazione(
     };
   }
 
-  if (troppeRichieste(await chiChiama())) {
+  if (troppeRichieste(await chiChiama(), LIMITE_PER_FINESTRA, FINESTRA_MS)) {
     return {
       ok: false,
       errore:

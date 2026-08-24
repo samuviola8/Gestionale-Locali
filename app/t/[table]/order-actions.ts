@@ -24,7 +24,7 @@ export async function createOrder(
   const modules = await getTenantModules(tenant.id);
   if (!modules.qr_ordering) return { ok: false };
 
-  return createOrderRows(tenant.id, tableNumber, items, modules, partySize);
+  return createOrderRows(tenant.id, tableNumber, items, modules, { partySize });
 }
 
 // Chiude il condiviso su chi c'e' adesso, prima che al tavolo si sieda

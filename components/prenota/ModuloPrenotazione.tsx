@@ -7,6 +7,7 @@ import {
   inviaPrenotazione,
   type MotivoVuoto,
 } from "@/app/prenota/actions";
+import type { GiornoScelta } from "@/lib/format";
 
 // Il modulo di prenotazione, in quattro passi che si aprono uno dopo l'altro.
 //
@@ -14,14 +15,6 @@ import {
 // (quante persone, quando), poi quello che il locale puo' davvero offrire, e
 // solo alla fine nome e telefono. Chiedere i recapiti prima di aver mostrato
 // un orario libero e' chiedere l'impegno prima di aver dato la risposta.
-
-export type GiornoScelta = {
-  iso: string;
-  /** "Oggi", "Domani", oppure il giorno della settimana abbreviato. */
-  nome: string;
-  numero: string;
-  mese: string;
-};
 
 function Passo({
   indice,

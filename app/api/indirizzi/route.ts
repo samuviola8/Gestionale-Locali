@@ -1,56 +1,59 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { tenants } from "@/lib/db/schema";
+import { headers } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
-import { cercaIndirizzi, geolocalizza } from "@/lib/indirizzi";
+import { cercaIndirizzi } from "@/lib/indirizzi";
+import { coordinateLocale } from "@/lib/consegna";
+import { contestoOrdineWeb } from "@/lib/ordini-web";
+import { troppeRichieste } from "@/lib/limite";
 
-// Suggerimenti di indirizzo per la cassa. Dietro al login dello staff: e' una
-// chiamata che costa, e lasciarla aperta vorrebbe dire pagare le ricerche di
-// chiunque passi di qui.
+// Suggerimenti di indirizzo. Li chiedono in due, e non sono la stessa cosa:
+//
+//   - la cassa, dietro al login dello staff, mentre batte una consegna;
+//   - il cliente sulla pagina d'ordinazione, che un login non ce l'ha.
+//
+// La seconda porta e' aperta a chiunque, quindi si apre solo dove il locale
+// consegna davvero dal sito, e con un freno per indirizzo IP: e' una chiamata
+// che si paga, e senza limite basterebbe un ciclo per far pagare al locale la
+// curiosita' di uno che passava di qui.
+const LIMITE_PUBBLICO = 60;
+const FINESTRA_MS = 10 * 60 * 1000;
+
 export async function GET(req: Request) {
-  const session = await getSessionUser();
-  if (!session) return NextResponse.json({ risultati: [] }, { status: 401 });
-
   const q = new URL(req.url).searchParams.get("q") ?? "";
+  const session = await getSessionUser();
+  let tenantId = session?.tenantId ?? null;
 
-  // I risultati si ordinano intorno al locale: una consegna e' quasi sempre a
-  // pochi chilometri, e "Via Roma" da sola esiste in ogni comune d'Italia.
-  const [locale] = await db
-    .select({
-      indirizzo: tenants.address,
-      citta: tenants.city,
-      provincia: tenants.province,
-      lat: tenants.latitude,
-      lon: tenants.longitude,
-    })
-    .from(tenants)
-    .where(eq(tenants.id, session.tenantId))
-    .limit(1);
-
-  let lat = locale?.lat ?? null;
-  let lon = locale?.lon ?? null;
-
-  // Prima ricerca del locale: si trova dove sta e lo si scrive, cosi' non lo
-  // si chiede mai piu'. Se non si trova si cerca lo stesso, solo senza
-  // preferenze di zona.
-  if (locale && lat == null && (locale.indirizzo || locale.citta)) {
-    const dove = await geolocalizza(
-      [locale.indirizzo, locale.citta, locale.provincia, "Italia"]
-        .filter(Boolean)
-        .join(", ")
-    );
-    if (dove) {
-      lat = dove.lat;
-      lon = dove.lon;
-      await db
-        .update(tenants)
-        .set({ latitude: dove.lat, longitude: dove.lon })
-        .where(eq(tenants.id, session.tenantId));
+  if (!tenantId) {
+    const ctx = await contestoOrdineWeb();
+    // Niente consegne dal sito, niente ricerca: non c'e' nessun indirizzo da
+    // scrivere su questa pagina.
+    if (!ctx || !ctx.canali.includes("domicilio")) {
+      return NextResponse.json({ risultati: [] }, { status: 401 });
     }
+
+    const chi =
+      (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "sconosciuto";
+    if (troppeRichieste(`indirizzi:${chi}`, LIMITE_PUBBLICO, FINESTRA_MS)) {
+      // Elenco vuoto e non un errore: chi sta scrivendo continua a mano, e la
+      // consegna parte lo stesso.
+      return NextResponse.json({ risultati: [] });
+    }
+
+    tenantId = ctx.tenantId;
   }
 
-  const risultati = await cercaIndirizzi(q, { lat, lon });
+  // I risultati si ordinano intorno al locale: una consegna e' quasi sempre a
+  // pochi chilometri, e "Via Roma" da sola esiste in ogni comune d'Italia. Le
+  // coordinate se le trova e se le salva `coordinateLocale`, che le usa anche
+  // per calcolare il costo di consegna: e' la stessa domanda, e va fatta una
+  // volta sola nella vita del locale.
+  const qui = await coordinateLocale(tenantId);
+
+  const risultati = await cercaIndirizzi(q, {
+    lat: qui?.lat ?? null,
+    lon: qui?.lon ?? null,
+  });
 
   return NextResponse.json({ risultati });
 }

@@ -14,6 +14,7 @@ export type ModuleKey =
   | "reservations"
   | "takeaway"
   | "delivery"
+  | "web_orders"
   | "customers"
   | "payments"
   | "ai_suggestions"
@@ -91,6 +92,15 @@ export const MODULES: ModuleDef[] = [
     label: "Consegna a domicilio",
     description:
       "Come l'asporto, più indirizzo, telefono e costo di consegna.",
+    defaultEnabled: false,
+    addon: false,
+    comingSoon: false,
+  },
+  {
+    key: "web_orders",
+    label: "Ordini dal sito",
+    description:
+      "Asporto e domicilio ordinati dal cliente sul sito del locale, senza telefonare: sceglie dal menu, sceglie l'ora fra quelle che la cucina regge, e il locale accetta. Serve almeno uno fra asporto e consegna.",
     defaultEnabled: false,
     addon: false,
     comingSoon: false,

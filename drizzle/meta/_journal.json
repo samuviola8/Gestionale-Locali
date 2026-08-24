@@ -302,6 +302,62 @@
       "when": 1787321864716,
       "tag": "0042_optimal_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787328526625,
+      "tag": "0043_clear_red_skull",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787329304089,
+      "tag": "0044_ancient_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1787556686267,
+      "tag": "0045_pretty_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1787556816132,
+      "tag": "0046_first_cammi",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1787558218132,
+      "tag": "0047_dry_barracuda",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1787559284182,
+      "tag": "0048_sleepy_tenebrous",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1787568798579,
+      "tag": "0049_luxuriant_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1787568831163,
+      "tag": "0050_harsh_puck",
+      "breakpoints": true
     }
   ]
 }

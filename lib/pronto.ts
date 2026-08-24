@@ -2,6 +2,8 @@ import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { menuProducts, restaurantTables, tenants } from "@/lib/db/schema";
 import { leggiOrari } from "@/lib/orari";
+import { canaliWeb, leggiImpostazioniWeb } from "@/lib/ordini-web";
+import { leggiFasce } from "@/lib/consegna";
 import { decifra } from "@/lib/segreti";
 import type { ModuleState } from "@/lib/modules";
 
@@ -46,6 +48,11 @@ export async function problemiDelLocale(
         openingHours: tenants.openingHours,
         address: tenants.address,
         city: tenants.city,
+        webOrderChannels: tenants.webOrderChannels,
+        webOrderPiecesPerSlot: tenants.webOrderPiecesPerSlot,
+        deliveryBands: tenants.deliveryBands,
+        latitude: tenants.latitude,
+        longitude: tenants.longitude,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -69,8 +76,14 @@ export async function problemiDelLocale(
 
   const problemi: Problema[] = [];
 
-  // La posta serve solo a chi manda mail ai clienti. Oggi e' la prenotazione
-  // web: la conferma, lo spostamento, la disdetta.
+  // Quello che il locale vende dal suo sito. Serve subito, perche' decide
+  // anche se la posta gli serve o no.
+  const cfgWeb = leggiImpostazioniWeb(locale);
+  const canaliDalWeb = canaliWeb(cfgWeb, modules);
+
+  // La posta serve a chi manda mail ai clienti: la prenotazione web — la
+  // conferma, lo spostamento, la disdetta — e gli ordini dal sito, che senza
+  // mail restano senza il "l'abbiamo accettato".
   //
   // `decifra` e non il solo campo pieno: la password sta cifrata, e se manca
   // APP_SECRET torna null. In quel caso la casella risulta configurata nel
@@ -82,13 +95,24 @@ export async function problemiDelLocale(
     decifra(locale.smtpPass)
   );
 
-  if (modules.reservations && !postaPronta) {
+  if ((modules.reservations || canaliDalWeb.length > 0) && !postaPronta) {
     problemi.push({
       chiave: "posta-prenotazioni",
-      gravita: "rotto",
+      // Senza posta la prenotazione e' rotta davvero: il cliente non ha altro
+      // modo di sapere se il tavolo c'e'. L'ordine invece regge lo stesso —
+      // resta la pagina col link e il telefono — ma il cliente aspetta al buio.
+      gravita: modules.reservations ? "rotto" : "attenzione",
       titolo: "Le mail ai clienti non partono",
-      effetto:
-        "La prenotazione web e' accesa, ma non c'e' nessuna casella di posta configurata: chi prenota dal sito non riceve nessuna conferma, e non gli arriva niente nemmeno se sposti o disdici la sua prenotazione. Le prenotazioni le vedi lo stesso in agenda — e' il cliente che resta senza risposta.",
+      effetto: [
+        modules.reservations
+          ? "La prenotazione web e' accesa, ma non c'e' nessuna casella di posta configurata: chi prenota dal sito non riceve nessuna conferma, e non gli arriva niente nemmeno se sposti o disdici la sua prenotazione. Le prenotazioni le vedi lo stesso in agenda — e' il cliente che resta senza risposta."
+          : null,
+        canaliDalWeb.length
+          ? "Gli ordini dal sito sono accesi: chi ordina non riceve niente quando lo accettate o lo rifiutate, e per sapere a che punto e' deve essersi tenuto il link."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
       rimedio: "Configura la casella del locale in Impostazioni → Posta.",
       href: "/dashboard/impostazioni",
       azione: "Configura la posta",
@@ -151,10 +175,136 @@ export async function problemiDelLocale(
     });
   }
 
+  // --- Ordini dal web -------------------------------------------------------
+  //
+  // Qui la pagina pubblica e' gia' online e il cliente ci arriva da Google:
+  // quando non funziona non se ne accorge nessuno dentro al locale, si vede
+  // solo dagli ordini che non arrivano.
+
+  // Il modulo comprato ma senza un canale sotto: la pagina non esiste, e il
+  // locale sta pagando qualcosa che non ha mai visto acceso.
+  if (modules.web_orders && !modules.takeaway && !modules.delivery) {
+    problemi.push({
+      chiave: "web-senza-canali",
+      gravita: "attenzione",
+      titolo: "Gli ordini dal sito non hanno un canale",
+      effetto:
+        "Il modulo e' acceso ma il locale non ha ne' l'asporto ne' la consegna: la pagina d'ordinazione non esiste, e non c'e' niente da vendere dal sito.",
+      rimedio: "Chiedici di accendere l'asporto, la consegna, o tutti e due.",
+      href: "/dashboard/fatturazione/pacchetti",
+      azione: "Vedi i piani",
+    });
+  }
+
+  // Gli orari mancanti li ha gia' detti la prenotazione, con lo stesso rimedio
+  // e lo stesso pulsante: ripeterlo insegna solo a non leggere gli avvisi.
+  if (canaliDalWeb.length && giorniAperti === 0 && !modules.reservations) {
+    problemi.push({
+      chiave: "orari-ordini-web",
+      gravita: "rotto",
+      titolo: "Nessuno puo' ordinare dal web",
+      effetto:
+        "Asporto o domicilio dal web sono accesi, ma senza orari di apertura non c'e' nessuna fascia di ritiro da proporre: chi apre la pagina non trova un solo orario e se ne va.",
+      rimedio: "Scrivi gli orari in Impostazioni → Orari di apertura.",
+      href: "/dashboard/impostazioni",
+      azione: "Metti gli orari",
+    });
+  }
+
+  // Un canale acceso su un menu tutto escluso e' una pagina che si apre vuota:
+  // il cliente non capisce se e' rotta o se non avete niente, e in tutti e due
+  // i casi se ne va. Si conta solo per i canali accesi davvero: e' una query in
+  // piu' per canale, e la fa solo chi vende dal web.
+  const daVendere = [
+    {
+      canale: "asporto" as const,
+      esce: eq(menuProducts.takeawayAvailable, true),
+      titolo: "Non c'e' niente da portare via",
+      effetto:
+        "L'asporto dal web e' acceso, ma nessun prodotto del menu e' segnato come «si porta via»: chi apre la pagina la trova vuota.",
+    },
+    {
+      canale: "domicilio" as const,
+      esce: eq(menuProducts.deliveryAvailable, true),
+      titolo: "Non c'e' niente da consegnare",
+      effetto:
+        "Il domicilio dal web e' acceso, ma nessun prodotto del menu e' segnato come «si consegna»: chi apre la pagina la trova vuota.",
+    },
+  ].filter((c) => canaliDalWeb.includes(c.canale));
+
+  for (const che of daVendere) {
+    const [quanti] = await db
+      .select(uno)
+      .from(menuProducts)
+      .where(
+        and(
+          eq(menuProducts.tenantId, tenantId),
+          eq(menuProducts.available, true),
+          che.esce
+        )
+      );
+    if (quanti.n === 0) {
+      problemi.push({
+        chiave: `menu-${che.canale}`,
+        gravita: "rotto",
+        titolo: che.titolo,
+        effetto: che.effetto,
+        rimedio:
+          "Segna quali prodotti escono dal locale: sono le spunte «Si porta via» e «Si consegna» dentro «Modifica» di ogni prodotto.",
+        href: "/dashboard/menu",
+        azione: "Apri il menu",
+      });
+    }
+  }
+
+
+  // La consegna dal web ha due cose in piu' che devono esserci per forza: le
+  // zone, e la posizione del locale. Senza le prime ogni indirizzo e' fuori
+  // zona; senza la seconda non c'e' nessuna distanza da misurare. In tutti e
+  // due i casi il cliente arriva in fondo all'ordine e si becca un no.
+  if (canaliDalWeb.includes("domicilio")) {
+    if (leggiFasce(locale.deliveryBands).length === 0) {
+      problemi.push({
+        chiave: "zone-consegna",
+        gravita: "rotto",
+        titolo: "Non c'e' nessuna zona di consegna",
+        effetto:
+          "Il domicilio dal web e' acceso ma non e' scritta nessuna zona: ogni indirizzo risulta fuori zona, e chi prova a ordinare viene rimandato al ritiro.",
+        rimedio:
+          "Scrivi fin dove arrivate e quanto costa, in Impostazioni → Zone di consegna.",
+        href: "/dashboard/impostazioni",
+        azione: "Scrivi le zone",
+      });
+    }
+
+    if (locale.latitude == null || locale.longitude == null) {
+      problemi.push({
+        chiave: "posizione-locale",
+        gravita: "rotto",
+        titolo: "Il costo di consegna non si puo' calcolare",
+        effetto:
+          "Il costo esce dalla distanza fra voi e il cliente, ma non sappiamo ancora dove siete: ogni ordine a domicilio arriverebbe col costo da confermare a mano, uno per uno.",
+        rimedio:
+          "Controlla l'indirizzo del locale nei dati di fatturazione, poi apri Impostazioni → Zone di consegna: la posizione si cerca da sola.",
+        href: "/dashboard/fatturazione",
+        azione: "Controlla l'indirizzo",
+      });
+    }
+  }
+
   // La consegna cerca gli indirizzi dei clienti intorno al locale. Senza
   // sapere dov'e' il locale, i risultati escono ordinati a caso: "Via Roma"
   // esiste in ogni comune d'Italia.
-  if (modules.delivery && !(locale.address && locale.city)) {
+  //
+  // A chi consegna dal web questa stessa cosa e' gia' stata detta come guasto,
+  // e con parole piu' gravi: senza posizione non si calcola nemmeno il costo.
+  // Ripeterla qui come "attenzione" la farebbe sembrare meno seria di quello
+  // che e'.
+  if (
+    modules.delivery &&
+    !canaliDalWeb.includes("domicilio") &&
+    !(locale.address && locale.city)
+  ) {
     problemi.push({
       chiave: "indirizzo-consegna",
       gravita: "attenzione",

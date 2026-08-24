@@ -26,6 +26,9 @@ export type IncomingItem = {
 export type DatiCliente = {
   nome?: string;
   telefono?: string;
+  // Dove mandare la conferma, per chi ordina dal sito. Chi ordina in cassa non
+  // la lascia: davanti ha una persona.
+  email?: string;
   indirizzo?: string;
   consegnaCents?: number;
   // "AAAA-MM-GGTHH:MM" concordato. Con la data e non la sola ora, perche' al
@@ -45,16 +48,48 @@ function pulisci(v: string | undefined, max = MAX_TESTO): string | null {
   return (v ?? "").trim().slice(0, max) || null;
 }
 
+// Tutto quello che cambia da un modo di ordinare all'altro. Erano parametri in
+// fila, e con il quinto si arrivava a chiamarla con un `undefined` in mezzo per
+// saltare il numero di persone: un oggetto dice cosa si sta passando.
+export type OpzioniOrdine = {
+  partySize?: number;
+  channel?: Channel;
+  cliente?: DatiCliente;
+  // Forzatura della stampa decisa dall'operatore per questo ordine.
+  stampaComanda?: boolean;
+  // Con che stato nasce. Serve al web, dove l'ordine aspetta di essere
+  // accettato: fino ad allora non e' roba da preparare, e in cucina non deve
+  // comparire.
+  stato?: string;
+  // Il link con cui chi ha ordinato dal sito segue il suo ordine.
+  webToken?: string;
+  // Quanto dista chi si e' fatto consegnare: e' il numero da cui e' uscito il
+  // costo, e chi accetta l'ordine deve poterlo leggere per correggerlo dove la
+  // linea d'aria mente. Nullo = l'indirizzo non si e' trovato sulla mappa.
+  deliveryKm?: number | null;
+  // Il database, o la transazione in cui chi chiama ha appena controllato che
+  // ci fosse ancora posto. Fra quel controllo e questa scrittura non deve
+  // poterci entrare un altro ordine.
+  esecutore?: Esecutore;
+};
+
+type Esecutore = Pick<typeof db, "select" | "insert">;
+
 export async function createOrderRows(
   tenantId: string,
   tableNumber: number | null,
   items: IncomingItem[],
   modules: ModuleState,
-  partySize?: number,
-  channel: Channel = "tavolo",
-  cliente?: DatiCliente,
-  // Forzatura della stampa decisa dall'operatore per questo ordine.
-  stampaComanda?: boolean
+  {
+    partySize,
+    channel = "tavolo",
+    cliente,
+    stampaComanda,
+    stato = "new",
+    webToken,
+    deliveryKm,
+    esecutore = db,
+  }: OpzioniOrdine = {}
 ): Promise<
   { ok: false } | { ok: true; orderId: string; comande: number }
 > {
@@ -74,7 +109,7 @@ export async function createOrderRows(
 
   // Prezzi e nomi vengono presi dal DB, mai dal client.
   const ids = [...new Set(clean.map((i) => i.productId))];
-  const prods = await db
+  const prods = await esecutore
     .select({
       id: menuProducts.id,
       name: menuProducts.name,
@@ -91,7 +126,7 @@ export async function createOrderRows(
   // dal client, e la variante deve appartenere al prodotto richiesto.
   const variantIds = clean.map((i) => i.variantId).filter((v): v is string => !!v);
   const variants = variantIds.length
-    ? await db
+    ? await esecutore
         .select({
           id: menuProductVariants.id,
           productId: menuProductVariants.productId,
@@ -190,9 +225,12 @@ export async function createOrderRows(
       ? cliente!.consegnaCents!
       : 0;
 
-  // Il momento concordato arriva con la data: si accetta solo se e' nelle due
-  // settimane a venire e non troppo indietro, perche' un ordine per il mese
-  // scorso e' un errore di battitura, non una prenotazione.
+  // Il momento concordato arriva con la data: si accetta solo se e' nel mese a
+  // venire e non troppo indietro, perche' un ordine per il mese scorso e' un
+  // errore di battitura, non una prenotazione. Il tetto non e' una regola del
+  // locale — quella e' "quanti giorni in avanti" delle impostazioni, e non puo'
+  // andare oltre il mese: e' il paletto oltre cui la data e' sicuramente
+  // sbagliata.
   let ritiro: Date | null = null;
   const quando = (cliente?.oraRitiro ?? "").trim();
   if (!canale.seduti && /^\d{4}-\d{2}-\d{2}T\d{1,2}:\d{2}$/.test(quando)) {
@@ -201,23 +239,26 @@ export async function createOrderRows(
     if (
       !Number.isNaN(d.getTime()) &&
       d.getTime() > ora - 60 * 60 * 1000 &&
-      d.getTime() < ora + 14 * 24 * 60 * 60 * 1000
+      d.getTime() < ora + 31 * 24 * 60 * 60 * 1000
     ) {
       ritiro = d;
     }
   }
 
-  const inserted = await db
+  const inserted = await esecutore
     .insert(orders)
     .values({
       tenantId,
       tableNumber: canale.seduti ? tavolo : null,
       dueAt: ritiro,
       channel,
-      status: "new",
+      status: stato,
+      webToken: webToken ?? null,
+      deliveryKm: deliveryKm ?? null,
       partySize: persone,
       customerName: canale.seduti ? null : pulisci(cliente?.nome),
       customerPhone: canale.seduti ? null : pulisci(cliente?.telefono, 32),
+      customerEmail: canale.seduti ? null : pulisci(cliente?.email, 160),
       customerAddress: canale.chiedeIndirizzo
         ? pulisci(cliente?.indirizzo, 200)
         : null,
@@ -234,7 +275,7 @@ export async function createOrderRows(
     rows.map((r) => r.productId)
   );
 
-  await db.insert(orderItems).values(
+  await esecutore.insert(orderItems).values(
     rows.map((r) => ({
       orderId,
       productId: r.productId,

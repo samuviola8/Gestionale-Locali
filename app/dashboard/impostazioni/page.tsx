@@ -21,6 +21,9 @@ import Field from "@/components/Field";
 import ProvaPosta from "@/components/ProvaPosta";
 import SuoneriaChiamate from "@/components/SuoneriaChiamate";
 import { leggiImpostazioni } from "@/lib/prenotazioni";
+import { leggiImpostazioniWeb } from "@/lib/ordini-web";
+import { coordinateLocale, leggiFasce } from "@/lib/consegna";
+import FasceConsegna from "@/components/FasceConsegna";
 import { cifraturaDisponibile } from "@/lib/segreti";
 import {
   addReparto,
@@ -30,6 +33,8 @@ import {
   salvaChiusure,
   salvaMenuAlTavolo,
   salvaOrari,
+  salvaConsegna,
+  salvaOrdiniWeb,
   salvaPosta,
   salvaPrenotazioni,
   salvaStampa,
@@ -67,6 +72,45 @@ function Interruttore({
   );
 }
 
+
+// I due canali dal sito, con le parole giuste per ognuno. Sta qui e non dentro
+// al JSX perche' i due blocchi sono identici in tutto tranne che nel testo: uno
+// solo, ripetuto, e' anche l'unico modo perche' restino identici.
+const CANALI_WEB = [
+  {
+    chiave: "asporto" as const,
+    modulo: "takeaway" as const,
+    titolo: "Asporto dal sito",
+    // Come si chiama il canale dentro a una frase: "le fasce da 15 min per
+    // l'asporto", "40 pezzi all'ora di ritiri".
+    articolo: "l'asporto",
+    plurale: "ritiri",
+    descrizione:
+      "Il cliente compone l'ordine, sceglie l'ora del ritiro e passa a prenderlo. Si paga alla cassa, al ritiro.",
+    suggerimentoPreavviso:
+      "Il primo ritiro proposto è a partire da qui: sotto questa soglia la cucina non fa in tempo.",
+    suggerimentoMinimo:
+      "Sotto questa spesa il ritiro non si prende. Vuoto = nessun minimo.",
+    suggerimentoNota: "Una regola della casa, mostrata prima di inviare.",
+    esempioNota: "Il ritiro si tiene 15 minuti oltre l'orario concordato.",
+  },
+  {
+    chiave: "domicilio" as const,
+    modulo: "delivery" as const,
+    titolo: "Domicilio dal sito",
+    articolo: "il domicilio",
+    plurale: "consegne",
+    descrizione:
+      "Come l'asporto, ma con l'indirizzo: il costo di consegna si calcola sulla distanza, con le zone qui sotto. Si paga alla consegna.",
+    suggerimentoPreavviso:
+      "Più lungo di quello dell'asporto: oltre alla preparazione c'è il giro di chi consegna.",
+    suggerimentoMinimo:
+      "Il minimo del locale. Le zone ne hanno uno loro: fra i due comanda il più alto.",
+    suggerimentoNota: "Una regola della casa, mostrata prima di inviare.",
+    esempioNota: "La domenica sera si consegna solo in centro.",
+  },
+];
+
 export default async function ImpostazioniPage() {
   const session = await getSessionUser();
   if (!session) redirect("/login");
@@ -82,12 +126,37 @@ export default async function ImpostazioniPage() {
 
   const modules = await getTenantModules(session.tenantId);
   const cfg = leggiImpostazioni(locale);
+  const cfgWeb = leggiImpostazioniWeb(locale);
+  // Dove sta il locale: senza, nessuna distanza e quindi nessun costo di
+  // consegna. Si cerca qui, una volta sola nella vita del locale, e da qui in
+  // poi e' scritto in anagrafica.
+  const doveSiamo = modules.delivery
+    ? await coordinateLocale(session.tenantId)
+    : null;
   const segretiPronti = cifraturaDisponibile();
-  // L'indirizzo pubblico si mostra per intero: e' quello che il locale
-  // incolla su Google e sui social, e va letto senza doverlo ricostruire.
-  const indirizzoPubblico = `${session.tenantSlug}.${
+  // Gli indirizzi pubblici si mostrano per interi: sono quelli che il locale
+  // incolla su Google e sui social, e vanno letti senza doverli ricostruire.
+  const dominioLocale = `${session.tenantSlug}.${
     process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000"
-  }/prenota`;
+  }`;
+  const indirizzoPrenota = `${dominioLocale}/prenota`;
+  const indirizzoOrdina = `${dominioLocale}/ordina`;
+
+  // Il conto all'ora dei pezzi per fascia, scritto con le fasce vere di questo
+  // locale. "Per fascia" letto di fretta diventa "all'ora": chi lo legge cosi'
+  // mette 40 e si ritrova quaranta pizze tutte per le 20:00.
+  const canaliAccesi = CANALI_WEB.filter((c) => modules[c.modulo]);
+  const fasceScritte = canaliAccesi
+    .map((c) => `${cfgWeb[c.chiave].passoMinuti} min per ${c.articolo}`)
+    .join(" e da ");
+  const resaOraria = canaliAccesi
+    .map(
+      (c, i) =>
+        `${Math.round((10 * 60) / cfgWeb[c.chiave].passoMinuti)}${
+          i === 0 ? " pezzi all'ora" : ""
+        } di ${c.plurale}`
+    )
+    .join(" e ");
 
   const [elencoReparti, categorie, staff] = await Promise.all([
     db
@@ -404,7 +473,7 @@ export default async function ImpostazioniPage() {
               rel="noreferrer"
               className="underline"
             >
-              {indirizzoPubblico}
+              {indirizzoPrenota}
             </a>
             : è il link da mettere su Google, sui social e sul menu.
           </p>
@@ -548,6 +617,247 @@ export default async function ImpostazioniPage() {
               Salva le prenotazioni
             </button>
           </form>
+        </section>
+      )}
+
+      {/* --- Ordini dal web --- */}
+      {modules.web_orders && (modules.takeaway || modules.delivery) && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Ordini dal sito</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Asporto e domicilio ordinati dal cliente sul sito, senza telefonare.
+            Ogni canale si accende per conto suo e ha le sue regole: il ritiro
+            si prepara in venti minuti e la consegna in quaranta, e un numero
+            solo per tutti e due vorrebbe dire tararlo sul peggiore.
+          </p>
+          {(cfgWeb.asporto.attivo || cfgWeb.domicilio.attivo) && (
+            <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
+              La pagina pubblica è{" "}
+              <a
+                href="/ordina"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {indirizzoOrdina}
+              </a>
+              : è il link da mettere su Google, sui social e sul volantino.
+            </p>
+          )}
+
+          <form action={salvaOrdiniWeb} className="mt-4 space-y-5">
+            {CANALI_WEB.filter((c) => modules[c.modulo]).map((c) => {
+              const r = cfgWeb[c.chiave];
+              return (
+                <div
+                  key={c.chiave}
+                  className="rounded-xl border p-3"
+                  style={{
+                    borderColor: r.attivo ? "var(--brand)" : "var(--border)",
+                    background: r.attivo ? "var(--brand-50)" : undefined,
+                  }}
+                >
+                  <div
+                    className="divide-y"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <Interruttore
+                      nome={`${c.chiave}-attivo`}
+                      etichetta={c.titolo}
+                      descrizione={c.descrizione}
+                      acceso={r.attivo}
+                    />
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field
+                      label="Preavviso minimo (minuti)"
+                      hint={c.suggerimentoPreavviso}
+                    >
+                      <input
+                        type="number"
+                        name={`${c.chiave}-preavviso`}
+                        min={0}
+                        max={1440}
+                        step={5}
+                        defaultValue={r.preavvisoMinuti}
+                        className="input tnum"
+                      />
+                    </Field>
+                    <Field
+                      label="Passo delle fasce (minuti)"
+                      hint="Ogni quanto si propone un orario. 15 minuti: chi ritira passa e va via."
+                    >
+                      <input
+                        type="number"
+                        name={`${c.chiave}-passo`}
+                        min={5}
+                        max={60}
+                        step={5}
+                        defaultValue={r.passoMinuti}
+                        className="input tnum"
+                      />
+                    </Field>
+                    <Field
+                      label="Quanti giorni in avanti"
+                      hint="Oltre, non si ordina: nessuno prende una pizza per il mese prossimo."
+                    >
+                      <input
+                        type="number"
+                        name={`${c.chiave}-giorni`}
+                        min={1}
+                        max={30}
+                        defaultValue={r.giorniAvanti}
+                        className="input tnum"
+                      />
+                    </Field>
+                    <Field
+                      label="Minimo d'ordine"
+                      hint={c.suggerimentoMinimo}
+                    >
+                      <input
+                        name={`${c.chiave}-minimo`}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        defaultValue={
+                          r.minimoCents
+                            ? (r.minimoCents / 100).toFixed(2).replace(".", ",")
+                            : ""
+                        }
+                        className="input tnum"
+                      />
+                    </Field>
+
+                    <div
+                      className="divide-y sm:col-span-2"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      <Interruttore
+                        nome={`${c.chiave}-auto`}
+                        etichetta="Accettazione automatica"
+                        descrizione="L'ordine entra in cucina appena il cliente invia, e la comanda parte da sola. Spenta, resta «da accettare» in coda: siete voi a farlo entrare, spostarlo di un'ora o rifiutarlo."
+                        acceso={r.accettazioneAutomatica}
+                      />
+                    </div>
+
+                    <Field
+                      label="Riga da mostrare a chi ordina"
+                      hint={c.suggerimentoNota}
+                      className="sm:col-span-2"
+                    >
+                      <input
+                        name={`${c.chiave}-nota`}
+                        maxLength={300}
+                        defaultValue={r.nota ?? ""}
+                        placeholder={c.esempioNota}
+                        className="input"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Il numero piu' frainteso della pagina: sembra "quante pizze
+                faccio", ed e' invece "quante ne prometto per lo stesso
+                orario". Chi lo legge all'ora mette 40 e apre le porte a
+                quaranta pizze per le 20:00. Per questo qui sotto c'e'
+                l'esempio, e il conto all'ora fatto sulle fasce di adesso. */}
+            <div className="rounded-xl p-3" style={{ background: "var(--surface-2)" }}>
+              <Field
+                label="Pezzi per fascia — quanto tiene la cucina"
+                hint="Un pezzo è una pizza, una birra, un tagliere. Questo è il massimo che vi impegnate a preparare per uno stesso orario, contando asporto e domicilio insieme: è lo stesso forno, ed è l'unico numero che i due canali si dividono. 0 = nessun tetto, per vedere quanti ne arrivano prima di metterne uno."
+              >
+                <input
+                  type="number"
+                  name="pezzi"
+                  min={0}
+                  max={500}
+                  defaultValue={cfgWeb.pezziPerFascia}
+                  className="input tnum"
+                />
+              </Field>
+
+              <div
+                className="mt-3 border-t pt-3 text-xs leading-relaxed"
+                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              >
+                <div className="font-medium" style={{ color: "var(--text)" }}>
+                  Come funziona, con un esempio
+                </div>
+                <p className="mt-1">
+                  Mettiamo <strong>10</strong>. Per le 20:00 avete già accettato
+                  una pizza margherita ×6 e due birre: <strong>8 pezzi</strong>{" "}
+                  impegnati, ne restano 2.
+                </p>
+                <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                  <li>
+                    chi arriva con <strong>2 pezzi</strong> vede ancora le
+                    20:00, e dopo di lui quell&apos;orario è pieno;
+                  </li>
+                  <li>
+                    chi arriva con <strong>4 pezzi</strong> le 20:00 non le vede
+                    più: gli restano le 20:15, le 20:30, e così via;
+                  </li>
+                  <li>
+                    chi ne ordina <strong>11 in una volta</strong> non vede
+                    nessun orario, e la pagina gli dice che per un ordine così
+                    deve chiamarvi.
+                  </li>
+                </ul>
+                <p className="mt-2">
+                  <strong>Attenzione al conto:</strong> è per fascia, non
+                  all&apos;ora. Con le fasce da {fasceScritte}, 10 pezzi
+                  vorrebbero dire fino a {resaOraria}.
+                </p>
+                <p className="mt-2">
+                  Occupano la fascia anche gli ordini battuti in cassa e quelli
+                  ancora <strong>da accettare</strong>: mentre decidete, quel
+                  posto non si può vendere due volte.
+                </p>
+              </div>
+            </div>
+
+            <button className="btn btn-primary btn-sm">
+              Salva gli ordini dal sito
+            </button>
+          </form>
+        </section>
+      )}
+
+      {/* --- Zone di consegna --- */}
+      {modules.web_orders && modules.delivery && (
+        <section className="card p-4">
+          <div className="text-sm font-medium">Zone di consegna</div>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--muted)" }}>
+            Quanto costa arrivare e fin dove si arriva. Una riga sola vuol dire
+            costo fisso per tutti; l&apos;ultima riga è il confine oltre il quale
+            non si consegna — e a chi resta fuori si propone il ritiro.
+          </p>
+          <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
+            La distanza è quella in linea d&apos;aria più il 30%, che è lo scarto
+            medio delle strade: scrivete i chilometri come li fareste in
+            macchina. Dove l&apos;aria mente — un fiume, una tangenziale — la
+            distanza si legge sull&apos;ordine e il costo lo correggete voi prima
+            di accettarlo.
+          </p>
+
+          {!doveSiamo && (
+            <p
+              className="mt-3 rounded-xl px-3 py-2 text-xs"
+              style={{ background: "var(--surface-2)", color: "var(--danger)" }}
+            >
+              Non sappiamo dove siete: senza l&apos;indirizzo del locale non si
+              calcola nessuna distanza, e ogni consegna resterebbe col costo da
+              confermare a mano. Scrivetelo nei dati di fatturazione.
+            </p>
+          )}
+
+          <FasceConsegna
+            iniziali={leggiFasce(locale.deliveryBands)}
+            gratisSopraIniziale={locale.deliveryFreeOverCents}
+            salva={salvaConsegna}
+          />
         </section>
       )}
 

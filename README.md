@@ -48,6 +48,11 @@ usata dal pannello.
 | `app/prenota/` | prenotazione pubblica del tavolo, sul sito del locale |
 | `lib/prenotazioni.ts` | fasce libere, assegnazione dei tavoli, impostazioni |
 | `lib/prenotazioni-mail.ts` | le mail al cliente, dalla casella del locale |
+| `app/ordina/` | asporto e domicilio ordinati dal cliente sul sito del locale |
+| `lib/ordini-web.ts` | fasce di ritiro, capienza della cucina, scrittura dell'ordine |
+| `lib/consegna.ts` | zone di consegna, distanza e costo |
+| `lib/ordini-mail.ts` | le mail al cliente che ha ordinato dal sito |
+| `lib/mittente.ts` | il locale come mittente: casella, foglio delle mail, link |
 | `lib/segreti.ts` | cifratura dei segreti dei locali (password della posta) |
 | `lib/tenant-host.ts` | ricava il locale dal sottodominio |
 | `lib/themes.ts` | preset di tema versionati nel codice |
@@ -74,7 +79,8 @@ logo. Aggiungere un preset nuovo = una voce in `lib/themes.ts`.
 ## Come funzionano i moduli
 
 `lib/modules.ts` e' il catalogo (ordini QR, sotto-conti, chiamata cameriere,
-prenotazione, pagamenti, agent AI, fedelta). Lo stato per locale sta in `tenant_modules`; le
+prenotazione, asporto, consegna, ordini dal sito, pagamenti, agent AI,
+fedelta). Lo stato per locale sta in `tenant_modules`; le
 righe mancanti ricadono sul default del catalogo, cosi' un modulo aggiunto dopo
 funziona anche sui locali gia' esistenti senza migrazioni di dati.
 
@@ -295,6 +301,123 @@ prenotazione vale lo stesso e in pannello si legge `mail non partita`.
 Lo staff vede la giornata in `Dashboard → Prenotazioni`: conferma, sposta,
 segna gli arrivati e i non presentati, cambia tavolo e scrive le prenotazioni
 prese al telefono, che occupano i tavoli come tutte le altre.
+
+## Asporto e domicilio dal sito
+
+Ci vogliono **tre si'**, e sono tre cose diverse:
+
+| Dove | Cosa dice |
+| --- | --- |
+| modulo `web_orders` | questo locale ha comprato la vendita dal sito |
+| modulo `takeaway` / `delivery` | questo locale fa asporto, o consegna (anche solo in cassa) |
+| `Impostazioni → Ordini dal sito` | e quel canale lo prende **anche dal sito**, con le sue regole |
+
+Chi gli ordini li vuole solo al telefono tiene i moduli accesi e l'interruttore
+spento; chi non ha comprato `web_orders` non ha nemmeno la pagina. Con tutti e
+tre il locale espone `https://<slug>.<dominio>/ordina`, e senza risponde 404
+come qualsiasi indirizzo inventato.
+
+I due canali si accendono **uno alla volta** e hanno regole loro, in due blocchi
+separati: preavviso, passo delle fasce, giorni in avanti, minimo d'ordine,
+accettazione automatica e la riga da mostrare al cliente. Il ritiro si prepara
+in venti minuti e la consegna in quaranta; il ritiro si prende fino a stasera e
+la consegna solo su prenotazione; il ritiro entra da solo in cucina e la
+consegna la si guarda prima. Un numero solo per tutti e due vorrebbe dire
+tararlo sul peggiore e rovinare l'altro. Le regole stanno in un jsonb per
+canale (`tenants.web_order_channels`), cosi' un terzo canale non chiede sette
+colonne nuove.
+
+La differenza con la prenotazione non e' tecnica: un tavolo prenotato e'
+spazio, e se salta resta un tavolo vuoto; un ordine e' roba cucinata, che il
+locale ha gia' pagato quando il cliente non si presenta. Da qui vengono le tre
+regole che reggono tutto il resto.
+
+### 1. La capienza e' quella della cucina, e si misura in pezzi
+
+Nella prenotazione la domanda e' "quante persone"; qui e' "quanti pezzi". Un
+ordine da trenta pizze vede meno orari liberi di uno da due, ed e' giusto: sono
+le stesse trenta pizze che qualcuno deve infornare. Il tetto (`Pezzi per
+fascia`) e' **uno solo per asporto e domicilio** — il forno e' lo stesso, e due
+numeri separati direbbero venti dove il numero vero e' dieci. Occupano la
+fascia anche gli ordini battuti in cassa e quelli ancora da accettare, come una
+prenotazione `pending` tiene occupato il tavolo mentre il locale decide.
+
+Con un esempio: tetto **10**, e per le 20:00 sono gia' stati accettati 6 pizze
+e 2 birre — 8 pezzi. Chi arriva col carrello da 2 pezzi vede ancora le 20:00;
+chi ne ha 4 vede le 20:15; chi ne ordina 11 in una volta non vede nessun orario
+e la pagina gli dice di chiamare. Il conto e' **per fascia, non all'ora**: con
+fasce da 15 minuti un tetto di 10 vuol dire fino a 40 pezzi in un'ora, ed e'
+l'errore in cui si cade leggendolo di fretta.
+
+Tutto il resto invece e' **per canale** — preavviso, passo delle fasce, giorni
+in avanti, minimo d'ordine, accettazione automatica, riga per il cliente: una
+consegna ha in piu' il giro di chi consegna, e un locale puo' fare solo ritiri.
+
+### 2. Si accetta a mano
+
+L'ordine dal sito nasce `pending`: non entra in coda, non e' un conto aperto e
+**la comanda non parte**. Arriva anche mentre la cucina e' in ginocchio, o con
+la mozzarella finita, o da un indirizzo che si rivela dall'altra parte del
+fiume. In `Coda ordini` sta in cima, sotto «Da accettare», dove si puo'
+spostare l'ora concordata (`+15`, `+30`) e correggere il costo di consegna
+prima di dire di si'. Accettandolo entra in coda come tutti gli altri e **in
+quel momento** parte la comanda. Chi preferisce puo' accendere l'accettazione
+automatica; resta manuale per gli ordini di cui non si e' trovato l'indirizzo.
+
+«Sospendi per stasera» chiude il rubinetto quando la cucina e' al completo: la
+pagina resta in piedi e dice ai clienti di chiamare. Si riapre da sola a
+mezzanotte, perche' l'interruttore che resta giu' e' quello che tiene un locale
+chiuso al web per una settimana senza che nessuno se ne accorga.
+
+### 3. Il costo di consegna esce dalla distanza
+
+Le zone si scrivono in `Impostazioni → Zone di consegna` come righe «fino a X
+km → costo, minimo d'ordine»: una riga sola vuol dire costo fisso per tutti,
+l'ultima e' il confine oltre il quale non si consegna — e a chi resta fuori si
+propone il ritiro. Sopra una soglia la consegna si offre.
+
+La distanza serve **sempre**, anche a chi mette il costo fisso, perche' e' lei
+a dire fin dove si va. Si misura in linea d'aria piu' il 30% (lo scarto medio
+delle strade); con `GEO_ROUTING=osrm` si passa alla strada vera, una chiamata
+per ordine, e se il router non risponde si torna alla stima. Dove l'aria mente
+— il fiume, la tangenziale — la distanza si legge sull'ordine e il costo lo
+corregge chi accetta.
+
+Il numero lo calcola sempre il server: dal browser arrivano gli identificativi
+dei prodotti e il testo dell'indirizzo, mai un prezzo e mai un chilometro.
+Prezzi, disponibilita' per canale, distanza e costo si rileggono all'invio, e
+la fascia si ricontrolla dentro la transazione che scrive l'ordine, col
+lucchetto per locale.
+
+### Quello che vede il cliente
+
+| Dove | Cosa |
+| --- | --- |
+| `/ordina` | canale, menu del canale **con la ricerca**, carrello, indirizzo **con i suggerimenti** e costo di consegna calcolato, giorno e ora fra quelle che la cucina regge davvero |
+| `/ordina/<token>` | il suo ordine: ricevuto, confermato, spostato o rifiutato, con il totale e come si paga |
+
+Sul sito del locale il tasto «Ordina» sta accanto a «Prenota un tavolo», e compare con le stesse regole della pagina.
+
+Si paga **al ritiro o alla consegna**: online non si incassa niente (il modulo
+`payments` e' un'altra cosa e non e' ancora rilasciato). Il menu non e' tutto
+ordinabile: ogni prodotto ha le spunte «Si porta via» e «Si consegna», accese
+di default, e quello che resta in sala — il cocktail versato, la birra alla
+spina — si segna li'.
+
+### Le mail
+
+Partono dalla casella del locale, la stessa delle prenotazioni
+(`Impostazioni → Posta`), e sono scritte sullo stesso foglio (`lib/mittente.ts`).
+Al cliente: «ricevuto» quando l'ordine arriva e il locale accetta a mano,
+«confermato» quando lo accetta (o subito, con l'accettazione automatica),
+«spostato» se gli e' cambiata l'ora, «rifiutato» se non si e' potuto prendere.
+Al locale, sulla sua stessa casella, un avviso a ogni ordine nuovo: la coda sta
+su un altro schermo, e un ordine arrivato mentre nessuno guarda e' un ordine
+che scade.
+
+Dove la posta e' configurata l'email del cliente diventa obbligatoria — e' il
+modo in cui viene a sapere che l'ordine e' stato accettato — e dove non c'e' non
+si chiede nemmeno: chiederla per non mandare niente e' prometterla.
 
 ## Fatturazione
 
@@ -556,3 +679,4 @@ segnano a mano, come per SMTP e Telegram.
 - [ ] **M7** — import menu via OCR
 - [ ] **M8** — pagamento Apple/Google Pay
 - [ ] **M9** — agent AI consiglio drink, programma fedelta
+- [x] **M10** — asporto e domicilio dal sito del locale

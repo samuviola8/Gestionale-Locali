@@ -1,3 +1,5 @@
+import { dataISO } from "@/lib/orari";
+
 // Formattazioni pure, usabili anche dai componenti client: sta a parte da
 // lib/menu.ts perche' quello importa il database.
 
@@ -37,4 +39,44 @@ export function daQuanto(daMs: number, adessoMs: number): string {
   const resto = minuti % 60;
   if (ore >= 3 || resto === 0) return `${ore} h`;
   return `${ore}h ${String(resto).padStart(2, "0")}`;
+}
+
+
+// I chilometri si scrivono con la virgola: "0,6 km", non "0.6". E si fermano al
+// primo decimale — la distanza e' una stima, e un secondo decimale
+// prometterebbe una precisione che non c'e'.
+export function formatKm(km: number): string {
+  return `${String(Math.round(km * 10) / 10).replace(".", ",")} km`;
+}
+
+// Una data ridotta a pillola: "Oggi", "Domani", poi il giorno della settimana
+// con numero e mese. La usano la prenotazione e l'ordine dal web, che scelgono
+// il giorno nello stesso modo — una fila di pillole da scorrere col pollice.
+export type GiornoScelta = {
+  iso: string;
+  nome: string;
+  numero: string;
+  mese: string;
+};
+
+export function pilloleGiorni(giorni: Date[], adesso: Date): GiornoScelta[] {
+  const aMezzanotte = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  return giorni.map((d) => {
+    const giorniDiDistanza = Math.round(
+      (aMezzanotte(d) - aMezzanotte(adesso)) / 86400000
+    );
+    return {
+      iso: dataISO(d),
+      nome:
+        giorniDiDistanza === 0
+          ? "Oggi"
+          : giorniDiDistanza === 1
+            ? "Domani"
+            : d.toLocaleDateString("it-IT", { weekday: "short" }),
+      numero: String(d.getDate()),
+      mese: d.toLocaleDateString("it-IT", { month: "short" }).replace(".", ""),
+    };
+  });
 }

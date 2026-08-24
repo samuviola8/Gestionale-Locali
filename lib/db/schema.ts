@@ -163,6 +163,63 @@ export const tenants = pgTable("tenants", {
   // terzo commensale mentre in sala ci sta comodo.
   reservationExtraSeats: integer("reservation_extra_seats").notNull().default(0),
 
+  // Ordini dal web: asporto e domicilio ordinati dal cliente sul sito del
+  // locale, senza telefonare. Come per la prenotazione sono i pochi numeri di
+  // un locale solo e stanno qui, non in una tabella a parte.
+  //
+  // Le regole stanno in un blocco per canale, perche' i due canali quasi niente
+  // ce l'hanno in comune:
+  //
+  //   { "asporto":   { "attivo": true, "passoMinuti": 15, "preavvisoMinuti": 20,
+  //                    "giorniAvanti": 7, "minimoCents": 0,
+  //                    "accettazioneAutomatica": false, "nota": null },
+  //     "domicilio": { ... } }
+  //
+  // In jsonb e non in una colonna per numero: sono le stesse sette voci per
+  // ogni canale, e il giorno che se ne aggiunge un terzo — il ritiro al banco,
+  // per dirne una — sarebbero altre sette colonne e una migrazione. Quello che
+  // ci finisce dentro lo ripulisce `normalizzaCanale`, in scrittura e in
+  // lettura: qui dentro un numero storto non da' errore, si traduce in una
+  // pagina che non propone piu' niente.
+  //
+  // Il canale acceso qui e' un'altra cosa dal modulo: il modulo dice che il
+  // locale fa asporto, questo che lo prende anche dal web. Chi gli ordini li
+  // vuole solo al telefono tiene il modulo acceso e questo spento.
+  webOrderChannels: jsonb("web_order_channels")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  // Quanti pezzi tiene una fascia: e' la capienza della cucina, e per questo e'
+  // l'unica cosa che i due canali si dividono. Il forno e' lo stesso, e due
+  // tetti separati direbbero venti dove il numero vero e' dieci. 0 = nessun
+  // tetto, per chi vuole vedere quanti ne arrivano prima di mettere un limite.
+  webOrderPiecesPerSlot: integer("web_order_pieces_per_slot")
+    .notNull()
+    .default(0),
+  // Fino a quando gli ordini dal web sono sospesi. E' l'interruttore del
+  // sabato sera: la cucina e' in ginocchio e si chiude il rubinetto senza
+  // spegnere niente di configurato. Si mette a fine giornata e non a mano,
+  // perche' un interruttore che si riapre da solo la mattina dopo e' l'unico
+  // che non lascia un locale chiuso al web per una settimana per dimenticanza.
+  webOrdersPausedUntil: timestamp("web_orders_paused_until", {
+    withTimezone: true,
+  }),
+
+  // Le fasce di consegna: "fino a X km, costo Y, minimo d'ordine Z", in ordine
+  // di distanza. Una riga sola vuol dire costo fisso per tutti; oltre l'ultima
+  // non si consegna. Stanno in jsonb come le chiusure — sono due o tre righe di
+  // un locale solo, non una collezione da interrogare.
+  //
+  // La distanza serve comunque, anche a chi mette il costo fisso: e' lei a dire
+  // fin dove si va. Senza, un locale con la consegna a 3 euro si prenderebbe un
+  // ordine a quaranta chilometri.
+  deliveryBands: jsonb("delivery_bands").notNull().default(sql`'[]'::jsonb`),
+  // Sopra questo importo la consegna e' offerta. 0 = si paga sempre. Il minimo
+  // d'ordine della fascia vale lo stesso: regalare il viaggio non vuol dire
+  // uscire per otto euro di spesa.
+  deliveryFreeOverCents: integer("delivery_free_over_cents")
+    .notNull()
+    .default(0),
+
   // Posta del locale. Le conferme di prenotazione partono dalla sua casella,
   // non dalla nostra: il cliente ha prenotato dal ristorante, e la risposta
   // deve arrivare — e potersi rigirare — da li'. La password e' una "password
@@ -342,6 +399,13 @@ export const menuProducts = pgTable("menu_products", {
   // vino magari lo bevono in due, e chi ha gia' il calice davanti non ne vuole
   // un altro.
   requiresGlasses: boolean("requires_glasses").notNull().default(false),
+  // Cosa esce dal locale. Non tutto il menu si porta a casa: il cocktail
+  // versato non viaggia, la birra alla spina nemmeno, il fritto a domicilio
+  // arriva molle. Accesi di default perche' la regola e' che si porta via:
+  // spegnere venti prodotti e' lavoro, accenderne centoquaranta e' una
+  // giornata, e un menu tutto spento non lo accende nessuno.
+  takeawayAvailable: boolean("takeaway_available").notNull().default(true),
+  deliveryAvailable: boolean("delivery_available").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -424,6 +488,12 @@ export const orders = pgTable("orders", {
   // contemporanea. Il canale dice sempre come leggere questa riga.
   tableNumber: integer("table_number"),
   channel: text("channel").notNull().default("tavolo"),
+  // pending | new | preparing | served.
+  //
+  // "pending" nasce solo dal web, dove l'ordine lo accetta una persona: non e'
+  // ancora roba da preparare, non entra in coda, non e' un conto aperto e la
+  // comanda non parte. Tutto quello che nasce dentro al locale parte da "new",
+  // perche' chi l'ha battuto l'ha gia' accettato battendolo.
   status: text("status").notNull().default("new"),
   // Quante persone sono sedute al tavolo. Serve per dividere le voci
   // condivise e per contare i coperti; lo dichiara il cliente alla prima
@@ -433,12 +503,26 @@ export const orders = pgTable("orders", {
   // di tavolo per farsi riconoscere: ha un nome.
   customerName: text("customer_name"),
   customerPhone: text("customer_phone"),
+  // Dove mandare la conferma di un ordine arrivato dal sito. Si chiede solo
+  // dove il locale ha la posta configurata: chiederla per non mandare niente
+  // e' raccogliere un indirizzo per niente.
+  customerEmail: text("customer_email"),
   customerAddress: text("customer_address"),
   // Consegna: e' un servizio, non una consumazione, quindi non e' una riga
   // d'ordine e non deve finire nella comanda che arriva in cucina.
   deliveryFeeCents: integer("delivery_fee_cents").notNull().default(0),
   // Quando il cliente passa a ritirare, o quando va consegnato.
   dueAt: timestamp("due_at", { withTimezone: true }),
+  // Il link con cui chi ha ordinato dal sito rivede il suo ordine e ne segue
+  // lo stato: e' l'unica cosa che glielo fa ritrovare senza un account. Nullo
+  // su tutto quello che nasce dentro al locale.
+  webToken: text("web_token").unique(),
+  // Quanti chilometri per arrivarci. E' il numero da cui e' uscito il costo di
+  // consegna, e sta scritto sull'ordine perche' chi lo accetta possa dargli
+  // un'occhiata: dove la linea d'aria mente — il fiume, la tangenziale — il
+  // costo lo corregge lui. Nullo = l'indirizzo non si e' trovato sulla mappa,
+  // e allora il costo lo decide il locale.
+  deliveryKm: doublePrecision("delivery_km"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, notInArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   menuCategories,
@@ -124,7 +124,11 @@ export async function getTotali(
       and(
         eq(orders.tenantId, tenantId),
         gte(orders.createdAt, periodo.da),
-        lt(orders.createdAt, periodo.a)
+        lt(orders.createdAt, periodo.a),
+        // Un ordine dal web mai accettato non e' mai esistito: non e' stato
+        // preparato, non e' stato incassato, e contarlo gonfierebbe sia gli
+        // ordini sia l'incasso di roba che non e' uscita dalla cucina.
+        notInArray(orders.status, ["pending", "rejected"])
       )
     );
 
@@ -201,7 +205,11 @@ export async function getAnalytics(
       and(
         eq(orders.tenantId, tenantId),
         gte(orders.createdAt, periodo.da),
-        lt(orders.createdAt, periodo.a)
+        lt(orders.createdAt, periodo.a),
+        // Un ordine dal web mai accettato non e' mai esistito: non e' stato
+        // preparato, non e' stato incassato, e contarlo gonfierebbe sia gli
+        // ordini sia l'incasso di roba che non e' uscita dalla cucina.
+        notInArray(orders.status, ["pending", "rejected"])
       )
     )
     .orderBy(asc(orders.createdAt));

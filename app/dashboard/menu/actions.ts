@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { saveImage } from "@/lib/uploads";
+import { getTenantModules } from "@/lib/modules";
 
 async function requireTenantId(): Promise<string> {
   const s = await getSessionUser();
@@ -34,6 +35,26 @@ function splitList(v: FormDataEntryValue | null): string[] {
     .filter(Boolean);
 }
 
+
+// Le spunte "si porta via" e "si consegna" arrivano solo dai locali che quei
+// canali ce li hanno: dove il modulo e' spento la casella non compare in
+// pagina, e un'assenza non deve spegnere un prodotto. Senza questo controllo,
+// il giorno che il canale torna il locale si ritroverebbe l'intero menu
+// escluso dall'asporto senza averlo mai deciso.
+async function canaliDelProdotto(
+  tenantId: string,
+  formData: FormData
+): Promise<{ takeawayAvailable?: boolean; deliveryAvailable?: boolean }> {
+  const modules = await getTenantModules(tenantId);
+  return {
+    ...(modules.takeaway
+      ? { takeawayAvailable: formData.get("asporto") === "on" }
+      : {}),
+    ...(modules.delivery
+      ? { deliveryAvailable: formData.get("domicilio") === "on" }
+      : {}),
+  };
+}
 function euroToCents(v: string): number {
   const n = parseFloat(v.replace(",", ".").replace(/[^0-9.]/g, ""));
   return Number.isNaN(n) ? 0 : Math.round(n * 100);
@@ -95,6 +116,7 @@ export async function addProduct(formData: FormData): Promise<void> {
     priceCents,
     acceptsNote: formData.get("acceptsNote") === "on",
     requiresGlasses: formData.get("requiresGlasses") === "on",
+    ...(await canaliDelProdotto(tenantId, formData)),
   });
   revalidatePath("/dashboard/menu");
 }
@@ -139,6 +161,7 @@ export async function updateProduct(formData: FormData): Promise<void> {
       allergens,
       priceCents,
       acceptsNote: formData.get("acceptsNote") === "on",
+      ...(await canaliDelProdotto(tenantId, formData)),
     })
     .where(and(eq(menuProducts.id, id), eq(menuProducts.tenantId, tenantId)));
   revalidatePath("/dashboard/menu");

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { billSettlements, orderItems, orders, tenants } from "@/lib/db/schema";
 import {
@@ -63,7 +63,15 @@ export async function loadOpenTables(
       deliveryFeeCents: orders.deliveryFeeCents,
     })
     .from(orders)
-    .where(and(eq(orders.tenantId, tenantId), isNull(orders.closedAt)))
+    .where(
+      and(
+        eq(orders.tenantId, tenantId),
+        isNull(orders.closedAt),
+        // Un ordine dal web che il locale non ha ancora accettato non e' un
+        // conto: non e' stato preparato niente e non c'e' niente da incassare.
+        ne(orders.status, "pending")
+      )
+    )
     .orderBy(asc(orders.createdAt));
 
   // Il filtro per tavolo serve alla pagina cliente, che vive in sala: gli

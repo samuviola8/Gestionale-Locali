@@ -39,13 +39,9 @@ export async function createStaffOrder(
   const modules = await getTenantModules(session.tenantId);
   if (!modules.qr_ordering) return { ok: false };
 
-  return createOrderRows(
-    session.tenantId,
-    tableNumber,
-    items,
-    modules,
-    partySize
-  );
+  return createOrderRows(session.tenantId, tableNumber, items, modules, {
+    partySize,
+  });
 }
 
 // Stessa cosa, ma richiesta dal cameriere: al posto della sessione del tavolo

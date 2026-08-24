@@ -16,6 +16,7 @@ import Field from "@/components/Field";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
 import PhotoUpload from "@/components/PhotoUpload";
 import MenuSkeleton from "@/components/MenuSkeleton";
+import { getTenantModules } from "@/lib/modules";
 import ElencoProdotti from "./ElencoProdotti";
 import {
   addCategory,
@@ -41,7 +42,7 @@ export default async function MenuAdmin({
 
   // Il guscio non aspetta i prodotti: gli bastano i nomi delle categorie e
   // due conteggi. L'elenco arriva dopo, dentro un <Suspense>.
-  const [menu, tenant, senzaFoto] = await Promise.all([
+  const [menu, tenant, senzaFoto, modules] = await Promise.all([
     getMenuCategories(session.tenantId),
     db
       .select({ coverChargeCents: tenants.coverChargeCents })
@@ -49,6 +50,9 @@ export default async function MenuAdmin({
       .where(eq(tenants.id, session.tenantId))
       .limit(1),
     countProductsWithoutPhoto(session.tenantId),
+    // I canali del locale: decidono se il prodotto nuovo nasce anche da
+    // portare via, o se quella domanda qui non si fa proprio.
+    getTenantModules(session.tenantId),
   ]);
 
   const coperto = tenant[0]?.coverChargeCents ?? 0;
@@ -244,6 +248,51 @@ export default async function MenuAdmin({
                     </span>
                   </span>
                 </label>
+                {/* Dove si potra' ordinare. Nascono accesi: la regola e' che
+                    un prodotto si porta via, l'eccezione la segna il locale. */}
+                {modules.web_orders &&
+                  (modules.takeaway || modules.delivery) && (
+                  <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+                    {modules.takeaway && (
+                      <label className="flex items-start gap-2.5 text-sm">
+                        <input
+                          type="checkbox"
+                          name="asporto"
+                          defaultChecked
+                          className="mt-px"
+                        />
+                        <span>
+                          <span className="font-medium">Si porta via</span>
+                          <span
+                            className="mt-0.5 block text-xs"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            Spenta, non compare fra i prodotti da ritirare.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                    {modules.delivery && (
+                      <label className="flex items-start gap-2.5 text-sm">
+                        <input
+                          type="checkbox"
+                          name="domicilio"
+                          defaultChecked
+                          className="mt-px"
+                        />
+                        <span>
+                          <span className="font-medium">Si consegna</span>
+                          <span
+                            className="mt-0.5 block text-xs"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            Spenta, non si può ordinare a domicilio.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
                 <button className="btn btn-primary sm:col-span-2">
                   Aggiungi prodotto
                 </button>

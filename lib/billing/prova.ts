@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   billSettlements,
@@ -45,8 +45,15 @@ export async function usoInProva(
   tenantId: string,
   da: Date
 ): Promise<UsoInProva> {
-  const [righeOrdini, incasso, prenotazioni, chiamate, sottoconti, rubrica] =
-    await Promise.all([
+  const [
+    righeOrdini,
+    incasso,
+    prenotazioni,
+    chiamate,
+    sottoconti,
+    rubrica,
+    dalSito,
+  ] = await Promise.all([
       // Gli ordini divisi per canale: e' il canale che dice quale modulo ha
       // usato davvero, non il modulo acceso.
       db
@@ -55,7 +62,15 @@ export async function usoInProva(
           quanti: sql<number>`count(*)::int`,
         })
         .from(orders)
-        .where(and(eq(orders.tenantId, tenantId), gte(orders.createdAt, da)))
+        .where(
+          and(
+            eq(orders.tenantId, tenantId),
+            gte(orders.createdAt, da),
+            // Quelli mai accettati non contano come uso del servizio: il
+            // locale non ci ha lavorato.
+            notInArray(orders.status, ["pending", "rejected"])
+          )
+        )
         .groupBy(orders.channel),
       db
         .select({
@@ -95,6 +110,19 @@ export async function usoInProva(
         .select({ n: sql<number>`count(*)::int` })
         .from(customers)
         .where(and(eq(customers.tenantId, tenantId), gte(customers.createdAt, da))),
+      // Gli ordini arrivati dal sito: e' l'uso del modulo `web_orders`, ed e'
+      // un'altra cosa dal canale — un asporto battuto in cassa non c'entra.
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenantId, tenantId),
+            gte(orders.createdAt, da),
+            isNotNull(orders.webToken),
+            notInArray(orders.status, ["pending", "rejected"])
+          )
+        ),
     ]);
 
   const perCanale = new Map(righeOrdini.map((r) => [r.channel, r.quanti]));
@@ -105,6 +133,7 @@ export async function usoInProva(
     { key: "counter_orders", quante: perCanale.get("banco") ?? 0, unita: "ordini al banco" },
     { key: "takeaway", quante: perCanale.get("asporto") ?? 0, unita: "ordini d'asporto" },
     { key: "delivery", quante: perCanale.get("domicilio") ?? 0, unita: "consegne" },
+    { key: "web_orders", quante: dalSito[0]?.n ?? 0, unita: "ordini dal sito" },
     { key: "reservations", quante: prenotazioni[0]?.n ?? 0, unita: "prenotazioni" },
     { key: "waiter_call", quante: chiamate[0]?.n ?? 0, unita: "chiamate dal tavolo" },
     { key: "split_bill", quante: sottoconti[0]?.n ?? 0, unita: "conti divisi" },
