@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { slugFromHost } from "@/lib/tenant-host";
 import { getTenant } from "@/lib/tenants";
-import { MODULES, getTenantModules } from "@/lib/modules";
+import { MODULES, getModule, getTenantModules } from "@/lib/modules";
+import { PACCHETTI } from "@/lib/billing/listino";
 import { contestoOrdineWeb } from "@/lib/ordini-web";
 import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
@@ -16,8 +17,11 @@ import {
   MiniStampa,
   PannelloConto,
   PannelloCoda,
+  PannelloOrdineWeb,
   PannelloPrenotazione,
+  PannelloRecensione,
   PannelloRubrica,
+  PannelloStatoOrdine,
   SchermoCliente,
 } from "@/components/landing/Mockup";
 
@@ -141,10 +145,28 @@ export default async function Home() {
     slug === "comanda" || slug === rootBare || slug === "localhost";
   if (!isVetrina) notFound();
 
-  // Dominio radice -> landing pubblica. I moduli e i canali si leggono dal
-  // catalogo: la vetrina non puo' promettere qualcosa che il prodotto non ha.
-  const attivabili = MODULES.filter((m) => !m.comingSoon);
+  // Dominio radice -> landing pubblica. I moduli, i pacchetti e i canali si
+  // leggono dal catalogo e dal listino: la vetrina non puo' promettere
+  // qualcosa che il prodotto non ha, ne' un pacchetto che non si vende.
   const inArrivo = MODULES.filter((m) => m.comingSoon);
+
+  // Quello che un pacchetto accende, letto come differenza da quello prima:
+  // chi guarda sta scegliendo fra tre cose, e quello che gli serve sapere e'
+  // cosa cambia salendo. I pacchetti sono uno dentro l'altro, ma se un giorno
+  // smettessero di esserlo si torna da soli all'elenco intero.
+  const pacchetti = PACCHETTI.map((p, i) => {
+    const prima = i > 0 ? PACCHETTI[i - 1] : null;
+    const dentro = prima ? prima.moduli.every((k) => p.moduli.includes(k)) : false;
+    const moduli = dentro
+      ? p.moduli.filter((k) => !prima!.moduli.includes(k))
+      : p.moduli;
+    return {
+      key: p.key,
+      label: p.label,
+      sopra: dentro ? prima!.label : null,
+      voci: moduli.map((k) => getModule(k).label),
+    };
+  });
   const canali = CHANNELS;
 
   // Il modulo compare solo se la casella e' collegata davvero: se manca,
@@ -179,8 +201,10 @@ export default async function Home() {
               >
                 Il tavolo si prenota dal sito, il menu sta sul telefono del
                 cliente, le comande partono da sole verso cucina e bar, e il
-                conto è già diviso per persona. Senza scaricare nessuna app e
-                senza toccare la cassa che avete già.
+                conto è già diviso per persona. Chi a tavola non ci viene ordina
+                lo stesso — ritiro o consegna, dal sito e senza telefonare.
+                Senza scaricare nessuna app e senza toccare la cassa che avete
+                già.
               </p>
             </Rivela>
 
@@ -374,9 +398,9 @@ export default async function Home() {
                     {c.key === "banco" &&
                       "Cassa a tocco singolo da PC o tablet, con i più richiesti fra i preferiti. Si incassa subito."}
                     {c.key === "asporto" &&
-                      "Ogni ordine è un conto a sé, col nome di chi ritira e l'ora concordata al telefono."}
+                      "Ogni ordine è un conto a sé, col nome di chi ritira e l'ora concordata: al telefono, oppure dal sito."}
                     {c.key === "domicilio" &&
-                      "Indirizzo con i suggerimenti mentre si scrive, telefono e costo di consegna nel totale."}
+                      "Indirizzo con i suggerimenti mentre si scrive, telefono, e il costo di consegna che esce dalla distanza."}
                   </p>
                   <div
                     className="mt-3 text-xs"
@@ -388,6 +412,89 @@ export default async function Home() {
               </Rivela>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---------- Ordini dal sito ---------- */}
+      <section className="lp-sezione lp-bordo-sopra">
+        <div className="lp-contenuto grid items-center gap-14 lg:grid-cols-[0.9fr_1fr]">
+          <Rivela>
+            <div className="mx-auto grid max-w-sm gap-4">
+              <PannelloOrdineWeb />
+              <PannelloStatoOrdine />
+            </div>
+          </Rivela>
+
+          <Rivela ritardo={120}>
+            <Titolo
+              occhiello="Asporto e domicilio"
+              sotto="Il telefono che squilla durante il servizio è un cameriere in meno in sala. Chi ordina dal sito non ve lo fa squillare, e scrive lui il proprio indirizzo."
+            >
+              Si ordina dal sito,
+              <br />
+              senza telefonare
+            </Titolo>
+
+            <ul className="mt-8 space-y-5">
+              {[
+                [
+                  "Gli orari che si vedono sono quelli veri",
+                  "La capienza si conta in pezzi, non in ordini: un carrello da trenta pizze vede meno orari di uno da due, perché sono le stesse trenta pizze che qualcuno deve infornare. Il tetto è uno solo per ritiro e consegna — il forno è quello — e lo occupano anche gli ordini battuti in cassa.",
+                ],
+                [
+                  "Nessun ordine entra in cucina da solo",
+                  "Arriva in cima alla coda, sotto «Da accettare»: prima di dire di sì si cambia l'ora concordata, si corregge il costo di consegna e anche il prezzo di una riga. La comanda parte quando accettate, non prima. Chi lo preferisce accende l'accettazione automatica, e la tiene a mano per le consegne.",
+                ],
+                [
+                  "«Senza cipolla» ha un posto dove si scrive",
+                  "Ogni riga del carrello ha la sua nota, su qualunque prodotto: è la cosa che al telefono si dice sempre, e senza un posto dove scriverla il cliente o telefona lo stesso o rinuncia. In cucina la stessa pizza con due note diverse resta due righe, perché sono due cose diverse.",
+                ],
+                [
+                  "Il costo di consegna esce dalla distanza",
+                  "Le zone si scrivono come righe «fino a X km → costo e minimo d'ordine»: una riga sola vuol dire costo fisso per tutti, e l'ultima è il confine oltre il quale non si consegna — a chi resta fuori si propone il ritiro. Prezzi, distanza e costo li calcola sempre il server: dal telefono del cliente non arriva nessun importo.",
+                ],
+                [
+                  "Quando la cucina è al completo si chiude il rubinetto",
+                  "«Sospendi per stasera» lascia la pagina in piedi e dice ai clienti di chiamare. Si riapre da sola a mezzanotte, perché l'interruttore che resta giù è quello che tiene un locale chiuso al web per una settimana senza che nessuno se ne accorga.",
+                ],
+              ].map(([t, p]) => (
+                <li key={t} className="flex gap-4">
+                  <span
+                    className="mt-1.5 h-2 w-2 flex-none rounded-full"
+                    style={{ background: "var(--lp-accent)" }}
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <div className="font-semibold">{t}</div>
+                    <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+                      {p}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="lp-vetro mt-8 p-5" style={{ borderStyle: "dashed" }}>
+              <div className="font-semibold">La telefonata del «è pronto?»</div>
+              <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+                Il link che il cliente ha già è anche il posto dove guarda il suo
+                ordine avanzare: ricevuto, confermato, in preparazione, pronto,
+                in consegna, ritirato. La pagina si aggiorna da sola mentre
+                l&apos;ordine è in ballo, e si rilegge quando lui riprende il
+                telefono in mano. Se spostate l&apos;ora, quella riga cambia
+                davanti ai suoi occhi con un avviso: è l&apos;ora a cui esce di
+                casa.
+              </p>
+            </div>
+
+            <p className="mt-6 text-sm" style={{ color: "var(--muted)" }}>
+              Si paga al ritiro o alla consegna: dal sito non si incassa niente.
+              Le mail partono dalla casella del locale e sono tre, da accendere
+              una per una e per canale — la conferma e gli aggiornamenti al
+              cliente, l&apos;avviso a chi lavora. Chi tiene la coda a schermo
+              tutta la sera l&apos;avviso se lo toglie.
+            </p>
+          </Rivela>
         </div>
       </section>
 
@@ -556,6 +663,14 @@ export default async function Home() {
                   "Se un prodotto finisce, si annulla",
                   "La voce esce dal conto ma resta barrata, e sul telefono del cliente compare cosa gli è stato tolto.",
                 ],
+                [
+                  "«Mi aggiungete due birre?»",
+                  "Si aggiungono al conto anche a comanda già partita: al tavolo nasce un ordine nuovo, fuori dalla sala le righe si attaccano a quello che c'è già. In cucina va una comanda con le sole righe nuove — ristampare tutto vorrebbe dire far rifare da capo quello che stavano preparando.",
+                ],
+                [
+                  "Chi incassa gli asporti non scorre i tavoli",
+                  "Le stesse pillole filtrano per provenienza la coda e i conti aperti: sala, banco, asporto, domicilio. E quello che è già incassato non si tocca più, né nel prezzo né nella nota.",
+                ],
               ].map(([t, p], i) => (
                 <li key={t} className="flex gap-4">
                   <span
@@ -583,29 +698,192 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ---------- Moduli ---------- */}
+      {/* ---------- La sala ---------- */}
       <section className="lp-sezione lp-bordo-sopra">
         <div className="lp-contenuto">
           <Rivela>
             <Titolo
-              occhiello="Moduli"
-              sotto="Si accendono uno alla volta, quando servono. Un locale che vuole solo il menu digitale non si porta dietro il resto."
+              occhiello="In sala"
+              sotto="Le due domande che durante il servizio si gridano da una parte all'altra della sala, e a cui nessuna pagina sapeva rispondere."
             >
-              Paghi quello che accendi
+              «Il sei è libero?»
+              <br />
+              «Quelli da quanto sono lì?»
             </Titolo>
           </Rivela>
 
-          <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {attivabili.map((m, i) => (
-              <Rivela key={m.key} ritardo={(i % 3) * 80}>
-                <li className="lp-vetro lp-vetro-attiva h-full list-none p-5">
-                  <div className="font-semibold">{m.label}</div>
-                  <div className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
-                    {m.description}
-                  </div>
-                </li>
+          <div className="mt-10 grid gap-5 sm:grid-cols-2">
+            {[
+              [
+                "La sala si guarda dall'alto",
+                "La pianta dei tavoli con quello che di ognuno si sa adesso: da quanto sono seduti, in quanti, quanto hanno consumato, se aspettano dalla cucina e se hanno chiamato. Dopo due ore il pallino diventa giallo.",
+              ],
+              [
+                "Arrivano in sei e si tira di fianco il tavolo libero",
+                "I due tavoli si uniscono dalla sala: da quel momento risultano occupati tutti e due, il conto è uno solo e quello che si ordina dal QR del tavolo accostato ci finisce sopra da sé. Sul conto e sulla comanda si legge «Tavoli 4+5».",
+              ],
+              [
+                "L'ordine battuto sul 5 invece che sul 6",
+                "Il conto si sposta su un altro tavolo e si porta dietro tutto: consumazioni, incassi già presi, chiamate in attesa. Prima l'unica uscita era annullare le righe, che sul conto restano barrate per sempre.",
+              ],
+              [
+                "Chi è al tavolo si tocca, non si riscrive",
+                "Quando è il cameriere a battere l'ordine, «a nome di chi?» è l'elenco di chi a quel tavolo ha già ordinato: un tocco ed è dentro al menu con la persona giusta già scelta.",
+              ],
+            ].map(([t, p], i) => (
+              <Rivela key={t} ritardo={(i % 2) * 110}>
+                <div className="lp-vetro lp-vetro-attiva h-full p-6">
+                  <h3 className="font-semibold">{t}</h3>
+                  <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+                    {p}
+                  </p>
+                </div>
               </Rivela>
             ))}
+          </div>
+
+          <Rivela ritardo={140}>
+            <p className="mt-8 max-w-2xl text-sm" style={{ color: "var(--muted)" }}>
+              E si fa tutto dal telefono: da uno schermo stretto la barra
+              laterale esce di scena e torna col bottone, perché in sala nessuno
+              gira col portatile in mano.
+            </p>
+          </Rivela>
+        </div>
+      </section>
+
+      {/* ---------- Com'e' andata ---------- */}
+      <section className="lp-sezione lp-bordo-sopra">
+        <div className="lp-contenuto grid items-center gap-14 lg:grid-cols-[0.9fr_1fr]">
+          <Rivela>
+            <div className="flex justify-center lg:justify-start">
+              <PannelloRecensione />
+            </div>
+          </Rivela>
+
+          <Rivela ritardo={120}>
+            <Titolo
+              occhiello="A cose fatte"
+              sotto="La domanda arriva quando l'ordine è chiuso, e al tavolo subito dopo l'invio: lì è una riga sola, che si apre solo se qualcuno la tocca. Chi sta mangiando non deve trovarsi addosso un questionario."
+            >
+              La recensione la leggi tu,
+              <br />
+              prima che finisca su Google
+            </Titolo>
+
+            <ul className="mt-8 space-y-5">
+              {[
+                [
+                  "Una per ordine, e dietro c'è qualcuno che ha consumato davvero",
+                  "È quello che la rende verificata, ed è anche il motivo per cui non c'è niente da chiedere su chi sei: la risposta è legata all'ordine, e un secondo invio non ne scrive una seconda né riscrive la prima.",
+                ],
+                [
+                  "Serve per intervenire, non per farsi belli",
+                  "Le risposte restano nella dashboard del locale: non le pubblica nessuno. Accorgersi che la carbonara di venerdì non andava prima che quella frase finisca su Google vale una telefonata; dopo, vale solo una risposta pubblica.",
+                ],
+                [
+                  "Il link al profilo pubblico lo vede chiunque abbia risposto",
+                  "Con qualunque voto, anche chi ne ha dati due. Mandarci solo i contenti e tenersi le lamentele in casa si chiama review gating ed è vietato dalle regole di Google e di Trustpilot: per questo non c'è nessuna soglia da configurare, e non è una dimenticanza.",
+                ],
+                [
+                  "Una recensione non si scrive mai al posto del cliente",
+                  "Su Google non esiste nemmeno il modo — l'API della scheda le fa leggere e rispondere, non scrivere — e comunque sarebbe una recensione falsa: pratica commerciale scorretta, non una scorciatoia. L'unica strada è il link, che il cliente apre col suo account.",
+                ],
+              ].map(([t, p]) => (
+                <li key={t} className="flex gap-4">
+                  <span
+                    className="mt-1.5 h-2 w-2 flex-none rounded-full"
+                    style={{ background: "var(--lp-accent)" }}
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <div className="font-semibold">{t}</div>
+                    <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+                      {p}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-8 text-sm" style={{ color: "var(--muted)" }}>
+              Nasce spenta, come tutto il resto: è una domanda che il locale fa
+              ai suoi clienti, e se la vuole fare la decide lui.
+            </p>
+          </Rivela>
+        </div>
+      </section>
+
+      {/* ---------- Pacchetti ---------- */}
+      <section className="lp-sezione lp-bordo-sopra">
+        <div className="lp-contenuto">
+          <Rivela>
+            <Titolo
+              occhiello="Pacchetti"
+              sotto="I moduli non si spuntano uno per uno: li porta il pacchetto, e salendo si paga la differenza. Un locale di sola sala non si porta dietro la consegna."
+            >
+              Si sceglie un pacchetto,
+              <br />
+              non una lista di caselle
+            </Titolo>
+          </Rivela>
+
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {pacchetti.map((p, i) => (
+              <Rivela key={p.key} ritardo={i * 90}>
+                <div className="lp-vetro lp-vetro-attiva flex h-full flex-col p-6">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="lp-display text-2xl">{p.label}</h3>
+                    {p.sopra && (
+                      <span
+                        className="lp-pill"
+                        style={{
+                          background: "var(--lp-accent-soft)",
+                          color: "var(--lp-accent)",
+                        }}
+                      >
+                        tutto {p.sopra}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="mt-3 text-xs"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    {p.sopra ? "In più" : "Accende"}
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {p.voci.map((v) => (
+                      <li key={v} className="flex gap-2 text-sm">
+                        <span
+                          className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full"
+                          style={{ background: "var(--lp-accent)" }}
+                          aria-hidden="true"
+                        />
+                        <span>{v}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Rivela>
+            ))}
+          </div>
+
+          <Rivela ritardo={120}>
+            <div className="lp-vetro mt-5 p-6" style={{ borderStyle: "dashed" }}>
+              <div className="font-semibold">
+                E se la combinazione che serve non c&apos;è?
+              </div>
+              <p className="mt-1.5 text-sm" style={{ color: "var(--muted)" }}>
+                Si compone su misura, col suo prezzo: un locale che consegna ma
+                al tavolo non ci fa sedere nessuno non deve comprare la sala per
+                avere la consegna. Il prezzo sta nel pacchetto — uno solo, non
+                una somma di voci in fondo alla fattura.
+              </p>
+            </div>
+          </Rivela>
+
+          <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {inArrivo.map((m, i) => (
               <Rivela key={m.key} ritardo={(i % 3) * 80}>
                 <li

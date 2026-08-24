@@ -325,6 +325,240 @@ export function PannelloRubrica() {
   );
 }
 
+// Quello che vede chi ordina dal sito: il canale, il carrello con la nota su
+// ogni riga, e gli orari. Gli orari sono la parte che conta e sono pochi di
+// proposito: in elenco ci sono solo quelli in cui la cucina regge *questo*
+// carrello, percio' un orario che si vede e' un orario che vale.
+export function PannelloOrdineWeb() {
+  const righe: [string, string, string, string | null][] = [
+    ["2×", "Margherita", "€13,00", "ben cotta"],
+    ["1×", "Diavola", "€8,00", null],
+  ];
+
+  return (
+    <div className="lp-vetro w-full max-w-sm p-5">
+      <div className="flex items-baseline justify-between">
+        <span className="lp-occhiello">Ordina</span>
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>
+          Dal sito del locale
+        </span>
+      </div>
+
+      <div className="mt-3.5 flex gap-1.5">
+        {["Ritiro", "Consegna"].map((c, i) => (
+          <span key={c} className="lp-chip" data-attivo={i === 0 ? "si" : "no"}>
+            {c}
+          </span>
+        ))}
+      </div>
+
+      <div
+        className="mt-3 overflow-hidden rounded-xl p-1"
+        style={{ border: "1px solid var(--border)", background: "var(--surface)" }}
+      >
+        {righe.map(([q, nome, prezzo, nota]) => (
+          <div key={nome} className="px-2.5 py-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span style={{ fontSize: 11 }}>
+                <span style={{ fontWeight: 700 }}>{q}</span> {nome}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 600 }}>{prezzo}</span>
+            </div>
+            {nota && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--lp-accent)",
+                  fontStyle: "italic",
+                }}
+              >
+                «{nota}»
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3.5" style={{ fontSize: 11, color: "var(--muted)" }}>
+        A che ora passi a ritirare
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {["19:45", "20:00", "20:15", "20:45"].map((o, i) => (
+          <span key={o} className="lp-chip" data-attivo={i === 1 ? "si" : "no"}>
+            {o}
+          </span>
+        ))}
+      </div>
+      <div className="mt-1.5" style={{ fontSize: 10, color: "var(--muted)" }}>
+        Ci sono solo gli orari che reggono queste tre pizze
+      </div>
+
+      <div
+        className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5"
+        style={{
+          background: "var(--brand)",
+          color: "var(--brand-on)",
+          fontSize: 11,
+          fontWeight: 600,
+        }}
+      >
+        <span>Manda l&apos;ordine</span>
+        <span style={{ fontSize: 12, fontWeight: 700 }}>€21,00</span>
+      </div>
+      <div
+        className="mt-1.5 text-center"
+        style={{ fontSize: 10, color: "var(--muted)" }}
+      >
+        Si paga al ritiro
+      </div>
+    </div>
+  );
+}
+
+// La pagina dell'ordine, che e' la telefonata del «e' pronto?» che non viene
+// fatta. Le tappe gia' fatte, quella in corso, e l'ora concordata in evidenza:
+// e' la riga che il locale cambia proprio mentre il cliente sta guardando.
+export function PannelloStatoOrdine() {
+  const tappe: [string, "fatta" | "adesso" | "dopo"][] = [
+    ["Ricevuto", "fatta"],
+    ["Confermato", "fatta"],
+    ["In preparazione", "adesso"],
+    ["Pronto", "dopo"],
+    ["Ritirato", "dopo"],
+  ];
+
+  return (
+    <div className="lp-vetro w-full max-w-sm p-5">
+      <div className="flex items-baseline justify-between">
+        <span className="lp-occhiello">Il tuo ordine</span>
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>
+          Si aggiorna da solo
+        </span>
+      </div>
+
+      <div className="mt-3.5 space-y-2">
+        {tappe.map(([nome, stato]) => (
+          <div key={nome} className="flex items-center gap-2.5">
+            <span
+              className="flex h-4 w-4 flex-none items-center justify-center rounded-full"
+              style={{
+                background:
+                  stato === "dopo" ? "var(--surface-2)" : "var(--lp-accent)",
+                border: stato === "dopo" ? "1px solid var(--border)" : "none",
+                color: "var(--surface)",
+                fontSize: 9,
+              }}
+              aria-hidden="true"
+            >
+              {stato === "fatta" ? "✓" : ""}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: stato === "adesso" ? 700 : 400,
+                color: stato === "dopo" ? "var(--muted)" : "var(--text)",
+              }}
+            >
+              {nome}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="mt-3.5 rounded-lg px-2.5 py-2"
+        style={{ background: "var(--lp-accent-soft)", color: "var(--lp-accent)" }}
+      >
+        <div style={{ fontSize: 10 }}>L&apos;ora è cambiata</div>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>Pronto per le 21:00</div>
+      </div>
+
+      <div
+        className="mt-3 flex items-baseline justify-between pt-3"
+        style={{ borderTop: "1px dashed var(--border)" }}
+      >
+        <span style={{ fontSize: 10, color: "var(--muted)" }}>
+          Si paga al ritiro
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 700 }}>€21,00</span>
+      </div>
+    </div>
+  );
+}
+
+// «Com'e' andata», chiesto a cose fatte. Le stelle al locale, e sotto il link
+// al profilo pubblico: quello si vede con qualunque voto, anche con due
+// stelle, perche' mandarci solo i contenti e' vietato dalle piattaforme.
+export function PannelloRecensione() {
+  return (
+    <div className="lp-vetro w-full max-w-sm p-5">
+      <div className="flex items-baseline justify-between">
+        <span className="lp-occhiello">Com&apos;è andata</span>
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>
+          A ordine chiuso
+        </span>
+      </div>
+
+      <div className="mt-3.5" style={{ fontSize: 12, fontWeight: 600 }}>
+        Com&apos;è andata da noi?
+      </div>
+
+      <div className="mt-2 flex gap-1" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <span
+            key={n}
+            style={{
+              fontSize: 20,
+              lineHeight: 1,
+              color: n <= 4 ? "var(--lp-accent)" : "var(--border)",
+            }}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+
+      <div
+        className="mt-3 rounded-xl px-3 py-2"
+        style={{
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          fontSize: 11,
+          color: "var(--muted)",
+        }}
+      >
+        Pizza ottima, l&apos;attesa un po&apos; lunga
+        <span className="lp-cursore" aria-hidden="true" />
+      </div>
+
+      <div
+        className="mt-3 rounded-lg px-2.5 py-2"
+        style={{ background: "var(--surface-2)" }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 600 }}>Grazie!</div>
+        <div style={{ fontSize: 10, color: "var(--muted)" }}>
+          Se ti va, lasciala anche su{" "}
+          <span style={{ color: "var(--lp-accent)", fontWeight: 600 }}>
+            Google
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="mt-3 pt-3"
+        style={{
+          borderTop: "1px dashed var(--border)",
+          fontSize: 10,
+          color: "var(--muted)",
+        }}
+      >
+        La risposta la legge il locale nella sua dashboard: non la pubblica
+        nessuno.
+      </div>
+    </div>
+  );
+}
+
 // Mockup piu' piccoli, per le sezioni esplicative.
 export function MiniQr() {
   return (
