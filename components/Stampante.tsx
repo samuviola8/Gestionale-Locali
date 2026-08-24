@@ -30,6 +30,9 @@ function Comanda({ p }: { p: Extract<Payload, { kind: "comanda" }> }) {
     <div className="foglio">
       <div className="foglio-titolo">{p.reparto ?? "Comanda"}</div>
       <div className="foglio-intestazione">{p.intestazione}</div>
+      {/* Chi la stacca deve capire in mezzo secondo che non e' l'ordine
+          intero: e' la riga che evita una cena rifatta da capo. */}
+      {p.aggiunta && <div className="foglio-aggiunta">AGGIUNTA</div>}
       <div className="foglio-riga-piccola">
         Ordine delle {p.quando}
         {p.dueAt && ` · per ${p.dueAt}`}

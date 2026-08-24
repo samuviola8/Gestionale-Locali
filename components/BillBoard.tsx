@@ -7,6 +7,10 @@ import {
   type SetStateAction,
 } from "react";
 import { formatPrice as fmt } from "@/lib/format";
+import FiltroCanali from "@/components/FiltroCanali";
+import type { Channel } from "@/lib/channels";
+import type { MenuCategory } from "@/lib/menu";
+import AggiungiAlConto from "@/components/AggiungiAlConto";
 import {
   ALIAS_CONDIVISO,
   membriDi,
@@ -34,6 +38,10 @@ export default function BillBoard({
   voidItem,
   spostaVoce,
   stampaConto,
+  canali,
+  cambiaNota,
+  aggiungi,
+  menu,
 }: {
   markAliasPaid: (key: string, alias: string) => Promise<void>;
   closeTable: (key: string) => Promise<void>;
@@ -48,6 +56,26 @@ export default function BillBoard({
     nomi: string[],
     quantita: number
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  // I canali che questo locale ha davvero: sono le pillole del filtro.
+  canali: Channel[];
+  cambiaNota: (
+    itemId: string,
+    nota: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  aggiungi: (
+    key: string,
+    righe: {
+      productId: string;
+      variantId?: string | null;
+      alias: string;
+      quantity: number;
+      note?: string;
+    }[]
+  ) => Promise<
+    { ok: true; comande: number } | { ok: false; error: string }
+  >;
+  // Il listino, per aggiungere una consumazione a un conto gia' aperto.
+  menu: MenuCategory[];
 }) {
   const [tables, setTables] = useState<BillTable[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -58,6 +86,13 @@ export default function BillBoard({
   // Un conto alla volta in modifica: le crocette sempre accese si toccano
   // per sbaglio proprio mentre si incassa.
   const [modifica, setModifica] = useState<string | null>(null);
+
+  // Il filtro per provenienza, come in coda ordini.
+  const [filtro, setFiltro] = useState<Channel | "tutti">("tutti");
+  // La riga di cui si sta scrivendo la nota, e cosa c'e' scritto finora.
+  const [nota, setNota] = useState<{ itemId: string; testo: string } | null>(
+    null
+  );
   const [erroreVoce, setErroreVoce] = useState<string | null>(null);
   // Una voce alla volta in spostamento: il pannello e' alto, e due aperti
   // insieme farebbero perdere di vista la riga che si sta guardando.
@@ -66,6 +101,27 @@ export default function BillBoard({
   // Si parte da chi la paga adesso: per aggiungere un terzo a una divisione
   // gia' fatta si tocca lui e basta. Un nome che al tavolo non c'e' piu' non
   // si riporta acceso: sarebbe una scelta che nessuno ha fatto e non si vede.
+
+  // La nota di una riga, corretta dopo. Non ristampa: la comanda con la nota
+  // vecchia e' gia' in cucina, e una seconda uguale farebbe rifare il piatto.
+  // La nota nuova si vede in coda, dove chi prepara guarda.
+  function apriNota(i: BillLine) {
+    setErroreVoce(null);
+    setNota({ itemId: i.id!, testo: i.note ?? "" });
+  }
+
+  async function salvaNota() {
+    if (!nota) return;
+    setBusy(nota.itemId);
+    const esito = await cambiaNota(nota.itemId, nota.testo);
+    setBusy(null);
+    if (!esito.ok) {
+      setErroreVoce(esito.error);
+      return;
+    }
+    setNota(null);
+    await load();
+  }
   function apriSposta(i: BillLine, alias: string, candidati: string[]) {
     setErroreVoce(null);
     setSposta({
@@ -149,6 +205,10 @@ export default function BillBoard({
     else confirmClose(t.key);
   }
 
+  const visibili = tables.filter(
+    (t) => filtro === "tutti" || t.channel === filtro
+  );
+
   if (loaded && tables.length === 0) {
     return (
       <div className="card px-6 py-14 text-center">
@@ -162,7 +222,22 @@ export default function BillBoard({
 
   return (
     <div className="space-y-4">
-      {tables.map((t) => {
+      {/* Le stesse pillole della coda ordini: sui conti aperti servono allo
+          stesso modo — chi incassa gli asporti non deve scorrere i tavoli. */}
+      <FiltroCanali
+        canali={canali}
+        elementi={tables}
+        filtro={filtro}
+        scegli={setFiltro}
+      />
+
+      {visibili.length === 0 && (
+        <div className="card px-6 py-10 text-center text-sm" style={{ color: "var(--muted)" }}>
+          Nessun conto aperto su questo canale.
+        </div>
+      )}
+
+      {visibili.map((t) => {
         const saldato = t.incassato >= t.total;
         const quota = t.total > 0 ? Math.round((t.incassato / t.total) * 100) : 0;
         const residuo = Math.max(0, t.total - t.incassato);
@@ -285,14 +360,24 @@ export default function BillBoard({
               <div className="mt-1.5 tnum text-xs" style={{ color: "var(--muted)" }}>
                 {fmt(t.incassato)} di {fmt(t.total)}
               </div>
-
               {modifica === t.key && (
                 <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
                   Annulla quello che non è stato servito: esce dal totale e
                   resta barrato, così si sa sempre perché il conto è questo.
                   Sposta quello che è finito sul conto sbagliato: su una
-                  persona, o diviso tra chi se l&apos;è preso davvero.
+                  persona, o diviso tra chi se l&apos;è preso davvero. E se
+                  richiamano per aggiungere, aggiungi qui: finisce su questo
+                  conto, non su uno nuovo.
                 </p>
+              )}
+              {modifica === t.key && (
+                <AggiungiAlConto
+                  menu={menu}
+                  inSala={inSala}
+                  candidati={candidati}
+                  aggiungi={(righe) => aggiungi(t.key, righe)}
+                  fatto={load}
+                />
               )}
               {modifica === t.key && erroreVoce && (
                 <p
@@ -384,6 +469,7 @@ export default function BillBoard({
                               spostabile={inSala}
                               onAnnulla={() => annulla(i.id!, !i.voided)}
                               onSposta={() => apriSposta(i, p.alias, candidati)}
+                              onNota={() => apriNota(i)}
                             />
                             <span
                               className="tnum"
@@ -400,6 +486,17 @@ export default function BillBoard({
                             </span>
                           </span>
                         </div>
+                        {nota && nota.itemId === i.id && (
+                          <PannelloNota
+                            testo={nota.testo}
+                            scrivi={(v) =>
+                              setNota((p) => (p ? { ...p, testo: v } : p))
+                            }
+                            salva={salvaNota}
+                            chiudi={() => setNota(null)}
+                            inCorso={busy === i.id}
+                          />
+                        )}
                         {sposta && sposta.itemId === i.id && (
                           <PannelloSposta
                             stato={sposta}
@@ -515,6 +612,7 @@ export default function BillBoard({
                               spostabile={inSala}
                               onAnnulla={() => annulla(i.id!, !i.voided)}
                               onSposta={() => apriSposta(i, g.alias, candidati)}
+                              onNota={() => apriNota(i)}
                             />
                             <span
                               className="tnum"
@@ -528,6 +626,17 @@ export default function BillBoard({
                             </span>
                           </span>
                         </div>
+                        {nota && nota.itemId === i.id && (
+                          <PannelloNota
+                            testo={nota.testo}
+                            scrivi={(v) =>
+                              setNota((p) => (p ? { ...p, testo: v } : p))
+                            }
+                            salva={salvaNota}
+                            chiudi={() => setNota(null)}
+                            inCorso={busy === i.id}
+                          />
+                        )}
                         {sposta && sposta.itemId === i.id && (
                           <PannelloSposta
                             stato={sposta}
@@ -618,6 +727,7 @@ function AzioniVoce({
   spostabile,
   onAnnulla,
   onSposta,
+  onNota,
 }: {
   item: BillLine;
   attive: boolean;
@@ -626,12 +736,25 @@ function AzioniVoce({
   spostabile: boolean;
   onAnnulla: () => void;
   onSposta: () => void;
+  onNota: () => void;
 }) {
   // Una riga gia' incassata non si tocca piu', ne' di qua ne' a database.
   if (!attive || !item.id || item.paid) return null;
 
   return (
     <>
+      {/* «Senza cipolla» detto al telefono a ordine gia' partito, o scritto
+          male da chi l'ha battuto. Non su una riga annullata: quella non la
+          prepara piu' nessuno. */}
+      {!item.voided && (
+        <button
+          onClick={onNota}
+          className="text-xs underline"
+          style={{ color: "var(--muted)" }}
+        >
+          {item.note ? "nota" : "+ nota"}
+        </button>
+      )}
       {/* Quella annullata non si sposta: non la paga nessuno, spostarla non
           vorrebbe dire niente. Prima si ripristina. */}
       {spostabile && !item.voided && (
@@ -851,6 +974,59 @@ function PannelloSposta({
         <button onClick={() => setStato(null)} className="btn btn-sm">
           Lascia com&apos;è
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Il campo dove si riscrive la nota di una riga. Piccolo e sotto la voce: e'
+// una correzione, non un modulo — e chi lo apre ha il cliente al telefono.
+function PannelloNota({
+  testo,
+  scrivi,
+  salva,
+  chiudi,
+  inCorso,
+}: {
+  testo: string;
+  scrivi: (v: string) => void;
+  salva: () => void;
+  chiudi: () => void;
+  inCorso: boolean;
+}) {
+  return (
+    <div
+      className="mt-1.5 rounded-lg border p-2"
+      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+    >
+      <input
+        value={testo}
+        onChange={(e) => scrivi(e.target.value)}
+        maxLength={200}
+        autoFocus
+        placeholder="Senza cipolla, ben cotta…"
+        aria-label="Nota della voce"
+        className="input text-sm"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") salva();
+          if (e.key === "Escape") chiudi();
+        }}
+      />
+      <div className="mt-2 flex items-center gap-3">
+        <button onClick={salva} disabled={inCorso} className="btn btn-sm">
+          {inCorso ? "..." : "Salva la nota"}
+        </button>
+        <button
+          onClick={chiudi}
+          className="text-xs underline"
+          style={{ color: "var(--muted)" }}
+        >
+          annulla
+        </button>
+        {/* La carta e' gia' uscita: la cucina non la rilegge da sola. */}
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          Se la comanda è già stampata, avvisa a voce.
+        </span>
       </div>
     </div>
   );

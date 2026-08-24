@@ -908,6 +908,73 @@ async function main() {
     "cambiato il prezzo di una riga, il totale del cliente segue"
   );
 
+  console.log("\n23. Aggiungere a un ordine gia' partito");
+  const { aggiungiRighe } = await import("@/lib/order-create");
+  const daAgg = await salvaOrdineWeb({
+    tenantId,
+    canale: "asporto",
+    items: [{ ...riga, quantity: 1 }],
+    modules,
+    cfg: { ...accesi, pezziPerFascia: 20 },
+    quando,
+    pezzi: 1,
+    nome: "Prova aggiunta",
+    telefono: "3330000003",
+    consegnaCents: 0,
+    km: null,
+    automatica: true,
+  });
+  ok(daAgg.ok, "un ordine si scrive");
+  const [rigaAgg] = daAgg.ok
+    ? await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.webToken, daAgg.token)))
+    : [];
+
+  const aggiunte = await aggiungiRighe(
+    tenantId,
+    rigaAgg.id,
+    [{ ...riga, quantity: 2, note: "ben cotta" }],
+    modules
+  );
+  ok(aggiunte.ok && aggiunte.righe.length === 1, "le righe nuove si attaccano");
+  const dopoAgg = daAgg.ok ? await ordinePerToken(tenantId, daAgg.token) : null;
+  ok(
+    dopoAgg?.totaleCents === 2400,
+    "e il totale del cliente sale: una pizza piu' due fanno tre"
+  );
+  ok(
+    !!dopoAgg?.voci.some((v) => v.note === "ben cotta"),
+    "con la nota di chi ha richiamato"
+  );
+  ok(
+    dopoAgg?.quando?.getTime() === quando.getTime(),
+    "l'ora concordata resta quella: non e' un ordine nuovo"
+  );
+
+  // Solo le righe nuove vanno in cucina: ristampare tutto vorrebbe dire fare
+  // rifare da capo quello che stavano gia' preparando.
+  await db.delete(printJobs).where(eq(printJobs.tenantId, tenantId));
+  const stampate = await creaComande(
+    tenantId,
+    rigaAgg.id,
+    true,
+    aggiunte.righe
+  );
+  const lavori = await db
+    .select()
+    .from(printJobs)
+    .where(eq(printJobs.tenantId, tenantId));
+  ok(stampate > 0, "la comanda dell'aggiunta parte");
+  ok(
+    lavori.every((l) => {
+      const p = l.payload as { voci?: unknown[]; aggiunta?: boolean };
+      return p.voci?.length === 1 && p.aggiunta === true;
+    }),
+    "porta solo la riga nuova, e dice che e' un'aggiunta"
+  );
+
   await db.delete(tenants).where(eq(tenants.id, tenantId));
   console.log(`\n${passati} ok, ${falliti} falliti\n`);
   process.exit(falliti ? 1 : 0);

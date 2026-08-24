@@ -301,12 +301,28 @@ export function guidaDelTab(
               "Il «−» e il «+» accanto a «Persone al tavolo» correggono quanti sono davvero: da quel numero si rifanno le quote del condiviso e il coperto. Se il cliente si e' contato male, si sistema qui prima di incassare.",
           },
           {
-            titolo: "Correggere: annulla e sposta",
+            titolo: "Le pillole in alto",
             testo:
-              "Tocca «modifica». «annulla» toglie dal totale quello che non e' stato servito e lo lascia barrato, cosi' si sa sempre perche' il conto e' quello. «sposta» riporta una voce su chi la paga davvero: una persona sola, o divisa fra piu' nomi toccandone piu' di uno. Se le copie sono tante se ne sposta anche solo una parte.",
+              "Filtrano per provenienza, come in coda ordini: sala, banco, asporto, domicilio. Chi impacchetta gli asporti non deve scorrere i tavoli. Compaiono da due canali in su.",
+          },
+          {
+            titolo: "Correggere: annulla, sposta, nota",
+            testo:
+              "Tocca «modifica». «annulla» toglie dal totale quello che non e' stato servito e lo lascia barrato, cosi' si sa sempre perche' il conto e' quello. «sposta» riporta una voce su chi la paga davvero: una persona sola, o divisa fra piu' nomi toccandone piu' di uno. Se le copie sono tante se ne sposta anche solo una parte. «nota» riscrive quello che c'e' scritto sulla riga.",
             punti: [
               "Una riga gia' incassata non si tocca piu', ne' qui ne' altrove.",
               "Spostare cambia solo chi paga: la comanda andata in cucina resta com'era, perche' quello e' stato ordinato davvero.",
+              "La nota corretta adesso non ristampa niente: la comanda con quella vecchia e' gia' in cucina, e una seconda uguale farebbe rifare il piatto. Si vede in coda, e se la carta e' gia' uscita ditelo a voce.",
+            ],
+          },
+          {
+            titolo: "«Mi aggiungete due birre»",
+            testo:
+              "Dentro «modifica» c'e' «+ Aggiungi al conto»: si cerca il piatto per nome, si sceglie la quantita' e si scrive la nota. Finisce su questo conto, non su uno nuovo — al ritiro si incassa una volta sola.",
+            punti: [
+              "Al tavolo nasce un ordine nuovo sullo stesso tavolo, che entra in coda con l'ora di adesso. Fuori dalla sala le righe si attaccano all'ordine che c'e' gia': l'orario concordato e l'indirizzo restano quelli.",
+              "In cucina parte una comanda con solo le righe nuove, marcata «AGGIUNTA»: ristampare tutto vorrebbe dire far rifare da capo quello che stavano gia' preparando.",
+              "Un ordine dal sito ancora da accettare non si tocca da qui: prima accettalo in coda, che e' il posto dove parte anche la comanda.",
             ],
           },
           {

@@ -21,7 +21,14 @@ import {
 } from "@/lib/bill";
 import { loadOpenTables } from "@/lib/bill-query";
 import { chiudiSeduta } from "@/lib/sedute";
-import { creaScontrinoConto } from "@/lib/stampa";
+import { creaComande, creaScontrinoConto } from "@/lib/stampa";
+import { revalidatePath } from "next/cache";
+import { getTenantModules } from "@/lib/modules";
+import {
+  aggiungiRighe,
+  createOrderRows,
+  type IncomingItem,
+} from "@/lib/order-create";
 
 // Scontrino del conto su richiesta, prima di chiuderlo: il cliente vuole
 // vedere cosa paga, e il tavolo resta aperto.
@@ -351,4 +358,80 @@ export async function setPartySize(
     .update(orders)
     .set({ partySize })
     .where(inArray(orders.id, conto.ids));
+}
+
+// --- Aggiungere a un conto gia' aperto ---------------------------------------
+//
+// Il cliente richiama: «mi aggiungete due birre». Finora si poteva solo
+// annullare o spostare, e per aggiungere bisognava aprire un secondo ordine —
+// che al ritiro diventa un secondo conto da incassare a parte.
+//
+// Le due strade sono diverse perche' i due conti sono diversi. Al tavolo il
+// conto raccoglie piu' ordini, quindi si scrive un ordine nuovo: entra in coda
+// col suo orario, e chi prepara vede una comanda che e' arrivata adesso. Fuori
+// dalla sala il conto **e'** un ordine: le righe si attaccano a quello, e si
+// stampa solo la comanda delle righe nuove — ristampare tutto vorrebbe dire
+// fare rifare la cena da capo.
+export async function aggiungiAlConto(
+  key: string,
+  righe: IncomingItem[]
+): Promise<{ ok: true; comande: number } | { ok: false; error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+  if (!righe.length) return { ok: false, error: "Non hai scelto niente." };
+
+  const modules = await getTenantModules(session.tenantId);
+
+  // Al tavolo: un ordine nuovo, come se l'avesse battuto il cameriere.
+  if (key.startsWith("t:")) {
+    const tavolo = parseInt(key.slice(2), 10);
+    if (!Number.isInteger(tavolo) || tavolo <= 0) {
+      return { ok: false, error: "Tavolo non valido." };
+    }
+    const esito = await createOrderRows(
+      session.tenantId,
+      tavolo,
+      righe,
+      modules,
+      { channel: "tavolo" }
+    );
+    if (!esito.ok) return { ok: false, error: "Non sono riuscito ad aggiungere." };
+    revalidatePath("/dashboard/bill");
+    return { ok: true, comande: esito.comande };
+  }
+
+  // Fuori dalla sala: si attaccano all'ordine che e' il conto.
+  const orderId = key.startsWith("o:") ? key.slice(2) : "";
+  const [o] = await db
+    .select({
+      id: orders.id,
+      channel: orders.channel,
+      status: orders.status,
+      tableNumber: orders.tableNumber,
+    })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)))
+    .limit(1);
+  if (!o) return { ok: false, error: "Conto non trovato." };
+  // Un ordine dal sito ancora da accettare non si tocca da qui: prima lo si
+  // accetta in coda, che e' il posto dove parte anche la comanda.
+  if (o.status === "pending") {
+    return { ok: false, error: "Prima accetta l'ordine dalla coda." };
+  }
+
+  const esito = await aggiungiRighe(session.tenantId, o.id, righe, modules);
+  if (!esito.ok) return { ok: false, error: "Non sono riuscito ad aggiungere." };
+
+  // Solo le righe nuove: la comanda dice «AGGIUNTA», e in cucina non rifanno
+  // quello che stavano gia' preparando.
+  const comande = await creaComande(
+    session.tenantId,
+    o.id,
+    undefined,
+    esito.righe
+  );
+
+  revalidatePath("/dashboard/bill");
+  revalidatePath("/dashboard/orders");
+  return { ok: true, comande };
 }

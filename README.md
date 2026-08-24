@@ -131,6 +131,48 @@ chiude il conto la revoca — bisogna riscansionare il QR.
 Senza sessione valida per quel preciso tavolo, la pagina cliente, le server
 action e le API pubbliche rispondono tutte di no.
 
+## Conti aperti
+
+`/dashboard/bill` è dove si incassa: una scheda per conto, le persone che lo
+dividono, quanto manca. In sala il conto raccoglie **tutti gli ordini di quel
+tavolo**; fuori dalla sala il conto **è** l'ordine, perché non c'è un posto a
+cui appoggiarsi e ogni asporto è una cosa a sé.
+
+Le pillole in alto filtrano per provenienza — sala, banco, asporto, domicilio —
+e sono lo stesso componente della coda ordini (`components/FiltroCanali.tsx`):
+chi incassa gli asporti non deve scorrere i tavoli, ed è la stessa fila con lo
+stesso comportamento perché due copie diventano due comportamenti al primo
+ritocco.
+
+### Modificare un conto
+
+Dentro «modifica» ci sono quattro cose, e tutte partono da una telefonata:
+
+| Cosa | Quando serve |
+| --- | --- |
+| annulla | il prodotto è finito: esce dal totale e resta barrato, così si sa perché il conto è quello |
+| sposta | la voce è finita sul conto sbagliato: su una persona, o divisa tra chi se l'è presa |
+| nota | «senza cipolla» detto dopo, o scritto male da chi l'ha battuto |
+| **+ Aggiungi al conto** | «mi aggiungete due birre» a ordine già partito |
+
+L'aggiunta prende due strade diverse perché i due conti sono diversi. **Al
+tavolo** nasce un ordine nuovo sullo stesso tavolo: entra in coda con l'ora di
+adesso, e chi prepara vede una comanda arrivata adesso. **Fuori dalla sala** le
+righe si attaccano all'ordine che è il conto — l'ora concordata, l'indirizzo e
+il canale restano quelli — e parte una comanda con **solo le righe nuove**,
+marcata `AGGIUNTA`. Ristampare l'ordine intero vorrebbe dire far rifare da capo
+in cucina quello che stavano già preparando, ed è il motivo per cui
+`creaComande()` accetta l'elenco delle righe da stampare.
+
+Il resto lo tiene fermo la stessa regola di sempre: quello che è **già
+incassato non si tocca**, né il prezzo né la nota né l'annullamento. E un
+ordine dal sito ancora `pending` non si modifica da qui: prima lo si accetta in
+coda, che è il posto dove parte anche la comanda.
+
+La nota corretta dopo **non ristampa niente**: la comanda con la nota vecchia è
+già in cucina, e una seconda uguale farebbe rifare il piatto. La nota nuova si
+vede in coda, dove chi prepara guarda; se la carta è già uscita, quella si dice
+a voce — e il riquadro lo ricorda a chi la sta scrivendo.
 ## La sala durante il servizio
 
 `/dashboard/sala` e' la pianta dei tavoli con quello che di ognuno si sa

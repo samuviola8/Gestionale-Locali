@@ -22,6 +22,9 @@ export type ComandaPayload = {
   reparto: string | null;
   canale: Channel;
   intestazione: string;
+  // Aggiunta a un ordine gia' partito: il cliente ha richiamato per un altro
+  // piatto. Va detto sul foglio, o in cucina rifanno tutto da capo.
+  aggiunta?: boolean;
   // Quando va consegnato o ritirato, se il cliente l'ha chiesto.
   dueAt: string | null;
   indirizzo: string | null;
@@ -97,7 +100,11 @@ export async function creaComande(
   orderId: string,
   // Forzatura dell'operatore: acceso o spento a mano per questo ordine, invece
   // di seguire l'impostazione del canale. Undefined = decide l'impostazione.
-  forza?: boolean
+  forza?: boolean,
+  // Solo queste righe, invece di tutto l'ordine. Serve a chi aggiunge un
+  // piatto a un ordine gia' partito: ristampare tutto vorrebbe dire farlo
+  // rifare da capo in cucina.
+  soloVoci?: string[]
 ): Promise<number> {
   const o = (
     await db
@@ -132,10 +139,13 @@ export async function creaComande(
           : impostazioni.domicilio;
   if (!(forza ?? daImpostazioni)) return 0;
 
-  const voci = await db
+  const tutte = await db
     .select()
     .from(orderItems)
     .where(and(eq(orderItems.orderId, orderId), isNull(orderItems.voidedAt)));
+  const voci = soloVoci
+    ? tutte.filter((v) => soloVoci.includes(v.id))
+    : tutte;
   if (!voci.length) return 0;
 
   const nomi = new Map(
@@ -181,6 +191,7 @@ export async function creaComande(
       reparto: repartoId ? (nomi.get(repartoId) ?? null) : null,
       canale: o.channel as Channel,
       intestazione,
+      aggiunta: !!soloVoci,
       dueAt: o.dueAt ? quandoRitira(o.dueAt) : null,
       indirizzo: o.customerAddress,
       telefono: o.customerPhone,

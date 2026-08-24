@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatKm, formatPrice as fmt } from "@/lib/format";
-import { CHANNELS, getChannel, type Channel } from "@/lib/channels";
+import { getChannel, type Channel } from "@/lib/channels";
+import FiltroCanali from "@/components/FiltroCanali";
 import { sbloccaAudio, suona } from "@/lib/suoni";
 
 // Com'e' andata la mail al cliente. Interessa solo quando non e' partita: chi
@@ -397,13 +398,6 @@ export default function OrderQueue({
     .sort(perOrario);
   const inCoda = visibili.filter((o) => o.status !== "pending").sort(perOrario);
 
-  // Le pillole hanno senso da due canali in su: in un locale che fa solo sala
-  // non filtrerebbero niente.
-  const pillole =
-    canali.length > 1
-      ? CHANNELS.filter((c) => canali.includes(c.key))
-      : [];
-
   async function cambiaSospensione() {
     const esito = await sospendi(!sospesoFino);
     setSospesoFino(esito.fino);
@@ -450,49 +444,12 @@ export default function OrderQueue({
         </div>
       )}
 
-      {pillole.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => setFiltro("tutti")}
-            aria-pressed={filtro === "tutti"}
-            className={
-              "rounded-full border px-3 py-1.5 text-xs " +
-              (filtro === "tutti" ? "bd-brand" : "bd")
-            }
-            style={
-              filtro === "tutti"
-                ? { background: "var(--brand)", color: "var(--brand-on)" }
-                : { color: "var(--muted)" }
-            }
-          >
-            Tutti
-            <span className="tnum ml-1.5 opacity-70">{orders.length}</span>
-          </button>
-          {pillole.map((c) => {
-            const quanti = orders.filter((o) => o.channel === c.key).length;
-            const attivo = filtro === c.key;
-            return (
-              <button
-                key={c.key}
-                onClick={() => setFiltro(c.key)}
-                aria-pressed={attivo}
-                className={
-                  "rounded-full border px-3 py-1.5 text-xs " +
-                  (attivo ? "bd-brand" : "bd")
-                }
-                style={
-                  attivo
-                    ? { background: "var(--brand)", color: "var(--brand-on)" }
-                    : { color: "var(--muted)" }
-                }
-              >
-                {c.label}
-                <span className="tnum ml-1.5 opacity-70">{quanti}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <FiltroCanali
+        canali={canali}
+        elementi={orders}
+        filtro={filtro}
+        scegli={setFiltro}
+      />
 
       {messaggio && (
         <p role="status" className="text-sm" style={{ color: "var(--ok)" }}>

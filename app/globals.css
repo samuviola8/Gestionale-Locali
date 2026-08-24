@@ -259,6 +259,21 @@ label:has(input[type="radio"]:not(:disabled)) {
     font-weight: 700;
   }
 
+  /* «AGGIUNTA» in cima al foglio: dice che questo non e' l'ordine intero ma
+     quello che il cliente ha chiesto dopo. In negativo perche' su un foglio
+     di carta termica tutto uguale, il grassetto da solo non lo vede nessuno
+     — e chi non lo vede rifa' la cena da capo. */
+  .foglio-aggiunta {
+    margin-top: 2px;
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #fff;
+    background: #000;
+  }
+
   .foglio-riga-piccola {
     font-size: 11px;
   }

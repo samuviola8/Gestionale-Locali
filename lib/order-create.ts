@@ -75,37 +75,20 @@ export type OpzioniOrdine = {
 
 type Esecutore = Pick<typeof db, "select" | "insert">;
 
-export async function createOrderRows(
+// Le righe di un ordine, rilette dal database: prezzi, nomi, disponibilita'.
+//
+// Sta a parte perche' serve in due momenti — quando l'ordine nasce e quando
+// qualcuno ci aggiunge qualcosa dopo — e sono gli stessi controlli: dal client
+// arrivano identificativi e quantita', mai un prezzo e mai un nome.
+export async function righeValide(
   tenantId: string,
-  tableNumber: number | null,
   items: IncomingItem[],
   modules: ModuleState,
-  {
-    partySize,
-    channel = "tavolo",
-    cliente,
-    stampaComanda,
-    stato = "new",
-    webToken,
-    deliveryKm,
-    esecutore = db,
-  }: OpzioniOrdine = {}
-): Promise<
-  { ok: false } | { ok: true; orderId: string; comande: number }
-> {
-  const canale = getChannel(channel);
+  canale: ReturnType<typeof getChannel>,
+  esecutore: Esecutore = db
+) {
   const clean = items.filter((i) => i.productId && i.quantity > 0);
-  if (!clean.length) return { ok: false };
-
-  // Se il tavolo e' accostato a un altro, l'ordine va sul conto del gruppo.
-  // Il controllo sta qui, dove passano sia il telefono del cliente sia il
-  // cameriere: metterlo piu' in la' vorrebbe dire ricordarselo ogni volta che
-  // nasce un modo nuovo di ordinare, e dimenticarselo una volta sola basta a
-  // spaccare in due il conto di una tavolata.
-  const tavolo =
-    canale.seduti && tableNumber
-      ? await capofila(tenantId, tableNumber)
-      : tableNumber;
+  if (!clean.length) return [];
 
   // Prezzi e nomi vengono presi dal DB, mai dal client.
   const ids = [...new Set(clean.map((i) => i.productId))];
@@ -203,6 +186,42 @@ export async function createOrderRows(
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
+  return rows;
+}
+
+export async function createOrderRows(
+  tenantId: string,
+  tableNumber: number | null,
+  items: IncomingItem[],
+  modules: ModuleState,
+  {
+    partySize,
+    channel = "tavolo",
+    cliente,
+    stampaComanda,
+    stato = "new",
+    webToken,
+    deliveryKm,
+    esecutore = db,
+  }: OpzioniOrdine = {}
+): Promise<
+  { ok: false } | { ok: true; orderId: string; comande: number }
+> {
+  const canale = getChannel(channel);
+  const clean = items.filter((i) => i.productId && i.quantity > 0);
+  if (!clean.length) return { ok: false };
+
+  // Se il tavolo e' accostato a un altro, l'ordine va sul conto del gruppo.
+  // Il controllo sta qui, dove passano sia il telefono del cliente sia il
+  // cameriere: metterlo piu' in la' vorrebbe dire ricordarselo ogni volta che
+  // nasce un modo nuovo di ordinare, e dimenticarselo una volta sola basta a
+  // spaccare in due il conto di una tavolata.
+  const tavolo =
+    canale.seduti && tableNumber
+      ? await capofila(tenantId, tableNumber)
+      : tableNumber;
+
+  const rows = await righeValide(tenantId, clean, modules, canale, esecutore);
   if (!rows.length) return { ok: false };
 
   // Il numero di persone arriva dal client ma non ci si fida: serve a dividere
@@ -298,4 +317,60 @@ export async function createOrderRows(
   const comande = await creaComande(tenantId, orderId, stampaComanda);
 
   return { ok: true, orderId, comande };
+}
+
+// Righe attaccate a un ordine che esiste gia': il cliente ha richiamato per
+// aggiungere qualcosa.
+//
+// Non tocca niente dell'ordine — canale, orario concordato, indirizzo restano
+// quelli — e non stampa: quale comanda far partire lo decide chi chiama, che
+// e' l'unico a sapere se questa e' un'aggiunta da annunciare o no.
+//
+// Torna gli identificativi delle righe scritte, che sono quelle e solo quelle
+// da mandare in cucina.
+export async function aggiungiRighe(
+  tenantId: string,
+  orderId: string,
+  items: IncomingItem[],
+  modules: ModuleState
+): Promise<{ ok: boolean; righe: string[] }> {
+  const [o] = await db
+    .select({ id: orders.id, channel: orders.channel })
+    .from(orders)
+    .where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId)))
+    .limit(1);
+  if (!o) return { ok: false, righe: [] };
+
+  const rows = await righeValide(
+    tenantId,
+    items,
+    modules,
+    getChannel(o.channel)
+  );
+  if (!rows.length) return { ok: false, righe: [] };
+
+  const reparti = await repartoPerProdotto(
+    tenantId,
+    rows.map((r) => r.productId)
+  );
+
+  const scritte = await db
+    .insert(orderItems)
+    .values(
+      rows.map((r) => ({
+        orderId,
+        productId: r.productId,
+        variantId: r.variantId,
+        note: r.note,
+        glasses: r.calici,
+        name: r.name,
+        priceCents: r.priceCents,
+        quantity: r.quantity,
+        alias: r.alias,
+        repartoId: reparti.get(r.productId) ?? null,
+      }))
+    )
+    .returning({ id: orderItems.id });
+
+  return { ok: true, righe: scritte.map((r) => r.id) };
 }

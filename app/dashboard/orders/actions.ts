@@ -126,6 +126,50 @@ export async function voidOrderItem(
   return { ok: true };
 }
 
+
+// La nota di una riga, corretta dopo. «Senza cipolla» detto al telefono a
+// ordine gia' partito, o scritto male da chi l'ha battuto.
+//
+// Non ristampa niente: la comanda con la nota vecchia e' gia' in cucina, e una
+// seconda uguale farebbe rifare il piatto. La nota nuova si vede in coda —
+// dove chi prepara guarda — e sul conto; se la carta e' gia' uscita, quella si
+// dice a voce, come si e' sempre fatto.
+export async function cambiaNotaVoce(
+  itemId: string,
+  nota: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Sessione scaduta. Rientra." };
+
+  const miei = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.tenantId, session.tenantId));
+  if (!miei.length) return { ok: false, error: "Riga non trovata." };
+
+  const pulita = String(nota ?? "").trim().slice(0, 200) || null;
+
+  // Una riga gia' incassata non si tocca, come per il prezzo: il cliente ha
+  // pagato quello che c'era scritto.
+  const cambiate = await db
+    .update(orderItems)
+    .set({ note: pulita })
+    .where(
+      and(
+        eq(orderItems.id, itemId),
+        inArray(
+          orderItems.orderId,
+          miei.map((o) => o.id)
+        ),
+        eq(orderItems.paid, false)
+      )
+    )
+    .returning({ id: orderItems.id });
+
+  if (!cambiate.length)
+    return { ok: false, error: "Riga già pagata: la nota non si cambia più." };
+  return { ok: true };
+}
 // Il barman corregge il prezzo di una richiesta fuori standard. Si tocca la
 // singola riga, non il prodotto a listino: la prossima richiesta riparte dal
 // prezzo di partenza.
