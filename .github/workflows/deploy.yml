@@ -22,7 +22,18 @@ jobs:
       # Niente checkout: il clone servito vive fuori dalla cartella di lavoro
       # del runner, perche' contiene .env.production.local e public\uploads,
       # che un checkout pulito cancellerebbe a ogni aggiornamento.
+      #
+      # Questo percorso e' l'unico posto dove sta scritto dove vive il clone:
+      # lo script, da li' dentro, ricava da se' stesso la cartella su cui
+      # lavorare. Se un giorno il clone si sposta, si cambia questa riga e
+      # basta — ma finche' non la si cambia, il deploy si ferma invece di
+      # aggiornare la cartella sbagliata.
       - name: Aggiorna la produzione
         shell: powershell
         run: |
-          powershell -ExecutionPolicy Bypass -File "D:\comanda\app\scripts\deploy.ps1"
+          $percorso = "C:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\scripts\deploy.ps1"
+          if (-not (Test-Path $percorso)) {
+            throw "Non trovo $percorso. Se il clone servito si e' spostato, aggiorna il percorso in .github/workflows/deploy.yml."
+          }
+          powershell -ExecutionPolicy Bypass -File $percorso
+          exit $LASTEXITCODE

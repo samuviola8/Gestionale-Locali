@@ -123,6 +123,22 @@ comanda
 (oltre a `self-hosted` e `windows` che mette da solo). Installalo come
 servizio quando te lo chiede, così riparte da solo al riavvio.
 
+**Il servizio del runner deve girare col tuo utente Windows**, non con
+`NETWORK SERVICE`: il repository è privato e le credenziali di git stanno nel
+tuo profilo (`gh auth setup-git`). Con un account di servizio il primo
+`git fetch` non trova nessuna credenziale e l'aggiornamento si ferma lì.
+`config.cmd` lo chiede quando installa il servizio; se l'hai già installato:
+
+```powershell
+.\config.cmd remove --token <token-di-rimozione>
+.\config.cmd --url https://github.com/samuviola8/Gestionale-Locali --token <token> --labels comanda --runasservice --windowslogonaccount "$env:COMPUTERNAME\Samuele Viola" --windowslogonpassword "<password>"
+```
+
+Il percorso del clone servito sta scritto in `.github/workflows/deploy.yml`,
+ed è l'unico posto dove sta scritto: oggi è
+`C:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali`. Lo script, da
+lì dentro, ricava da sé la cartella su cui lavorare.
+
 Poi dai al servizio del runner il permesso di gestire il servizio dell'app,
 altrimenti `Stop-Service` fallisce:
 
@@ -138,8 +154,11 @@ le immagini nella cartella del loro locale, ricostruisce e riavvia.
 Lo stesso script si lancia a mano quando serve:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\comanda\app\scripts\deploy.ps1
+powershell -ExecutionPolicy Bypass -File "C:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\scripts\deploy.ps1"
 ```
+
+Da qualunque cartella: lo script lavora sul clone che lo contiene, non su
+quello in cui ti trovi.
 
 ---
 
@@ -152,9 +171,10 @@ Meglio un fermo dichiarato che qualche minuto di errori a caso. Aggiorna a
 locale chiuso.
 
 **Prima di ogni migrazione lo script fa un dump del database**, con `pg_dump`
-in formato custom, in `D:\comanda\backup-db` (fuori dal clone, che a ogni
-aggiornamento viene resettato). Tiene le ultime dieci copie e butta le più
-vecchie. Se `pg_dump` non si trova l'aggiornamento si ferma **prima** di
+in formato custom, in `backup-db` **accanto al clone** (fuori dal clone, che a
+ogni aggiornamento viene resettato: oggi
+`C:\Users\Samuele Viola\Documents\Progetti\backup-db`). Tiene le ultime dieci
+copie e butta le più vecchie. Se `pg_dump` non si trova l'aggiornamento si ferma **prima** di
 toccare il database, col servizio ancora acceso: i client Postgres devono
 essere installati sul server, nel PATH oppure sotto `Program Files\PostgreSQL`.
 

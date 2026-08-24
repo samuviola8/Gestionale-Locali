@@ -13,10 +13,13 @@
 # l'unico modo di tornare davvero indietro e' avere la copia di prima.
 
 param(
-  # Dove sta il clone servito. Non e' la cartella di lavoro del runner: li'
-  # dentro ci sono anche .env.production.local e public\uploads, che non
-  # devono sparire a ogni aggiornamento.
-  [string]$Repo = "c:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali",
+  # Dove sta il clone servito: la cartella che contiene questo script, non
+  # quella di lavoro del runner — li' dentro ci sono anche
+  # .env.production.local e public\uploads, che non devono sparire a ogni
+  # aggiornamento. Ricavarlo da se' stesso invece di scriverlo qui vuol dire
+  # che il percorso vero sta scritto in un posto solo, quello da cui lo si
+  # lancia: se il clone si sposta, non c'e' niente da ricordarsi di cambiare.
+  [string]$Repo = (Split-Path $PSScriptRoot -Parent),
   [string]$Servizio = "Comanda",
   [string]$Ramo = "main",
   # I dump stanno fuori dal clone: dentro, il `git reset --hard` di ogni
@@ -65,7 +68,12 @@ function Trova-Strumento($nome) {
 # stesso database.
 function Leggi-DatabaseUrl {
   if ($env:DATABASE_URL) { return $env:DATABASE_URL }
-  foreach ($nome in @("C:\Users\Samuele Viola\Documents\Progetti\Gestionale-Locali\.env.production.local", ".env.local")) {
+  # I nomi sono relativi al clone: prima quello di produzione, poi quello di
+  # sviluppo per chi lo lancia sulla propria macchina. Erano un percorso
+  # assoluto incollato qui, che Join-Path attaccava in coda al clone: il file
+  # non si trovava mai, e la connessione arrivava solo da $env:DATABASE_URL.
+  # A mano funzionava lo stesso; da runner, che ha un ambiente suo, no.
+  foreach ($nome in @(".env.production.local", ".env.local")) {
     $file = Join-Path $Repo $nome
     if (-not (Test-Path $file)) { continue }
     foreach ($riga in Get-Content $file) {
