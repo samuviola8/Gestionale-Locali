@@ -20,6 +20,15 @@ export const STILE_LANDING = `
   --lp-accent-soft: rgba(224, 180, 94, 0.14);
 }
 
+/* I tasti in cima portano mezza pagina piu' giu'. Arrivarci di colpo fa
+   credere che la pagina cominci li' e che sopra non ci fosse niente: chi
+   scorre, invece, vede passare quello che si sta saltando e capisce che c'e'
+   altro da leggere. Sta su html perche' e' lui che scorre, e col :has vale
+   solo dove c'e' la vetrina: il menu al tavolo non c'entra niente. */
+html:has(.lp) {
+  scroll-behavior: smooth;
+}
+
 .lp-display {
   font-family: var(--font-playfair), Georgia, serif;
   font-weight: 500;
@@ -332,5 +341,6 @@ export const STILE_LANDING = `
   .lp-vetro-attiva { transition: none; }
   .lp-vetro-attiva:hover { transform: none; }
   .lp-cursore { animation: none; }
+  html:has(.lp) { scroll-behavior: auto; }
 }
 `;

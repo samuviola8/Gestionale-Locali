@@ -4,6 +4,7 @@ import { slugFromHost } from "@/lib/tenant-host";
 import { getTenant } from "@/lib/tenants";
 import { MODULES, getModule, getTenantModules } from "@/lib/modules";
 import { PACCHETTI } from "@/lib/billing/listino";
+import { getImpostazioni } from "@/lib/billing/impostazioni";
 import { contestoOrdineWeb } from "@/lib/ordini-web";
 import { CHANNELS } from "@/lib/channels";
 import { STILE_LANDING } from "@/components/landing/stile";
@@ -169,6 +170,18 @@ export default async function Home() {
   });
   const canali = CHANNELS;
 
+  // I giorni di prova sono quelli veri: la vetrina promette il numero che il
+  // locale nuovo si trova davvero addosso, non uno scritto a mano qui che
+  // resterebbe indietro il giorno che lo cambio.
+  const { trialDays: giorniProva } = await getImpostazioni();
+
+  // L'indirizzo di esempio esce dal dominio vero, cosi' dice quello che il
+  // locale si trovera' davvero. In sviluppo non c'e' niente da far vedere, e
+  // la frase si accorcia invece di promettere «iltuolocale.localhost».
+  const esempioIndirizzo = rootBare.includes("localhost")
+    ? null
+    : `iltuolocale.${rootBare}`;
+
   // Il modulo compare solo se la casella e' collegata davvero: se manca,
   // meglio l'indirizzo da copiare che un modulo che scrive nel vuoto.
   const moduloAttivo = configSmtp() !== null;
@@ -204,7 +217,8 @@ export default async function Home() {
                 conto è già diviso per persona. Chi a tavola non ci viene ordina
                 lo stesso — ritiro o consegna, dal sito e senza telefonare.
                 Senza scaricare nessuna app e senza toccare la cassa che avete
-                già.
+                già. Si comincia con {giorniProva} giorni di prova, sul locale
+                vero.
               </p>
             </Rivela>
 
@@ -214,13 +228,27 @@ export default async function Home() {
                   href={moduloAttivo ? "#contatti" : `mailto:${emailContatto}`}
                   className="btn btn-primary"
                 >
-                  Chiedi una demo col tuo menu
+                  Provalo gratis per {giorniProva} giorni
                 </a>
                 <a href="#come-funziona" className="btn">
                   Vedi come funziona
                 </a>
               </div>
-              <p className="mt-4 text-xs" style={{ color: "var(--muted)" }}>
+              <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span
+                  className="lp-pill"
+                  style={{
+                    background: "var(--lp-accent-soft)",
+                    color: "var(--lp-accent)",
+                  }}
+                >
+                  {giorniProva} giorni gratis
+                </span>
+                <span style={{ color: "var(--muted)" }}>
+                  Nel vostro locale, coi vostri clienti. Senza carta.
+                </span>
+              </p>
+              <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
                 Nessuna installazione. Il locale resta con il suo registratore
                 telematico.
               </p>
@@ -820,7 +848,7 @@ export default async function Home() {
           <Rivela>
             <Titolo
               occhiello="Pacchetti"
-              sotto="I moduli non si spuntano uno per uno: li porta il pacchetto, e salendo si paga la differenza. Un locale di sola sala non si porta dietro la consegna."
+              sotto={`I moduli non si spuntano uno per uno: li porta il pacchetto, e salendo si paga la differenza. Un locale di sola sala non si porta dietro la consegna — e quale sia il vostro lo si sa dopo i ${giorniProva} giorni di prova, non prima.`}
             >
               Si sceglie un pacchetto,
               <br />
@@ -906,6 +934,85 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* ---------- La prova ---------- */}
+      <section id="prova" className="lp-sezione lp-bordo-sopra scroll-mt-4">
+        <div className="lp-contenuto">
+          <Rivela>
+            <div className="lp-vetro relative overflow-hidden p-8 sm:p-12">
+              <div className="lp-alone" />
+              <div className="relative grid gap-10 lg:grid-cols-[0.8fr_1fr]">
+                <div>
+                  <div className="lp-occhiello">Prima di scegliere</div>
+                  <div
+                    className="lp-display mt-3 leading-none"
+                    style={{ fontSize: "clamp(3.5rem, 9vw, 5.5rem)" }}
+                  >
+                    {giorniProva}
+                  </div>
+                  <div className="lp-display text-3xl sm:text-4xl">
+                    giorni di prova
+                  </div>
+                  <p className="mt-4" style={{ color: "var(--muted)" }}>
+                    Non una demo con un menu finto: il vostro locale, acceso per
+                    davvero, col vostro menu e i vostri clienti che ordinano.
+                    Alla fine dei {giorniProva} giorni si sceglie il pacchetto —
+                    o non se ne fa niente.
+                  </p>
+                  <a
+                    href={
+                      moduloAttivo ? "#contatti" : `mailto:${emailContatto}`
+                    }
+                    className="btn btn-primary mt-6"
+                  >
+                    Comincia la prova
+                  </a>
+                </div>
+
+                <ul className="space-y-5">
+                  {[
+                    [
+                      "Non si lascia una carta",
+                      `Si comincia con una mail e si finisce con una decisione: per ${giorniProva} giorni non c'è niente da pagare e non parte nessun addebito, perché non ci avete lasciato niente da addebitare.`,
+                    ],
+                    [
+                      "È in produzione, non in prova",
+                      esempioIndirizzo
+                        ? `Il locale sta al suo indirizzo — ${esempioIndirizzo} — coi vostri colori e il vostro logo. I QR sui tavoli sono quelli veri: quello che i clienti ordinano in quei giorni è lavoro fatto, non una simulazione da rifare.`
+                        : "Il locale sta al suo indirizzo, coi vostri colori e il vostro logo. I QR sui tavoli sono quelli veri: quello che i clienti ordinano in quei giorni è lavoro fatto, non una simulazione da rifare.",
+                    ],
+                    [
+                      "Il pacchetto lo dicono i vostri numeri",
+                      "Alla fine la dashboard non consiglia: conta. Quante prenotazioni avete preso, quanti ordini avete battuto, da quali canali — e qual è il pacchetto più piccolo che copre quello che avete usato davvero. «Hai preso 34 prenotazioni, quindi ti serve Pro» è un argomento; «ti consigliamo Pro» è una vendita.",
+                    ],
+                    [
+                      "Se non se ne fa niente non si disfa niente",
+                      "Il servizio si ferma, i vostri dati restano dove sono e il titolare continua a entrare per rileggerli. La cassa non l'avete mai toccata, quindi non c'è nessuna migrazione da annullare: la sera dopo si lavora come la sera prima.",
+                    ],
+                  ].map(([t, p]) => (
+                    <li key={t} className="flex gap-4">
+                      <span
+                        className="mt-1.5 h-2 w-2 flex-none rounded-full"
+                        style={{ background: "var(--lp-accent)" }}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <div className="font-semibold">{t}</div>
+                        <p
+                          className="mt-1 text-sm"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          {p}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Rivela>
+        </div>
+      </section>
+
       {/* ---------- La promessa onesta ---------- */}
       <section className="lp-sezione lp-bordo-sopra">
         <div className="lp-contenuto">
@@ -953,16 +1060,17 @@ export default async function Home() {
               >
                 <div className={moduloAttivo ? "text-center lg:text-left" : ""}>
                   <h2 className="lp-display text-3xl sm:text-4xl">
-                    Vuoi vederlo sul tuo menu?
+                    {giorniProva} giorni, sul tuo menu
                   </h2>
                   <p
                     className={`mt-4 max-w-lg text-white/75 ${
                       moduloAttivo ? "mx-auto lg:mx-0" : "mx-auto"
                     }`}
                   >
-                    Prepariamo una demo con il vostro menu, il vostro logo e i
-                    vostri colori, così vedete come apparirebbe davvero ai
-                    vostri clienti — prima di decidere qualsiasi cosa.
+                    Scriveteci che locale avete: apriamo il vostro con il vostro
+                    menu, il vostro logo e i vostri colori, e lo tenete acceso
+                    per {giorniProva} giorni con i clienti veri. Poi si decide —
+                    o non si decide niente, e non è successo niente.
                   </p>
 
                   {moduloAttivo ? (
