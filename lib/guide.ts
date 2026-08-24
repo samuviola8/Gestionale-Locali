@@ -118,10 +118,22 @@ export function guidaDelTab(
                   testo:
                     "Quelli arrivati dal sito stanno in cima, sotto «Da accettare», e finche' non li accetti non e' partita nessuna comanda: nessuno ha cominciato a preparare niente. Accettandoli entrano in coda come tutti gli altri e la comanda parte in quel momento.",
                   punti: [
-                    "«+15» e «+30» spostano l'ora concordata prima di accettare: se per le 20:30 non ce la fai, gliela sposti — e il cliente lo vede sulla sua pagina.",
+                    "L'ora concordata si cambia prima di accettare: batti quella giusta nel campo — «va bene per le nove e un quarto» si scrive e basta — oppure usa «+15» e «+30», che sono la stessa cosa in un tocco. Il tasto di conferma dice l'ora con cui stai accettando, e il cliente la vede sulla sua pagina.",
                     "A domicilio il costo di consegna si corregge li': accanto all'indirizzo c'e' la distanza da cui e' uscito, e dove la linea d'aria mente — un fiume, una tangenziale — il numero giusto lo sai tu.",
+                    "I prezzi si correggono riga per riga prima di accettare, come al tavolo: «cambia prezzo» sotto la voce. Serve per l'ingrediente in piu' concordato al telefono e per lo sconto fatto a voce — dopo, quel numero se lo ritrova il cliente in cassa.",
+                    "Le note che il cliente ha scritto sulle righe («senza cipolla», «poco ghiaccio») stanno sotto il nome del prodotto: leggetele prima di accettare, sono la cosa che poi finisce sulla comanda.",
                     "«Rifiuta» chiude l'ordine senza preparare niente. Il cliente lo legge sulla sua pagina, ma se puoi chiamalo: il suo numero e' li' accanto al nome.",
                     "Quando arriva un ordine dal sito la pagina suona, con lo stesso suono delle chiamate dal tavolo.",
+                  ],
+                },
+                {
+                  titolo: "Dire al cliente a che punto e'",
+                  testo:
+                    "In fondo alla scheda di un ordine dal sito ci sono i tasti in fila: «Inizia a preparare», «È pronto», «È partito» a domicilio, poi «Ritirato» o «Consegnato». Ogni tocco si accende sulla pagina del cliente nel giro di qualche secondo, e se hai acceso gli aggiornamenti gli parte anche la mail. Sono i tocchi che vi risparmiano le telefonate del «e' pronto?».",
+                  punti: [
+                    "«È pronto» e' quello che conta davvero: da li' il cliente sa che puo' passare, e non arriva un quarto d'ora prima a guardarvi lavorare.",
+                    "«non era pronto» torna indietro. Capita di premere per sbaglio, e non e' il caso di far scendere qualcuno in strada per niente.",
+                    "Se non tocchi niente non si rompe nulla: il cliente vede «confermato» finche' l'ordine non si chiude. Questi tasti servono a lui, non alla cucina, che ha le sue righe da spuntare come sempre.",
                   ],
                 },
                 {
@@ -588,6 +600,9 @@ export function guidaDelTab(
                     "Come funziona: tetto 10, e per le 20:00 avete gia' preso 6 pizze e 2 birre. Chi arriva con 2 pezzi vede ancora le 20:00; chi ne ha 4 vede le 20:15; chi ne ordina 11 in una volta non vede nessun orario e la pagina gli dice di chiamarvi. Occupano la fascia anche gli ordini battuti in cassa e quelli ancora da accettare.",
                     "E' per fascia, non all'ora: con fasce da 15 minuti un tetto di 10 vuol dire fino a 40 pezzi in un'ora.",
                     "Con l'accettazione automatica gli ordini di quel canale entrano in cucina da soli. Spenta, restano «da accettare» in coda e la comanda parte quando li accettate: e' quello che serve il sabato sera.",
+                    "Le mail si accendono una per una, e non sono tutte per la stessa persona. «Mail al cliente» e' la conferma: ordine ricevuto, accettato, spostato o rifiutato. «Anche gli aggiornamenti» sono le tappe che segnate dalla coda: in preparazione, pronto, partito. «Avviso a voi» invece e' per voi, sulla vostra casella, a ogni ordine nuovo.",
+                    "Se tenete la coda sempre aperta, «Avviso a voi» spegnetelo: sapete gia' che e' arrivato, e vi riempie la casella per niente. Se il pannello lo aprite due volte al giorno tenetelo acceso, o gli ordini scadono mentre nessuno guarda.",
+                    "Spegnendo «Mail al cliente» la pagina smette anche di chiedergli l'indirizzo: chiederlo per non scrivergli mai e' promettergli una conferma che non arriva. Il link per seguire l'ordine ce l'ha lo stesso, e si aggiorna da solo.",
                     "Il minimo d'ordine del domicilio si somma a quello delle zone: fra i due comanda il piu' alto.",
                   ],
                 },

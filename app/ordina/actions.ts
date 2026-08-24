@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
   contestoOrdineWeb,
@@ -26,6 +26,7 @@ import { isChannel, type Channel } from "@/lib/channels";
 import type { IncomingItem } from "@/lib/order-create";
 import { formatKm, formatPrice } from "@/lib/format";
 import { troppeRichieste } from "@/lib/limite";
+import { NOME_COOKIE } from "@/lib/ordini-web";
 
 // Le azioni della pagina pubblica d'ordinazione. Sono aperte a chiunque
 // conosca l'indirizzo del locale: qui dentro non ci si fida di niente di
@@ -405,9 +406,12 @@ export async function inviaOrdine(dati: DatiOrdine): Promise<EsitoInvio> {
 
   if (!esito.ok) return { ok: false, errore: esito.errore };
 
-  // Le mail partono adesso, e dicono due cose diverse a seconda di come lavora
-  // il locale: «l'abbiamo ricevuto» dove risponde una persona, «è confermato»
-  // dove entra in cucina da solo. In tutti e due i casi portano il link.
+  // Le mail partono adesso, e sono due, con due interruttori distinti: quella
+  // al cliente — «l'abbiamo ricevuto» dove risponde una persona, «è
+  // confermato» dove entra in cucina da solo, col link per seguirlo — e la
+  // riga al locale sulla propria casella. Sono due destinatari diversi e due
+  // decisioni diverse: c'è chi avvisa il cliente e tiene la coda a schermo, e
+  // chi non manda niente a nessuno ma vuole sapere che è arrivato un ordine.
   const salvato = await ordinePerToken(ctx.tenantId, esito.token);
   const avviso = salvato ? avvisoDa(salvato) : null;
   if (avviso) {
@@ -415,29 +419,45 @@ export async function inviaOrdine(dati: DatiOrdine): Promise<EsitoInvio> {
       ctx.tenantId,
       canale === "domicilio" ? "domicilio" : "asporto"
     );
-    await avvisaClienteOrdine(
-      esito.stato === "pending" ? "ricevuto" : "confermato",
-      avviso,
-      mittente
-    );
 
-    // E un avviso al locale sulla sua casella: la coda sta su un altro schermo,
-    // e un ordine arrivato mentre nessuno guarda è un ordine che scade.
-    await avvisaLocale(
-      mittente,
-      "Nuovo ordine dal sito — " + riepilogoOrdine(avviso),
-      [
-        esito.stato === "pending"
-          ? "È da accettare: aprilo dalla coda ordini."
-          : "È già in coda: l'accettazione automatica è accesa.",
-        riepilogoOrdine(avviso),
-        telefono,
-        indirizzo || null,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
+    if (regole.mailConferme) {
+      await avvisaClienteOrdine(
+        esito.stato === "pending" ? "ricevuto" : "confermato",
+        avviso,
+        mittente
+      );
+    }
+
+    // La coda sta su un altro schermo, e un ordine arrivato mentre nessuno
+    // guarda è un ordine che scade.
+    if (regole.mailLocale) {
+      await avvisaLocale(
+        mittente,
+        "Nuovo ordine dal sito — " + riepilogoOrdine(avviso),
+        [
+          esito.stato === "pending"
+            ? "È da accettare: aprilo dalla coda ordini."
+            : "È già in coda: l'accettazione automatica è accesa.",
+          riepilogoOrdine(avviso),
+          telefono,
+          indirizzo || null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    }
   }
+
+  // Il sito si ricorda l'ultimo ordine di questo telefono, per una settimana:
+  // chi chiude la pagina o ricarica non deve restare senza. Non e' un accesso —
+  // e' solo il link che il cliente ha gia' — e serve a non dipendere dalla
+  // mail, che puo' non essere stata lasciata o essere finita nello spam.
+  (await cookies()).set(NOME_COOKIE, esito.token, {
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60,
+    httpOnly: true,
+    sameSite: "lax",
+  });
 
   // La coda del locale mostra gli ordini da accettare: quello appena arrivato
   // deve esserci gia' al primo sguardo.

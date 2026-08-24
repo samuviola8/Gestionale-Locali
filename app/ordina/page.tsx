@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   canaleDi,
   contestoOrdineWeb,
   giorniOrdinabili,
+  ordinePerToken,
+  ETICHETTA_FASE,
+  NOME_COOKIE,
   type ImpostazioniCanale,
 } from "@/lib/ordini-web";
 import { getMenu, perCanali } from "@/lib/menu";
@@ -59,6 +63,25 @@ export default async function OrdinaPage() {
     regole[canale] = canaleDi(ctx.cfg, canale);
   }
 
+  // L'ultimo ordine fatto da questo telefono, se ce n'e' uno ancora in ballo.
+  // Il token sta in un cookie scritto quando l'ordine e' partito: chi ricarica
+  // la pagina, la chiude o torna domani lo ritrova senza dover cercare la mail.
+  const token = (await cookies()).get(NOME_COOKIE)?.value ?? "";
+  const inCorso = token ? await ordinePerToken(ctx.tenantId, token) : null;
+  const ultimo =
+    inCorso && inCorso.fase !== "chiuso" && inCorso.fase !== "rifiutato"
+      ? {
+          token,
+          etichetta: ETICHETTA_FASE[inCorso.fase],
+          quando: inCorso.quando
+            ? inCorso.quando.toLocaleTimeString("it-IT", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "oggi",
+        }
+      : null;
+
   return (
     <main className="pr">
       <style dangerouslySetInnerHTML={{ __html: STILE_PRENOTA + STILE_ORDINA }} />
@@ -90,6 +113,20 @@ export default async function OrdinaPage() {
             cui la cucina ce la fa davvero.
           </p>
         </header>
+
+        {/* Il sito si ricorda l'ultimo ordine di questo telefono: chi ricarica,
+            chiude la pagina o torna il giorno dopo lo ritrova senza cercare la
+            mail. Sparisce da solo quando l'ordine e' chiuso. */}
+        {ultimo && (
+          <a
+            href={`/ordina/${ultimo.token}`}
+            className="pr-riepilogo mt-8"
+            style={{ display: "flex", textDecoration: "none" }}
+          >
+            <span className="badge badge-brand">{ultimo.etichetta}</span>
+            <span>Il tuo ordine di {ultimo.quando} — guarda a che punto è</span>
+          </a>
+        )}
 
         {ctx.sospesoFino ? (
           <div className="pr-avviso mt-8">
@@ -129,7 +166,7 @@ export default async function OrdinaPage() {
             telefono={ctx.telefono}
             raggioKm={raggioMassimo(ctx.fasce)}
             gratisSopraCents={ctx.gratisSopraCents}
-            emailObbligatoria={ctx.mailAttiva}
+            postaAttiva={ctx.mailAttiva}
           />
         )}
 

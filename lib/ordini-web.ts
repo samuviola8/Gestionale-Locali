@@ -56,6 +56,20 @@ export type ImpostazioniCanale = {
   minimoCents: number;
   // L'ordine entra in cucina da solo, senza che nessuno lo guardi.
   accettazioneAutomatica: boolean;
+  // Se al cliente parte la mail quando l'ordine viene preso in carico o
+  // rifiutato. Serve la casella del locale configurata: senza, non parte
+  // niente comunque.
+  mailConferme: boolean;
+  // E se gli parte una mail anche a ogni passo dopo — in preparazione, pronto,
+  // uscito dal locale. Sono tre mail per ordine: c'e' chi le vuole e chi le
+  // considera spam, e la differenza la decide il locale.
+  mailAggiornamenti: boolean;
+  // E se una copia arriva anche sulla casella del locale, a ogni ordine nuovo.
+  // E' l'altra meta' ed e' un'altra cosa: le due di sopra parlano al cliente,
+  // questa parla a chi lavora. Chi tiene la coda sempre a schermo la spegne e
+  // non si ritrova la casella piena; chi il pannello lo apre due volte al
+  // giorno la tiene accesa, o gli ordini scadono mentre nessuno guarda.
+  mailLocale: boolean;
   // La riga mostrata a chi ordina su questo canale.
   nota: string | null;
 };
@@ -85,6 +99,9 @@ const DEFAULT_CANALE: Record<"asporto" | "domicilio", ImpostazioniCanale> = {
     giorniAvanti: 7,
     minimoCents: 0,
     accettazioneAutomatica: false,
+    mailConferme: true,
+    mailAggiornamenti: true,
+    mailLocale: true,
     nota: null,
   },
   domicilio: {
@@ -95,6 +112,9 @@ const DEFAULT_CANALE: Record<"asporto" | "domicilio", ImpostazioniCanale> = {
     giorniAvanti: 7,
     minimoCents: 0,
     accettazioneAutomatica: false,
+    mailConferme: true,
+    mailAggiornamenti: true,
+    mailLocale: true,
     nota: null,
   },
 };
@@ -115,6 +135,10 @@ export function normalizzaCanale(
     return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
   };
   const nota = typeof r.nota === "string" ? r.nota.trim().slice(0, 300) : "";
+  // Le spunte che nascono accese vanno lette col loro default: un blocco
+  // salvato prima che esistessero non le ha, e `!!undefined` le spegnerebbe
+  // a un locale che non ha mai chiesto di spegnerle.
+  const bool = (x: unknown, quando: boolean) => (x === undefined ? quando : !!x);
 
   return {
     attivo: !!r.attivo,
@@ -129,6 +153,9 @@ export function normalizzaCanale(
     giorniAvanti: num(r.giorniAvanti, 1, 30, d.giorniAvanti),
     minimoCents: num(r.minimoCents, 0, 100000, 0),
     accettazioneAutomatica: !!r.accettazioneAutomatica,
+    mailConferme: bool(r.mailConferme, d.mailConferme),
+    mailAggiornamenti: bool(r.mailAggiornamenti, d.mailAggiornamenti),
+    mailLocale: bool(r.mailLocale, d.mailLocale),
     nota: nota || null,
   };
 }
@@ -659,6 +686,10 @@ export type VoceOrdine = {
 
 export type OrdineWeb = {
   id: string;
+  // A che punto e', dal punto di vista di chi aspetta.
+  fase: FaseOrdine;
+  readyAt: Date | null;
+  outAt: Date | null;
   // Il suo link pubblico. Nullo su quello che nasce dentro al locale.
   token: string | null;
   canale: Channel;
@@ -711,10 +742,20 @@ export async function ordinePerToken(
       .filter((r) => !r.annullata)
       .reduce((s, r) => s + r.prezzoCents * r.quantita, 0) + o.deliveryFeeCents;
 
+  const canale = ((o.channel as Channel) ?? "asporto") as Channel;
+
   return {
     id: o.id,
+    fase: faseDi({
+      stato: o.status,
+      canale,
+      readyAt: o.readyAt,
+      outAt: o.outAt,
+    }),
+    readyAt: o.readyAt,
+    outAt: o.outAt,
     token: o.webToken,
-    canale: (o.channel as Channel) ?? "asporto",
+    canale,
     stato: o.status,
     quando: o.dueAt,
     nome: o.customerName,
@@ -728,3 +769,200 @@ export async function ordinePerToken(
     creatoIl: o.createdAt,
   };
 }
+
+// --- A che punto e' l'ordine ------------------------------------------------
+//
+// Lo stato a database dice cosa ne fa la cucina; questo dice cosa ne sa il
+// cliente, che e' un'altra cosa. "In preparazione" e "pronto" per la cucina
+// sono lo stesso ordine ancora aperto; per chi aspetta sono la differenza fra
+// mettersi le scarpe e restare seduto.
+
+export type FaseOrdine =
+  | "ricevuto"
+  | "confermato"
+  | "preparazione"
+  | "pronto"
+  | "in-consegna"
+  | "chiuso"
+  | "rifiutato";
+
+export function faseDi(o: {
+  stato: string;
+  canale: Channel;
+  readyAt: Date | null;
+  outAt: Date | null;
+}): FaseOrdine {
+  if (o.stato === "rejected") return "rifiutato";
+  if (o.stato === "served") return "chiuso";
+  // I due momenti segnati a mano vincono sullo stato: uno gia' uscito e' piu'
+  // avanti di uno "in preparazione", per quanto le sue righe dicano altro.
+  if (o.outAt) return "in-consegna";
+  if (o.readyAt) return "pronto";
+  if (o.stato === "preparing") return "preparazione";
+  if (o.stato === "pending") return "ricevuto";
+  return "confermato";
+}
+
+// L'ora concordata cambiata a mano da chi accetta l'ordine.
+//
+// Arriva come istante intero — "+15" e un orario battuto nel campo sono la
+// stessa cosa — e qui si controlla che sia un'ora e che sia ancora questo
+// ordine: oltre le dodici ore di distanza non e' piu' uno spostamento ma un
+// altro appuntamento, che al cliente va detto a voce. Meglio fermarsi e dirlo
+// che accettare di nascosto all'ora vecchia, perche' quella e' la conferma
+// che fa arrivare la gente quando il locale non l'aspetta.
+export type OraSpostata =
+  // `quando` a null vuol dire "e' la stessa ora": si accetta e basta, senza
+  // mandare al cliente l'avviso di un cambio che non c'e' stato.
+  | { ok: true; quando: Date | null }
+  | { ok: false; errore: string };
+
+export const SPOSTAMENTO_MASSIMO_MS = 12 * 60 * 60 * 1000;
+
+export function oraSpostata(
+  concordata: Date | null,
+  scritta: string
+): OraSpostata {
+  const d = new Date(scritta);
+  if (Number.isNaN(d.getTime())) {
+    return { ok: false, errore: "Quell'ora non si legge. Riprova." };
+  }
+  if (!concordata) {
+    return {
+      ok: false,
+      errore: "Questo ordine non ha un'ora concordata: non c'è niente da spostare.",
+    };
+  }
+  if (Math.abs(d.getTime() - concordata.getTime()) > SPOSTAMENTO_MASSIMO_MS) {
+    return {
+      ok: false,
+      errore: "Troppo lontano dall'ora concordata: chiama il cliente.",
+    };
+  }
+  return { ok: true, quando: d.getTime() === concordata.getTime() ? null : d };
+}
+
+// I due momenti che il cliente aspetta di vedere, scritti sull'ordine.
+//
+// Stanno qui e non nell'azione perche' l'azione ha la sessione da controllare,
+// e questi due UPDATE vanno provati senza: sono passati davanti al cliente,
+// e un errore che salta fuori solo premendo il tasto in cassa e' un errore che
+// scopre il locale.
+//
+// Tornano il token dell'ordine — quello con cui si avvisa chi aspetta — o
+// `null` quando non c'era niente da cambiare.
+export async function segnaProntoOrdine(
+  tenantId: string,
+  orderId: string,
+  pronto: boolean
+): Promise<{ ok: boolean; token: string | null }> {
+  const cambiati = await db
+    .update(orders)
+    .set({
+      readyAt: pronto ? new Date() : null,
+      // Tornando indietro cade anche l'uscita: un ordine "partito ma non
+      // pronto" e' uno stato che non esiste.
+      ...(pronto ? {} : { outAt: null }),
+    })
+    .where(and(eq(orders.id, orderId), eq(orders.tenantId, tenantId)))
+    .returning({ webToken: orders.webToken });
+
+  if (!cambiati.length) return { ok: false, token: null };
+  return { ok: true, token: cambiati[0].webToken };
+}
+
+export async function segnaPartitoOrdine(
+  tenantId: string,
+  orderId: string
+): Promise<{ ok: boolean; token: string | null }> {
+  const cambiati = await db
+    .update(orders)
+    .set({
+      // Le due ore le batte l'orologio del database, non quello del server:
+      // se «e' partito» viene premuto senza passare da «e' pronto», l'ora
+      // ripiega su quella di adesso, e le due devono uscire dallo stesso
+      // orologio o si rischia un'uscita precedente al pronto.
+      outAt: sql`now()`,
+      readyAt: sql`coalesce(${orders.readyAt}, now())`,
+    })
+    .where(
+      and(
+        eq(orders.id, orderId),
+        eq(orders.tenantId, tenantId),
+        // Un asporto non esce con nessuno: il tasto non c'e', e se arriva
+        // lo stesso non si scrive niente.
+        eq(orders.channel, "domicilio")
+      )
+    )
+    .returning({ webToken: orders.webToken });
+
+  if (!cambiati.length) return { ok: false, token: null };
+  return { ok: true, token: cambiati[0].webToken };
+}
+
+// Le fasi che questo canale attraversa davvero: un asporto non esce con
+// nessuno, e mostrare "in consegna" a chi passa a ritirare e' una tappa che
+// non arrivera' mai.
+export function fasiDelCanale(canale: Channel): FaseOrdine[] {
+  return canale === "domicilio"
+    ? ["ricevuto", "confermato", "preparazione", "pronto", "in-consegna", "chiuso"]
+    : ["ricevuto", "confermato", "preparazione", "pronto", "chiuso"];
+}
+
+// Il locale visto dalla sua pagina pubblica, senza chiedere che venda ancora
+// dal sito.
+//
+// Serve alla pagina di un ordine gia' fatto: il locale puo' spegnere l'asporto
+// dal web alle 23:00, e chi ha ordinato alle 22:30 deve continuare a vedere a
+// che punto e' il suo. Legare quella pagina ai canali accesi vorrebbe dire
+// spegnere in faccia ai clienti i link che stanno guardando.
+export type LocaleDelSito = {
+  tenantId: string;
+  nome: string;
+  logoUrl: string | null;
+  telefono: string | null;
+  indirizzo: string | null;
+};
+
+export async function localeDalSito(): Promise<LocaleDelSito | null> {
+  const tenant = await getTenantFromHost();
+  if (!tenant || tenant.suspended || tenant.serviceBlocked) return null;
+
+  const [row] = await db
+    .select({
+      phone: tenants.phone,
+      address: tenants.address,
+      city: tenants.city,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, tenant.id))
+    .limit(1);
+
+  return {
+    tenantId: tenant.id,
+    nome: tenant.name,
+    logoUrl: tenant.logoUrl,
+    telefono: row?.phone ?? null,
+    indirizzo:
+      [row?.address, row?.city].filter(Boolean).join(", ") || null,
+  };
+}
+
+// Come si chiama ogni fase quando la si dice al cliente in una parola sola.
+export const ETICHETTA_FASE: Record<FaseOrdine, string> = {
+  ricevuto: "Da confermare",
+  confermato: "Confermato",
+  preparazione: "In preparazione",
+  pronto: "Pronto",
+  "in-consegna": "In consegna",
+  chiuso: "Chiuso",
+  rifiutato: "Rifiutato",
+};
+
+// Dove il sito si ricorda l'ultimo ordine fatto da questo telefono. Il dominio
+// e' gia' quello del locale, quindi il nome non ha bisogno dello slug.
+//
+// Sta qui e non fra le azioni: un file "use server" puo' esportare solo
+// funzioni asincrone, e una costante li' dentro fa esplodere ogni pagina che la
+// importa — con un errore che parla di "use server" e non dice quale.
+export const NOME_COOKIE = "ordine";

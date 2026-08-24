@@ -195,6 +195,9 @@ export async function salvaOrdiniWeb(formData: FormData): Promise<void> {
         giorniAvanti: numero(`${canale}-giorni`),
         minimoCents: inCents(`${canale}-minimo`),
         accettazioneAutomatica: formData.get(`${canale}-auto`) === "on",
+        mailConferme: formData.get(`${canale}-mail`) === "on",
+        mailAggiornamenti: formData.get(`${canale}-aggiornamenti`) === "on",
+        mailLocale: formData.get(`${canale}-avviso`) === "on",
         nota: String(formData.get(`${canale}-nota`) ?? ""),
       },
       canale

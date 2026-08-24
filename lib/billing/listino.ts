@@ -43,7 +43,7 @@ export const PACCHETTI: Pacco[] = [
     key: "locale",
     label: "Pro",
     descrizione:
-      "Tutto Base, piu' cassa al banco, prenotazione web, rubrica e asporto.",
+      "Tutto Base, piu' cassa al banco, prenotazione web, rubrica, asporto e ordini dal sito.",
     moduli: [
       "qr_ordering",
       "split_bill",
@@ -52,6 +52,7 @@ export const PACCHETTI: Pacco[] = [
       "reservations",
       "customers",
       "takeaway",
+      "web_orders",
     ],
     mensileCents: 8900,
     annualeCents: 89000,
@@ -70,6 +71,7 @@ export const PACCHETTI: Pacco[] = [
       "reservations",
       "customers",
       "takeaway",
+      "web_orders",
       "delivery",
     ],
     // Tolta la fedelta', Premium aggiunge a Pro la sola consegna: a 149 sarebbe

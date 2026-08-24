@@ -103,7 +103,25 @@ export const STILE_ORDINA = `
   padding: 7px 0;
   font-size: 14px;
 }
-.or-voce + .or-voce { border-top: 1px dashed var(--border); }
+/* Ogni voce del carrello e' un blocco: la riga con nome, quantita' e prezzo,
+   piu' la nota sotto. Il tratteggio separa i blocchi e non le righe, o
+   aprendo una nota la linea finirebbe in mezzo alla voce. */
+.or-riga-carrello + .or-riga-carrello {
+  border-top: 1px dashed var(--border);
+}
+.or-nota-tasto {
+  margin: 0 0 4px 2px;
+  font-size: 12px;
+  text-decoration: underline;
+  color: var(--muted);
+}
+.or-nota-riga {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 2px;
+}
+.or-nota-riga .input { font-size: 14px; }
 .or-totale {
   display: flex;
   justify-content: space-between;
@@ -134,6 +152,78 @@ export const STILE_ORDINA = `
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(8px);
+}
+
+/* --- La riga dei passi: dove e' arrivato l'ordine --- */
+.or-passi {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.or-passo-riga {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.or-passo-riga[data-stato="adesso"] {
+  background: var(--brand-50);
+  border: 1px solid var(--brand);
+}
+
+/* Il pallino e la linea che li unisce: la linea nasce dal pallino e scende
+   fino al prossimo, cosi' i passi si leggono come una strada e non come un
+   elenco puntato. */
+.or-pallino {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 1;
+}
+.or-passo-riga:not(:last-child) .or-pallino::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  transform: translateX(-50%);
+  background: var(--border);
+}
+.or-passo-riga[data-stato="fatto"] .or-pallino {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-on);
+}
+.or-passo-riga[data-stato="fatto"] .or-pallino::after { background: var(--brand); }
+.or-passo-riga[data-stato="adesso"] .or-pallino {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4px var(--brand-50);
+}
+
+.or-passo-titolo { display: block; font-size: 15px; font-weight: 600; }
+.or-passo-riga[data-stato="dopo"] .or-passo-titolo {
+  font-weight: 500;
+  color: var(--muted);
+}
+.or-passo-detto {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

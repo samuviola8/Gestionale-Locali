@@ -523,6 +523,14 @@ export const orders = pgTable("orders", {
   // costo lo corregge lui. Nullo = l'indirizzo non si e' trovato sulla mappa,
   // e allora il costo lo decide il locale.
   deliveryKm: doublePrecision("delivery_km"),
+  // I due momenti che al cliente interessano davvero, e che dallo stato non si
+  // ricavano: quando la sua roba e' **pronta** e quando **e' uscita** dal
+  // locale. Sono eventi con un'ora, non stati: "pronto alle 20:28" e "partito
+  // alle 20:35" sono quello che uno vuole leggere mentre aspetta, e tenerli
+  // come date invece che dentro `status` lascia in pace la macchina degli
+  // stati della cucina, che conta le righe e non i giri del fattorino.
+  readyAt: timestamp("ready_at", { withTimezone: true }),
+  outAt: timestamp("out_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

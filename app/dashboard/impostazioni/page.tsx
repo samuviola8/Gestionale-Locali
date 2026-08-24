@@ -599,6 +599,7 @@ export default async function ImpostazioniPage() {
               />
             </div>
 
+
             <Field
               label="Riga da mostrare a chi prenota"
               hint="Una regola della casa: «il tavolo si tiene 15 minuti», «cucina fino alle 22:30»."
@@ -739,7 +740,29 @@ export default async function ImpostazioniPage() {
                         acceso={r.accettazioneAutomatica}
                       />
                     </div>
-
+                    <div
+                      className="divide-y sm:col-span-2"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      <Interruttore
+                        nome={`${c.chiave}-mail`}
+                        etichetta="Mail al cliente"
+                        descrizione="Quando prendete l'ordine in carico o lo rifiutate, al cliente arriva una mail dalla vostra casella, con dentro il link per seguirlo."
+                        acceso={r.mailConferme}
+                      />
+                      <Interruttore
+                        nome={`${c.chiave}-aggiornamenti`}
+                        etichetta="Anche gli aggiornamenti"
+                        descrizione="Una mail a ogni passo: in preparazione, pronto, uscito dal locale. Sono tre in più per ordine — la pagina del cliente si aggiorna da sola comunque, anche senza."
+                        acceso={r.mailAggiornamenti}
+                      />
+                      <Interruttore
+                        nome={`${c.chiave}-avviso`}
+                        etichetta="Avviso a voi"
+                        descrizione="Una riga sulla vostra casella a ogni ordine nuovo, con nome, telefono e cosa hanno preso. Serve a chi il pannello non ce l'ha sempre davanti: un ordine arrivato mentre nessuno guarda è un ordine che scade."
+                        acceso={r.mailLocale}
+                      />
+                    </div>
                     <Field
                       label="Riga da mostrare a chi ordina"
                       hint={c.suggerimentoNota}

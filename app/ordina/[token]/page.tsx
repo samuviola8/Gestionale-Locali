@@ -1,37 +1,25 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { contestoOrdineWeb, ordinePerToken } from "@/lib/ordini-web";
+import { localeDalSito, ordinePerToken } from "@/lib/ordini-web";
 import { formatKm, formatPrice } from "@/lib/format";
 import { getChannel } from "@/lib/channels";
+import StatoLive from "@/components/ordina/StatoLive";
 import { STILE_PRENOTA } from "@/components/prenota/stile";
+import { STILE_ORDINA } from "@/components/ordina/stile";
 
 // L'ordine visto da chi l'ha fatto. Ci si arriva col link che il token porta
-// nell'indirizzo: e' l'unico modo che ha il cliente di ritrovare il suo ordine
-// senza un account, ed e' anche quello che gli dice se il locale l'ha preso.
-
+// nell'indirizzo — quello che gli e' arrivato per mail, e quello che il sito si
+// ricorda — ed e' l'unico modo che ha il cliente di ritrovare il suo ordine
+// senza un account.
+//
+// La pagina non chiede che il locale stia ancora vendendo dal sito: l'asporto
+// si puo' spegnere alle 23:00, e chi ha ordinato alle 22:30 deve continuare a
+// vedere a che punto e' il suo.
 export const metadata: Metadata = {
   title: "Il tuo ordine",
   // Un ordine col nome e il telefono di qualcuno non finisce su Google.
   robots: { index: false, follow: false },
 };
-
-function quandoLeggibile(d: Date): string {
-  const oggi = new Date();
-  const stessoGiorno =
-    d.getFullYear() === oggi.getFullYear() &&
-    d.getMonth() === oggi.getMonth() &&
-    d.getDate() === oggi.getDate();
-  const ora = d.toLocaleTimeString("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (stessoGiorno) return `oggi alle ${ora}`;
-  return `${d.toLocaleDateString("it-IT", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  })} alle ${ora}`;
-}
 
 export default async function OrdinePage({
   params,
@@ -39,88 +27,54 @@ export default async function OrdinePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const ctx = await contestoOrdineWeb();
-  if (!ctx) notFound();
+  const locale = await localeDalSito();
+  if (!locale) notFound();
 
-  const ordine = await ordinePerToken(ctx.tenantId, token);
+  const ordine = await ordinePerToken(locale.tenantId, token);
   if (!ordine) notFound();
 
   const canale = getChannel(ordine.canale);
-  const ritiro = ordine.canale === "asporto";
+  const domicilio = ordine.canale === "domicilio";
   const imponibile = ordine.totaleCents - ordine.consegnaCents;
-
-  // Le tre cose che il cliente vuole sapere, in tre frasi diverse: se l'hanno
-  // preso, per quando, e quanto paga. "In preparazione" e "pronto" sono lo
-  // stesso passo per chi aspetta — l'ordine c'e' — e non vale la pena
-  // inventargli due schermate.
-  const stato =
-    ordine.stato === "pending"
-      ? {
-          titolo: "Ordine ricevuto",
-          testo:
-            "Il locale lo sta guardando: appena lo conferma, quello che hai scelto va in preparazione. Se qualcosa non torna ti chiamano.",
-          badge: "badge-warn",
-          etichetta: "Da confermare",
-        }
-      : ordine.stato === "served" || ordine.stato === "rejected"
-        ? ordine.stato === "served"
-          ? {
-              titolo: ritiro ? "Ritirato" : "Consegnato",
-              testo: "Questo ordine è chiuso. Grazie!",
-              badge: "badge-muted",
-              etichetta: "Chiuso",
-            }
-          : {
-              titolo: "Ordine rifiutato",
-              testo:
-                "Il locale non è riuscito a prenderlo. Se non ti hanno già chiamato, prova a sentirli.",
-              badge: "badge-danger",
-              etichetta: "Rifiutato",
-            }
-        : {
-            titolo: "Ordine confermato",
-            testo: ritiro
-              ? "È tutto a posto: passa a ritirarlo all'ora concordata."
-              : "È tutto a posto: te lo portiamo all'indirizzo che hai scritto.",
-            badge: "badge-ok",
-            etichetta: "Confermato",
-          };
 
   return (
     <main className="pr">
-      <style dangerouslySetInnerHTML={{ __html: STILE_PRENOTA }} />
+      <style dangerouslySetInnerHTML={{ __html: STILE_PRENOTA + STILE_ORDINA }} />
 
       <div className="pr-guscio">
         <header className="text-center">
-          {ctx.logoUrl ? (
+          {locale.logoUrl ? (
             <div className="pr-logo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={ctx.logoUrl} alt={ctx.nome} className="h-11 w-auto" />
+              <img src={locale.logoUrl} alt={locale.nome} className="h-11 w-auto" />
             </div>
           ) : (
-            <div className="text-xl font-semibold">{ctx.nome}</div>
+            <div className="text-xl font-semibold">{locale.nome}</div>
           )}
 
           <div className="pr-occhiello mt-6">{canale.label}</div>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            {stato.titolo}
+            Il tuo ordine
           </h1>
-          <p
-            className="mx-auto mt-3 max-w-sm text-sm"
-            style={{ color: "var(--muted)" }}
-          >
-            {stato.testo}
-          </p>
         </header>
 
-        <div className="pr-riepilogo mt-8">
-          <span className={`badge ${stato.badge}`}>{stato.etichetta}</span>
-          {ordine.quando && (
-            <span>
-              {ritiro ? "Ritiro" : "Consegna"} {quandoLeggibile(ordine.quando)}
-            </span>
-          )}
-        </div>
+        {/* I passi e l'ora si aggiornano da soli: chi aspetta tiene la pagina
+            aperta, e l'ora concordata e' proprio la cosa che il locale puo'
+            cambiare mentre la guarda. */}
+        <StatoLive
+          token={token}
+          domicilio={domicilio}
+          nome={ordine.nome}
+          telefono={locale.telefono}
+          iniziale={{
+            fase: ordine.fase,
+            quando: ordine.quando?.toISOString() ?? null,
+            readyAt: ordine.readyAt?.toISOString() ?? null,
+            outAt: ordine.outAt?.toISOString() ?? null,
+            totaleCents: ordine.totaleCents,
+            consegnaCents: ordine.consegnaCents,
+          }}
+        />
 
         <section className="pr-passo">
           <h2 className="pr-titolo-passo">Cosa hai ordinato</h2>
@@ -171,7 +125,7 @@ export default async function OrdinePage({
                 <span className="tnum">{formatPrice(ordine.consegnaCents)}</span>
               </div>
             )}
-            {ordine.canale === "domicilio" && ordine.consegnaCents === 0 && (
+            {domicilio && ordine.consegnaCents === 0 && (
               <div className="flex justify-between" style={{ color: "var(--muted)" }}>
                 <span>Consegna</span>
                 <span>{ordine.km === null ? "da confermare" : "offerta"}</span>
@@ -182,9 +136,9 @@ export default async function OrdinePage({
               <span className="tnum">{formatPrice(ordine.totaleCents)}</span>
             </div>
             <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
-              {ritiro
-                ? "Si paga al ritiro, in cassa."
-                : "Si paga alla consegna, al fattorino."}{" "}
+              {domicilio
+                ? "Si paga alla consegna, al fattorino."
+                : "Si paga al ritiro, in cassa."}{" "}
               L&apos;imponibile delle consumazioni è {formatPrice(imponibile)}.
             </p>
           </div>
@@ -201,11 +155,11 @@ export default async function OrdinePage({
 
         <div className="pr-avviso mt-6">
           Serve cambiare qualcosa?{" "}
-          {ctx.telefono ? (
+          {locale.telefono ? (
             <>
               Chiama il locale allo{" "}
-              <a href={`tel:${ctx.telefono}`} className="underline">
-                {ctx.telefono}
+              <a href={`tel:${locale.telefono}`} className="underline">
+                {locale.telefono}
               </a>
               : da qui l&apos;ordine non si modifica.
             </>
@@ -216,7 +170,7 @@ export default async function OrdinePage({
 
         <p className="mt-6 text-center text-xs" style={{ color: "var(--muted)" }}>
           Tieni da parte questo indirizzo: è l&apos;unico modo per ritrovare
-          l&apos;ordine.
+          l&apos;ordine. Se ci hai lasciato la mail, ce l&apos;hai anche lì.
         </p>
       </div>
     </main>

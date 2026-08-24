@@ -37,6 +37,10 @@ type Order = {
   deliveryKm: number | null;
   // Arrivato dal sito: e' l'unico che si accetta o si rifiuta.
   dalWeb: boolean;
+  // Quando e' stato segnato pronto e quando e' uscito dal locale: sono i due
+  // passi che il cliente vede sulla sua pagina.
+  readyAt: string | null;
+  outAt: string | null;
   items: Item[];
 };
 
@@ -47,19 +51,31 @@ function time(iso: string): string {
   });
 }
 
+// L'ora come la vuole un campo <input type="time">: sempre HH:MM, con lo zero
+// davanti, e sull'orologio di chi guarda la pagina.
+function orologio(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
+function oggiStesso(d: Date): boolean {
+  const adesso = new Date();
+  return (
+    d.getFullYear() === adesso.getFullYear() &&
+    d.getMonth() === adesso.getMonth() &&
+    d.getDate() === adesso.getDate()
+  );
+}
+
 // Un ordine per domani deve dirlo: "per le 20:30" da solo lo fa preparare
 // stasera.
 function quandoRitira(d: Date): string {
-  const oggi = new Date();
-  const stesso =
-    d.getFullYear() === oggi.getFullYear() &&
-    d.getMonth() === oggi.getMonth() &&
-    d.getDate() === oggi.getDate();
   const ora = d.toLocaleTimeString("it-IT", {
     hour: "2-digit",
     minute: "2-digit",
   });
-  if (stesso) return `le ${ora}`;
+  if (oggiStesso(d)) return `le ${ora}`;
   return `${d.toLocaleDateString("it-IT", {
     weekday: "short",
     day: "numeric",
@@ -130,7 +146,10 @@ function PrezzoRichiesta({
   if (!aperto) {
     return (
       <div className="mt-1.5 flex items-center gap-2 text-xs">
-        <span className="tnum font-semibold">{fmt(item.priceCents)}</span>
+        <span className="tnum font-semibold">
+          {fmt(item.priceCents)}
+          {item.quantity > 1 && " l'uno"}
+        </span>
         {item.priceAdjusted && (
           <span style={{ color: "var(--muted)" }}>prezzo corretto</span>
         )}
@@ -194,6 +213,8 @@ export default function OrderQueue({
   voidItem,
   accetta,
   rifiuta,
+  pronto,
+  partito,
   sospendi,
   canali,
   vendeDalWeb,
@@ -211,11 +232,13 @@ export default function OrderQueue({
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   accetta: (
     id: string,
-    correzioni?: { consegnaCents?: number; spostaMinuti?: number }
+    correzioni?: { consegnaCents?: number; quando?: string }
   ) => Promise<
     { ok: true; comande: number; mail: EsitoMail } | { ok: false; error: string }
   >;
   rifiuta: (id: string) => Promise<{ ok: boolean; mail: EsitoMail }>;
+  pronto: (id: string, pronto: boolean) => Promise<{ ok: boolean; mail: EsitoMail }>;
+  partito: (id: string) => Promise<{ ok: boolean; mail: EsitoMail }>;
   sospendi: (sospendi: boolean) => Promise<{ fino: string | null }>;
   // I canali che questo locale ha davvero: le pillole del filtro sono queste.
   canali: Channel[];
@@ -307,6 +330,47 @@ export default function OrderQueue({
       window.removeEventListener("keydown", apri);
     };
   }, []);
+
+  // I due passi di chi ritira o si fa consegnare. Il messaggio in cima dice
+  // se la mail al cliente e' partita: e' l'unica cosa che chi sta in cassa non
+  // deve scoprire dal cliente stesso.
+  async function segna(id: string, e: boolean) {
+    setBusy(id);
+    try {
+      const esito = await pronto(id, e);
+      if (e) {
+        setMessaggio(
+          esito.mail === "fallita"
+            ? "Segnato pronto, ma la mail al cliente non e' partita."
+            : esito.mail === "inviata"
+              ? "Segnato pronto: al cliente e' arrivata la mail."
+              : "Segnato pronto."
+        );
+      } else {
+        setMessaggio("Rimesso in preparazione.");
+      }
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function parti(id: string) {
+    setBusy(id);
+    try {
+      const esito = await partito(id);
+      setMessaggio(
+        esito.mail === "fallita"
+          ? "Segnato in consegna, ma la mail al cliente non e' partita."
+          : esito.mail === "inviata"
+            ? "Segnato in consegna: al cliente e' arrivata la mail."
+            : "Segnato in consegna."
+      );
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function setStatus(id: string, status: string) {
     setBusy(id);
@@ -450,6 +514,7 @@ export default function OrderQueue({
               o={o}
               accetta={accetta}
               rifiuta={rifiuta}
+              prezzo={setItemPrice}
               aggiorna={load}
               avvisa={setMessaggio}
             />
@@ -490,6 +555,9 @@ export default function OrderQueue({
                 : urgency(min, o.channel);
             const canale = getChannel(o.channel);
             const inSala = o.channel === "tavolo";
+            // Fuori dalla sala il giro ha due passi in piu': pronto e uscito.
+            const fuoriSala =
+              o.channel === "asporto" || o.channel === "domicilio";
             const isNew = o.status === "new";
             // I pezzi annullati non si preparano: non vanno contati.
             const pieces = o.items
@@ -682,28 +750,100 @@ export default function OrderQueue({
                 </ul>
 
                 <div
-                  className="mt-3 flex items-center justify-between gap-3 px-4 py-3"
+                  className="mt-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                   style={{ background: "var(--surface-2)" }}
                 >
                   <span className="text-xs" style={{ color: "var(--muted)" }}>
                     {pieces} {pieces === 1 ? "pezzo" : "pezzi"}
+                    {/* Le due ore che il cliente sta guardando sulla sua
+                        pagina: averle qui sotto gli occhi evita di segnarle due
+                        volte, e di chiedersi se erano state segnate. */}
+                    {o.readyAt && (
+                      <span className="tnum"> · pronto {time(o.readyAt)}</span>
+                    )}
+                    {o.outAt && (
+                      <span className="tnum"> · partito {time(o.outAt)}</span>
+                    )}
                   </span>
-                  {isNew ? (
-                    <button
-                      onClick={() => setStatus(o.id, "preparing")}
-                      disabled={busy === o.id}
-                      className="btn btn-primary btn-sm"
-                    >
-                      {busy === o.id ? "..." : "Inizia a preparare"}
-                    </button>
+
+                  {!fuoriSala ? (
+                    isNew ? (
+                      <button
+                        onClick={() => setStatus(o.id, "preparing")}
+                        disabled={busy === o.id}
+                        className="btn btn-primary btn-sm"
+                      >
+                        {busy === o.id ? "..." : "Inizia a preparare"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setStatus(o.id, "served")}
+                        disabled={busy === o.id}
+                        className="btn btn-sm"
+                      >
+                        {busy === o.id ? "..." : "Segna come servito"}
+                      </button>
+                    )
                   ) : (
-                    <button
-                      onClick={() => setStatus(o.id, "served")}
-                      disabled={busy === o.id}
-                      className="btn btn-sm"
-                    >
-                      {busy === o.id ? "..." : "Segna come servito"}
-                    </button>
+                    /* Fuori dalla sala il giro e' piu' lungo, e ogni passo e'
+                       una cosa che il cliente vede: si mette sotto, e' pronto,
+                       esce dal locale, ed e' andato. Un tasto per volta, quello
+                       del passo in cui l'ordine e' adesso. */
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isNew && (
+                        <button
+                          onClick={() => setStatus(o.id, "preparing")}
+                          disabled={busy === o.id}
+                          className="btn btn-primary btn-sm"
+                        >
+                          {busy === o.id ? "..." : "Inizia a preparare"}
+                        </button>
+                      )}
+                      {!isNew && !o.readyAt && (
+                        <button
+                          onClick={() => segna(o.id, true)}
+                          disabled={busy === o.id}
+                          className="btn btn-primary btn-sm"
+                        >
+                          {busy === o.id ? "..." : "È pronto"}
+                        </button>
+                      )}
+                      {o.readyAt && o.channel === "domicilio" && !o.outAt && (
+                        <button
+                          onClick={() => parti(o.id)}
+                          disabled={busy === o.id}
+                          className="btn btn-primary btn-sm"
+                        >
+                          {busy === o.id ? "..." : "È partito"}
+                        </button>
+                      )}
+                      {o.readyAt && (o.channel === "asporto" || o.outAt) && (
+                        <button
+                          onClick={() => setStatus(o.id, "served")}
+                          disabled={busy === o.id}
+                          className="btn btn-sm"
+                        >
+                          {busy === o.id
+                            ? "..."
+                            : o.channel === "domicilio"
+                              ? "Consegnato"
+                              : "Ritirato"}
+                        </button>
+                      )}
+                      {/* Segnato per sbaglio: si torna indietro, ma al cliente
+                          non si manda nessuna smentita — quella la si fa a
+                          voce, chiamandolo. */}
+                      {o.readyAt && !o.outAt && (
+                        <button
+                          onClick={() => segna(o.id, false)}
+                          disabled={busy === o.id}
+                          className="text-xs underline"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          non era pronto
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </article>
@@ -725,21 +865,31 @@ function DaAccettare({
   o,
   accetta,
   rifiuta,
+  prezzo,
   aggiorna,
   avvisa,
 }: {
   o: Order;
   accetta: (
     id: string,
-    correzioni?: { consegnaCents?: number; spostaMinuti?: number }
+    correzioni?: { consegnaCents?: number; quando?: string }
   ) => Promise<
     { ok: true; comande: number; mail: EsitoMail } | { ok: false; error: string }
   >;
   rifiuta: (id: string) => Promise<{ ok: boolean; mail: EsitoMail }>;
+  prezzo: (
+    itemId: string,
+    priceCents: number
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   aggiorna: () => Promise<void>;
   avvisa: (m: string | null) => void;
 }) {
-  const [sposta, setSposta] = useState(0);
+  // L'ora concordata, che si tiene qui perche' e' quella su cui si decide:
+  // i tasti la spostano di un quarto d'ora per volta e il campo la riscrive da
+  // zero, ma il risultato e' sempre un orario, non uno scarto da sommare.
+  const [quando, setQuando] = useState<Date | null>(() =>
+    o.dueAt ? new Date(o.dueAt) : null
+  );
   const [euro, setEuro] = useState(
     (o.deliveryFeeCents / 100).toFixed(2).replace(".", ",")
   );
@@ -752,7 +902,31 @@ function DaAccettare({
   const canale = getChannel(o.channel);
   const domicilio = o.channel === "domicilio";
   const perLe = o.dueAt ? new Date(o.dueAt) : null;
-  const spostata = perLe ? new Date(perLe.getTime() + sposta * 60000) : null;
+  const cambiata = !!(perLe && quando && quando.getTime() !== perLe.getTime());
+
+  function sposta(minuti: number) {
+    if (!quando) return;
+    setQuando(new Date(quando.getTime() + minuti * 60000));
+  }
+
+  // L'ora battuta a mano. Il campo dice solo le ore e i minuti, il giorno lo
+  // mette questo: quello dell'ordine, tranne quando l'orario scritto cade a
+  // piu' di mezza giornata di distanza — allora e' il giorno accanto. E' il
+  // caso del locale che chiude all'una: da mezzanotte in poi «00:30» vuol dire
+  // fra mezz'ora, non ventitre ore fa.
+  function scriviOra(v: string) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+    if (!m || !quando) return;
+    const d = new Date(quando);
+    d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    const mezzaGiornata = 12 * 60 * 60 * 1000;
+    if (d.getTime() - quando.getTime() > mezzaGiornata) {
+      d.setDate(d.getDate() - 1);
+    } else if (quando.getTime() - d.getTime() > mezzaGiornata) {
+      d.setDate(d.getDate() + 1);
+    }
+    setQuando(d);
+  }
 
   const consegnaCents = Math.round(
     (parseFloat(euro.replace(",", ".").replace(/[^0-9.]/g, "")) || 0) * 100
@@ -769,7 +943,7 @@ function DaAccettare({
     try {
       const esito = await accetta(o.id, {
         ...(domicilio ? { consegnaCents } : {}),
-        ...(sposta ? { spostaMinuti: sposta } : {}),
+        ...(cambiata ? { quando: quando!.toISOString() } : {}),
       });
       if (!esito.ok) {
         setErrore(esito.error);
@@ -855,24 +1029,40 @@ function DaAccettare({
         </p>
       )}
 
-      <ul className="mt-2.5 space-y-1 px-4 text-sm">
+      {/* Le righe si possono correggere prima di dire di si': il prezzo di
+          ognuna, come al tavolo. Chi ordina dal sito prende quello che c'e' a
+          listino, ma al telefono si aggiungeva l'ingrediente in piu' o si
+          faceva lo sconto a voce — e accettare un ordine col prezzo sbagliato
+          vuol dire scoprirlo in cassa, davanti al cliente. */}
+      <ul className="mt-2.5 space-y-2 px-4 text-sm">
         {o.items.map((it, i) => (
-          <li key={it.id ?? i} className="flex items-start gap-2">
-            <span className="tnum font-semibold">{it.quantity}×</span>
-            <span className="flex-1">
-              {it.name}
-              {it.note && (
-                <span
-                  className="block text-[13px] italic"
-                  style={{ color: "var(--muted)" }}
-                >
-                  «{it.note}»
-                </span>
-              )}
-            </span>
-            <span className="tnum" style={{ color: "var(--muted)" }}>
-              {fmt(it.priceCents * it.quantity)}
-            </span>
+          <li key={it.id ?? i}>
+            <div className="flex items-start gap-2">
+              <span className="tnum font-semibold">{it.quantity}×</span>
+              <span className="flex-1">
+                {it.name}
+                {it.note && (
+                  <span
+                    className="block text-[13px] italic"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    «{it.note}»
+                  </span>
+                )}
+              </span>
+              <span className="tnum" style={{ color: "var(--muted)" }}>
+                {fmt(it.priceCents * it.quantity)}
+              </span>
+            </div>
+            <PrezzoRichiesta
+              item={it}
+              onSave={async (cents) => {
+                const esito = await prezzo(it.id, cents);
+                if (!esito.ok) return esito.error;
+                await aggiorna();
+                return null;
+              }}
+            />
           </li>
         ))}
       </ul>
@@ -885,28 +1075,49 @@ function DaAccettare({
           <span style={{ color: "var(--muted)" }}>
             {domicilio ? "Consegna per" : "Ritiro"}
           </span>
-          <span className="tnum font-semibold">
-            {spostata ? quandoRitira(spostata) : "senza orario"}
-          </span>
-          {perLe && (
+          {perLe && quando ? (
             <>
+              {/* L'ora si batte, non si compone a colpi di +15: quando il
+                  cliente al telefono dice «va bene per le nove e un quarto»,
+                  quello e' l'orario, e contare i quarti d'ora per arrivarci e'
+                  lavoro in piu' con qualcuno in attesa. I due tasti restano
+                  perche' nove volte su dieci basta un colpo. */}
+              <input
+                type="time"
+                value={orologio(quando)}
+                onChange={(e) => scriviOra(e.target.value)}
+                aria-label={domicilio ? "Ora della consegna" : "Ora del ritiro"}
+                className="input tnum h-9 w-[6.5rem] text-sm font-semibold"
+                disabled={busy}
+              />
+              {/* Il giorno lo dice solo quando non e' oggi: nel campo ci
+                  stanno le ore e i minuti, e un ordine per domani sera senza
+                  quella riga si accetta credendo che sia per stasera. */}
+              {!oggiStesso(quando) && (
+                <span style={{ color: "var(--muted)" }}>
+                  {quando.toLocaleDateString("it-IT", {
+                    weekday: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              )}
               <button
-                onClick={() => setSposta(sposta + 15)}
+                onClick={() => sposta(15)}
                 className="btn btn-sm"
                 disabled={busy}
               >
                 +15 min
               </button>
               <button
-                onClick={() => setSposta(sposta + 30)}
+                onClick={() => sposta(30)}
                 className="btn btn-sm"
                 disabled={busy}
               >
                 +30 min
               </button>
-              {sposta !== 0 && (
+              {cambiata && (
                 <button
-                  onClick={() => setSposta(0)}
+                  onClick={() => setQuando(perLe)}
                   className="text-xs underline"
                   style={{ color: "var(--muted)" }}
                 >
@@ -914,6 +1125,8 @@ function DaAccettare({
                 </button>
               )}
             </>
+          ) : (
+            <span className="tnum font-semibold">senza orario</span>
           )}
         </div>
 
@@ -967,7 +1180,11 @@ function DaAccettare({
               disabled={busy}
               className="btn btn-primary btn-sm"
             >
-              {busy ? "..." : "Accetta"}
+              {busy
+                ? "..."
+                : cambiata
+                  ? `Accetta per ${quandoRitira(quando!)}`
+                  : "Accetta"}
             </button>
           </div>
         </div>

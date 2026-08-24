@@ -46,6 +46,9 @@ export async function GET() {
     // Se e' arrivato dal sito. Un ordine battuto in cassa non si "accetta":
     // l'ha gia' accettato chi l'ha battuto.
     dalWeb: !!o.webToken,
+    // I due momenti che il cliente sta guardando sulla sua pagina.
+    readyAt: o.readyAt?.toISOString() ?? null,
+    outAt: o.outAt?.toISOString() ?? null,
     dueAt: o.dueAt?.toISOString() ?? null,
     status: o.status,
     createdAt: o.createdAt.toISOString(),

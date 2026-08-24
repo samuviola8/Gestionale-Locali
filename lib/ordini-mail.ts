@@ -19,10 +19,18 @@ import type { OrdineWeb } from "@/lib/ordini-web";
 // per le 20:30": senza, quel tempo lo si passa a guardare il telefono.
 
 export type AvvisoOrdine =
+  // Le prime quattro dicono se l'ordine c'e' o non c'e': le governa
+  // l'interruttore delle conferme.
   | "ricevuto"
   | "confermato"
   | "spostato"
-  | "rifiutato";
+  | "rifiutato"
+  // Le altre tre raccontano dove e' arrivato mentre il cliente aspetta, e sono
+  // quelle che si possono spegnere da sole: c'e' chi le vuole e chi le
+  // considera tre mail di troppo.
+  | "in-preparazione"
+  | "pronto"
+  | "in-consegna";
 
 export type OrdineAvviso = {
   nome: string;
@@ -116,6 +124,36 @@ function contenuto(
           ? `Se quell'ora non ti va, chiamaci allo ${m.telefono}.`
           : "Se quell'ora non ti va, rispondi a questa mail.",
       };
+    case "in-preparazione":
+      return {
+        oggetto: `In preparazione — per ${q}`,
+        titolo: "Ci siamo messi sotto",
+        apertura: ritiro
+          ? `Ci siamo messi sotto: il tuo ordine e' in preparazione. L'ora resta ${q}.`
+          : `Ci siamo messi sotto: il tuo ordine e' in preparazione. Te lo portiamo ${q}.`,
+        azione: "Segui l'ordine",
+        chiusura:
+          "Da quella pagina vedi quando e' pronto, senza dover chiamare.",
+      };
+    case "pronto":
+      return {
+        oggetto: ritiro ? "Il tuo ordine e' pronto" : "Pronto, sta per partire",
+        titolo: ritiro ? "E' pronto" : "Pronto, sta per partire",
+        apertura: ritiro
+          ? "Il tuo ordine e' pronto: quando vuoi passa a ritirarlo."
+          : "Il tuo ordine e' pronto e sta per uscire dal locale.",
+        azione: "Vedi l'ordine",
+        chiusura: pagamento(o),
+      };
+    case "in-consegna":
+      return {
+        oggetto: "In consegna: e' uscito dal locale",
+        titolo: "E' in strada",
+        apertura:
+          "Il tuo ordine e' appena uscito dal locale: sta arrivando da te.",
+        azione: "Vedi l'ordine",
+        chiusura: pagamento(o),
+      };
     case "rifiutato":
       return {
         oggetto: "Ordine non accettato",
@@ -177,6 +215,24 @@ export function riepilogoOrdine(o: OrdineAvviso): string {
     .join(" · ");
 }
 
+// La mail bell'e' scritta, senza spedirla: cosi' si puo' leggere in una prova
+// senza una casella vera. Il corpo si costruisce una volta sola per tutt'e due
+// le versioni — testo e html sono lo stesso foglio, non due testi da tenere
+// allineati a mano.
+export function mailOrdine(
+  tipo: AvvisoOrdine,
+  o: OrdineAvviso,
+  m: MittenteLocale
+): { oggetto: string; testo: string; html: string } {
+  const t = contenuto(tipo, o, m);
+  const c = corpo(t, o, m, linkOrdine(m.slug, o.token));
+  return {
+    oggetto: `${t.oggetto} — ${m.nome}`,
+    testo: mailTesto(c),
+    html: mailHtml(c),
+  };
+}
+
 // Manda l'avviso. Torna `false` senza rumore quando non c'e' niente da mandare
 // — locale senza posta configurata, o cliente che non ha lasciato un indirizzo
 // — perche' quello non e' un errore: l'ordine vale lo stesso.
@@ -187,15 +243,14 @@ export async function avvisaClienteOrdine(
 ): Promise<boolean> {
   if (!m?.smtp || !o.email) return false;
 
-  const link = linkOrdine(m.slug, o.token);
-  const t = contenuto(tipo, o, m);
+  const mail = mailOrdine(tipo, o, m);
 
   try {
     await inviaMailLocale(m.smtp, {
       a: o.email,
-      oggetto: `${t.oggetto} — ${m.nome}`,
-      testo: mailTesto(corpo(t, o, m, link)),
-      html: mailHtml(corpo(t, o, m, link)),
+      oggetto: mail.oggetto,
+      testo: mail.testo,
+      html: mail.html,
     });
     return true;
   } catch (e) {

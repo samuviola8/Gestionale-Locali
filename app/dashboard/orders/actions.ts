@@ -1,13 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orders, orderItems, tenants } from "@/lib/db/schema";
 import { getSessionUser, repartoAttivo } from "@/lib/auth";
 import { creaComande } from "@/lib/stampa";
-import { fineGiornata, ordinePerToken } from "@/lib/ordini-web";
-import { avvisaClienteOrdine, avvisoDa } from "@/lib/ordini-mail";
+import {
+  canaleDi,
+  fineGiornata,
+  leggiImpostazioniWeb,
+  ordinePerToken,
+  oraSpostata,
+  segnaPartitoOrdine,
+  segnaProntoOrdine,
+} from "@/lib/ordini-web";
+import {
+  avvisaClienteOrdine,
+  avvisoDa,
+  type AvvisoOrdine,
+} from "@/lib/ordini-mail";
 import { mittenteLocale } from "@/lib/mittente";
 
 const VALID = ["new", "preparing", "served"];
@@ -24,7 +36,11 @@ export async function advanceOrderStatus(
   if (!VALID.includes(status)) return;
 
   const suo = await db
-    .select({ id: orders.id, status: orders.status })
+    .select({
+      id: orders.id,
+      status: orders.status,
+      webToken: orders.webToken,
+    })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)))
     .limit(1);
@@ -61,6 +77,14 @@ export async function advanceOrderStatus(
     .update(orders)
     .set({ status: complessivo })
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
+
+  // Chi ha ordinato dal sito sta guardando la sua pagina: quando qualcuno si
+  // mette sotto glielo si dice. Solo al passaggio vero — "preparing" che era
+  // gia' "preparing" non e' una notizia — e solo se il locale ha acceso gli
+  // aggiornamenti.
+  if (complessivo === "preparing" && suo[0].status !== "preparing") {
+    await avvisa(session.tenantId, suo[0].webToken, "in-preparazione");
+  }
 }
 
 // Il prodotto e' finito, o l'ordine era sbagliato: la voce esce dal conto.
@@ -159,10 +183,16 @@ export async function setItemPrice(
 // il cliente sta aspettando una conferma che non arrivera'.
 export type EsitoMail = "inviata" | "non-richiesta" | "fallita";
 
+// Le conferme dicono se l'ordine c'e' o non c'e'; gli aggiornamenti
+// raccontano dove e' arrivato mentre il cliente aspetta. Sono due interruttori
+// diversi in impostazioni perche' sono due decisioni diverse: c'e' chi la
+// conferma la vuole e i tre passi dopo li considera spam.
+const CONFERME = ["confermato", "spostato", "rifiutato"];
+
 async function avvisa(
   tenantId: string,
   token: string | null,
-  tipo: "confermato" | "spostato" | "rifiutato",
+  tipo: AvvisoOrdine,
   precedente?: Date | null
 ): Promise<EsitoMail> {
   if (!token) return "non-richiesta";
@@ -170,6 +200,22 @@ async function avvisa(
   const salvato = await ordinePerToken(tenantId, token);
   const avviso = salvato ? avvisoDa(salvato, precedente) : null;
   if (!avviso?.email) return "non-richiesta";
+
+  const [riga] = await db
+    .select({
+      webOrderChannels: tenants.webOrderChannels,
+      webOrderPiecesPerSlot: tenants.webOrderPiecesPerSlot,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  if (!riga) return "non-richiesta";
+
+  const regole = canaleDi(leggiImpostazioniWeb(riga), avviso.canale);
+  const acceso = CONFERME.includes(tipo)
+    ? regole.mailConferme
+    : regole.mailAggiornamenti;
+  if (!acceso) return "non-richiesta";
 
   // La riga in fondo alla mail e' quella del canale dell'ordine.
   const mittente = await mittenteLocale(
@@ -183,6 +229,44 @@ async function avvisa(
     : "fallita";
 }
 
+// I due momenti che il cliente aspetta di vedere: "e' pronto" e "e' uscito".
+// Non sono stati della cucina — quelli contano le righe — ma eventi con un'ora,
+// segnati da chi sta in cassa quando succedono davvero.
+export async function segnaPronto(
+  orderId: string,
+  pronto: boolean
+): Promise<{ ok: boolean; mail: EsitoMail }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, mail: "non-richiesta" };
+
+  const esito = await segnaProntoOrdine(session.tenantId, orderId, pronto);
+  if (!esito.ok) return { ok: false, mail: "non-richiesta" };
+
+  // Tornando indietro non si manda niente: al cliente e' gia' arrivato "e'
+  // pronto", e una smentita via mail lo farebbe solo preoccupare. Chi si e'
+  // sbagliato lo chiama.
+  const mail = pronto
+    ? await avvisa(session.tenantId, esito.token, "pronto")
+    : ("non-richiesta" as const);
+
+  return { ok: true, mail };
+}
+
+export async function segnaPartito(
+  orderId: string
+): Promise<{ ok: boolean; mail: EsitoMail }> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, mail: "non-richiesta" };
+
+  const esito = await segnaPartitoOrdine(session.tenantId, orderId);
+  if (!esito.ok) return { ok: false, mail: "non-richiesta" };
+
+  return {
+    ok: true,
+    mail: await avvisa(session.tenantId, esito.token, "in-consegna"),
+  };
+}
+
 export type EsitoAccettazione =
   | { ok: true; comande: number; mail: EsitoMail }
   | { ok: false; error: string };
@@ -193,9 +277,12 @@ export async function accettaOrdine(
     // Il costo di consegna corretto a mano, dove la distanza in linea d'aria
     // ha mentito. In centesimi.
     consegnaCents?: number;
-    // Quanto spostare l'ora concordata: "per le 20:30 non ce la faccio, per le
-    // 21 si'". Il cliente lo vede sulla sua pagina.
-    spostaMinuti?: number;
+    // L'ora concordata, se e' cambiata: "per le 20:30 non ce la faccio, per le
+    // 21 si'". Arriva come istante intero e non come minuti da sommare —
+    // "+30" e un orario battuto a mano sono la stessa cosa, e a decidere
+    // quando l'ordine e' pronto e' un orario, non uno scarto. Il cliente lo
+    // vede sulla sua pagina, e se le mail sono accese gli arriva anche li'.
+    quando?: string;
   }
 ): Promise<EsitoAccettazione> {
   const session = await getSessionUser();
@@ -218,7 +305,15 @@ export async function accettaOrdine(
   }
 
   const consegna = correzioni?.consegnaCents;
-  const sposta = correzioni?.spostaMinuti;
+
+  // L'ora nuova, se ne e' arrivata una. Le regole stanno in `oraSpostata`, che
+  // le dice una volta sola e si puo' provare senza una sessione addosso.
+  let nuova: Date | null = null;
+  if (correzioni?.quando) {
+    const esito = oraSpostata(o.dueAt, correzioni.quando);
+    if (!esito.ok) return { ok: false, error: esito.errore };
+    nuova = esito.quando;
+  }
 
   await db
     .update(orders)
@@ -230,9 +325,7 @@ export async function accettaOrdine(
       consegna! <= 5000
         ? { deliveryFeeCents: consegna! }
         : {}),
-      ...(o.dueAt && Number.isInteger(sposta) && Math.abs(sposta!) <= 240
-        ? { dueAt: new Date(o.dueAt.getTime() + sposta! * 60000) }
-        : {}),
+      ...(nuova ? { dueAt: nuova } : {}),
     })
     .where(and(eq(orders.id, orderId), eq(orders.tenantId, session.tenantId)));
 
@@ -244,12 +337,11 @@ export async function accettaOrdine(
   // La conferma al cliente. Se l'ora e' stata spostata glielo si dice, invece
   // di mandargli una conferma con dentro un orario diverso da quello che
   // ricordava: quella e' la mail che fa arrivare la gente all'ora sbagliata.
-  const spostato = !!(o.dueAt && sposta);
   const mail = await avvisa(
     session.tenantId,
     o.webToken,
-    spostato ? "spostato" : "confermato",
-    spostato ? o.dueAt : null
+    nuova ? "spostato" : "confermato",
+    nuova ? o.dueAt : null
   );
 
   revalidatePath("/dashboard/bill");

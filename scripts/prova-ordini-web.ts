@@ -12,7 +12,7 @@ config({ path: ".env.local" });
 async function main() {
   const { and, count, eq } = await import("drizzle-orm");
   const { db } = await import("@/lib/db");
-  const { menuCategories, menuProducts, orders, printJobs, tenants } =
+  const { menuCategories, menuProducts, orderItems, orders, printJobs, tenants } =
     await import("@/lib/db/schema");
   const { createLocaleWithSetup } = await import("@/lib/onboarding");
   const { getTenantModules, setTenantModules } = await import("@/lib/modules");
@@ -24,19 +24,24 @@ async function main() {
     leggiImpostazioniWeb,
     normalizzaCanale,
     ordinePerToken,
+    oraSpostata,
     ordiniWebAttivi,
+    SPOSTAMENTO_MASSIMO_MS,
+    segnaPartitoOrdine,
+    segnaProntoOrdine,
     pezziImpegnati,
     fineGiornata,
     sospesoAdesso,
     canaleDi,
+    faseDi,
+    fasiDelCanale,
     salvaOrdineWeb,
     valutaCarrello,
   } = await import("@/lib/ordini-web");
   const { loadOpenTables } = await import("@/lib/bill-query");
   const { creaComande } = await import("@/lib/stampa");
-  const { avvisaClienteOrdine, avvisoDa, riepilogoOrdine } = await import(
-    "@/lib/ordini-mail"
-  );
+  const { avvisaClienteOrdine, avvisoDa, mailOrdine, riepilogoOrdine } =
+    await import("@/lib/ordini-mail");
   const { mailHtml } = await import("@/lib/mittente");
   const { giornoSettimana, leggiCalendario } = await import("@/lib/orari");
   const { problemiDelLocale } = await import("@/lib/pronto");
@@ -617,6 +622,290 @@ async function main() {
       piede: "p",
     }).includes("&lt;script&gt;"),
     "e quello che scrive il cliente ci finisce dentro scappato"
+  );
+
+  // Ogni avviso si legge per intero: e' il posto in cui un pezzo di testo
+  // rimasto a meta' — un buco dove doveva esserci l'ora — finisce davanti al
+  // cliente senza che nessuno se ne accorga.
+  const mittenteProva = {
+    nome: "Trattoria di Prova",
+    slug,
+    telefono: "0541 000000",
+    indirizzo: "Via Roma 1",
+    nota: null,
+    smtp: null,
+  };
+  const TIPI = [
+    "ricevuto",
+    "confermato",
+    "spostato",
+    "rifiutato",
+    "in-preparazione",
+    "pronto",
+    "in-consegna",
+  ] as const;
+  for (const tipo of TIPI) {
+    const m = mailOrdine(tipo, avviso!, mittenteProva);
+    const testo = m.testo;
+    ok(
+      m.oggetto.length > 0 &&
+        !/\s[.,:]/.test(m.oggetto) &&
+        !/ {2}/.test(m.oggetto),
+      `l'oggetto di «${tipo}» e' scritto tutto: ${m.oggetto}`
+    );
+    ok(
+      !/\s[.,:]/.test(testo.replace(/\n/g, "")) && !/ {2}/.test(testo),
+      `e il testo di «${tipo}» non ha buchi dove doveva esserci qualcosa`
+    );
+    ok(
+      testo.includes(`/ordina/${avviso!.token}`),
+      `«${tipo}» porta al cliente il link per seguire l'ordine`
+    );
+  }
+  ok(
+    mailOrdine("pronto", { ...avviso!, canale: "asporto" }, mittenteProva)
+      .testo.includes("ritirarlo") &&
+      mailOrdine("pronto", { ...avviso!, canale: "domicilio" }, mittenteProva)
+        .testo.includes("uscire"),
+    "e «pronto» dice due cose diverse a chi passa e a chi aspetta a casa"
+  );
+
+  console.log("\n18. A che punto e' l'ordine");
+  const fase = (stato: string, readyAt: Date | null, outAt: Date | null) =>
+    faseDi({ stato, canale: "domicilio", readyAt, outAt });
+  ok(fase("pending", null, null) === "ricevuto", "da accettare = ricevuto");
+  ok(fase("new", null, null) === "confermato", "accettato = confermato");
+  ok(
+    fase("preparing", null, null) === "preparazione",
+    "e quando qualcuno si mette sotto, in preparazione"
+  );
+  ok(
+    fase("preparing", new Date(), null) === "pronto",
+    "segnato pronto vince sullo stato della cucina"
+  );
+  ok(
+    fase("preparing", new Date(), new Date()) === "in-consegna",
+    "e uscito dal locale vince su pronto"
+  );
+  ok(fase("served", new Date(), new Date()) === "chiuso", "consegnato = chiuso");
+  ok(
+    fase("rejected", new Date(), null) === "rifiutato",
+    "un rifiutato resta rifiutato, per quanto qualcuno l'avesse segnato pronto"
+  );
+  ok(
+    fasiDelCanale("asporto").length === fasiDelCanale("domicilio").length - 1,
+    "chi passa a ritirare non ha la tappa «in consegna»: non gli arrivera' mai"
+  );
+
+  console.log("\n19. Le tre mail si accendono una per una");
+  const nuove = normalizzaCanale({ attivo: true }, "asporto");
+  ok(
+    nuove.mailConferme && nuove.mailAggiornamenti && nuove.mailLocale,
+    "un canale nuovo le manda tutte e tre"
+  );
+  ok(
+    normalizzaCanale({ attivo: true, mailAggiornamenti: false }, "asporto")
+      .mailConferme === true,
+    "spegnere gli aggiornamenti non spegne la conferma"
+  );
+  ok(
+    normalizzaCanale({ attivo: true, mailConferme: false }, "asporto")
+      .mailConferme === false,
+    "e spegnere la conferma si sente"
+  );
+  // Le due meta' che il locale aveva viste arrivare insieme: al cliente e a
+  // se stesso. Sono due destinatari, e si decidono uno alla volta.
+  ok(
+    normalizzaCanale({ attivo: true, mailConferme: false }, "asporto")
+      .mailLocale === true,
+    "chi non scrive al cliente puo' continuare a farsi avvisare"
+  );
+  ok(
+    normalizzaCanale({ attivo: true, mailLocale: false }, "asporto")
+      .mailConferme === true,
+    "e chi non vuole l'avviso sulla propria casella scrive al cliente lo stesso"
+  );
+  ok(
+    normalizzaCanale(
+      { attivo: true, mailConferme: false, mailAggiornamenti: false, mailLocale: false },
+      "domicilio"
+    ).mailLocale === false,
+    "spente tutte e tre, non parte niente da nessuna parte"
+  );
+
+  console.log("\n20. Pronto e partito, segnati davvero");
+  // Non simulati con un UPDATE scritto qui: questi sono gli stessi due
+  // comandi che partono dai tasti in coda, ed e' l'unico modo di accorgersi
+  // che uno dei due non arriva nemmeno al database.
+  const suoToken = primo.ok ? primo.token : "";
+  const [suaRiga] = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.tenantId, tenantId), eq(orders.webToken, suoToken)));
+
+  const segnato = await segnaProntoOrdine(tenantId, suaRiga.id, true);
+  ok(segnato.ok && segnato.token === suoToken, "«e' pronto» scrive l'ora");
+  const seguito = await ordinePerToken(tenantId, suoToken);
+  ok(seguito?.fase === "pronto", "e la pagina del cliente dice pronto");
+  ok(!!seguito?.readyAt, "con l'ora di quando lo e' diventato");
+
+  await segnaProntoOrdine(tenantId, suaRiga.id, false);
+  ok(
+    (await ordinePerToken(tenantId, suoToken))?.readyAt === null,
+    "«non era pronto» la cancella"
+  );
+
+  // L'asporto non parte con nessuno: il tasto non c'e', e se la chiamata
+  // arriva lo stesso non deve scrivere niente.
+  ok(
+    (await segnaPartitoOrdine(tenantId, suaRiga.id)).ok === false,
+    "un asporto non esce dal locale con nessuno"
+  );
+
+  const aCasa = await salvaOrdineWeb({
+    tenantId,
+    canale: "domicilio",
+    items: [riga],
+    modules,
+    cfg: { ...accesi, pezziPerFascia: 20 },
+    quando,
+    pezzi: 3,
+    nome: "Prova a casa",
+    telefono: "3330000001",
+    indirizzo: "Via Verdi 3",
+    consegnaCents: 250,
+    km: 2,
+    automatica: true,
+  });
+  ok(aCasa.ok, "e si scrive anche un domicilio");
+  const [rigaACasa] = aCasa.ok
+    ? await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(eq(orders.tenantId, tenantId), eq(orders.webToken, aCasa.token))
+        )
+    : [];
+
+  const uscito = await segnaPartitoOrdine(tenantId, rigaACasa.id);
+  ok(uscito.ok, "«e' partito» scrive l'ora dell'uscita");
+  const inStrada = aCasa.ok
+    ? await ordinePerToken(tenantId, aCasa.token)
+    : null;
+  ok(inStrada?.fase === "in-consegna", "e il cliente lo vede in strada");
+  ok(
+    !!inStrada?.readyAt && !!inStrada?.outAt,
+    "premuto senza passare da «e' pronto», l'ora del pronto ripiega su adesso"
+  );
+  ok(
+    !!inStrada?.readyAt &&
+      !!inStrada?.outAt &&
+      inStrada.readyAt.getTime() <= inStrada.outAt.getTime(),
+    "e non esce prima di essere pronto"
+  );
+
+  ok(
+    (await ordinePerToken(tenantId, "0000000000")) === null,
+    "e un token inventato non apre l'ordine di nessun altro"
+  );
+
+  console.log("\n21. L'ora concordata si cambia a mano");
+  const concordata = istante(domani, "20:30");
+  const alle = (ora: string) => istante(domani, ora).toISOString();
+  const spostata = oraSpostata(concordata, alle("21:15"));
+  ok(
+    spostata.ok && spostata.quando?.getHours() === 21,
+    "un orario battuto a mano prende il posto di quello concordato"
+  );
+  ok(
+    (() => {
+      const uguale = oraSpostata(concordata, concordata.toISOString());
+      return uguale.ok && uguale.quando === null;
+    })(),
+    "rimettere la stessa ora non e' uno spostamento: niente mail al cliente"
+  );
+  ok(
+    (() => {
+      const prima = oraSpostata(concordata, alle("20:00"));
+      return prima.ok && prima.quando?.getHours() === 20;
+    })(),
+    "e si puo' anche anticipare, non solo rimandare"
+  );
+  ok(
+    oraSpostata(concordata, "le nove").ok === false,
+    "un'ora che non si legge si rifiuta, invece di accettare all'ora vecchia"
+  );
+  ok(
+    oraSpostata(null, alle("21:15")).ok === false,
+    "e un ordine senza ora concordata non ha niente da spostare"
+  );
+  const troppoIn = new Date(
+    concordata.getTime() + SPOSTAMENTO_MASSIMO_MS + 60000
+  );
+  ok(
+    oraSpostata(concordata, troppoIn.toISOString()).ok === false,
+    "oltre le dodici ore non e' piu' lo stesso ordine: si chiama il cliente"
+  );
+  ok(
+    oraSpostata(
+      concordata,
+      new Date(concordata.getTime() + SPOSTAMENTO_MASSIMO_MS).toISOString()
+    ).ok === true,
+    "il confine sta dentro, non fuori"
+  );
+
+  console.log("\n22. Note sulle righe e prezzi corretti prima di accettare");
+  const conNota = await salvaOrdineWeb({
+    tenantId,
+    canale: "asporto",
+    items: [
+      { ...riga, quantity: 1, note: "senza cipolla" },
+      { ...riga, quantity: 1, note: "" },
+    ],
+    modules,
+    cfg: { ...accesi, pezziPerFascia: 20 },
+    quando,
+    pezzi: 2,
+    nome: "Prova nota",
+    telefono: "3330000002",
+    consegnaCents: 0,
+    km: null,
+    automatica: false,
+  });
+  ok(conNota.ok, "un ordine con una nota su una riga si scrive");
+  const letto = conNota.ok ? await ordinePerToken(tenantId, conNota.token) : null;
+  ok(
+    !!letto?.voci.some((v) => v.note === "senza cipolla"),
+    "la nota del cliente arriva fino alla sua pagina e alla comanda"
+  );
+  ok(
+    !!letto?.voci.some((v) => !v.note),
+    "e la riga senza nota resta senza: sono due righe diverse"
+  );
+  ok(
+    letto?.totaleCents === 1600,
+    "scrivere una nota non cambia il prezzo: due pizze restano due pizze"
+  );
+
+  // Il prezzo corretto da chi accetta — l'ingrediente in piu' concordato al
+  // telefono, lo sconto fatto a voce — deve arrivare al cliente: e' il numero
+  // che si ritrova sulla sua pagina e nella mail di conferma.
+  const [vocePrima] = conNota.ok
+    ? await db
+        .select({ id: orderItems.id })
+        .from(orderItems)
+        .innerJoin(orders, eq(orders.id, orderItems.orderId))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.webToken, conNota.token)))
+        .limit(1)
+    : [];
+  await db
+    .update(orderItems)
+    .set({ priceCents: 1000, priceAdjusted: true })
+    .where(eq(orderItems.id, vocePrima.id));
+  const corretto = conNota.ok ? await ordinePerToken(tenantId, conNota.token) : null;
+  ok(
+    corretto?.totaleCents === 1800,
+    "cambiato il prezzo di una riga, il totale del cliente segue"
   );
 
   await db.delete(tenants).where(eq(tenants.id, tenantId));

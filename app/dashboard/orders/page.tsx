@@ -12,6 +12,8 @@ import {
   accettaOrdine,
   advanceOrderStatus,
   rifiutaOrdine,
+  segnaPronto,
+  segnaPartito,
   setItemPrice,
   sospendiOrdiniWeb,
   voidOrderItem,
@@ -73,6 +75,8 @@ export default async function OrdersPage() {
         voidItem={voidOrderItem}
         accetta={accettaOrdine}
         rifiuta={rifiutaOrdine}
+        pronto={segnaPronto}
+        partito={segnaPartito}
         sospendi={sospendiOrdiniWeb}
         canali={canali}
         vendeDalWeb={!!cfgWeb && canaliWeb(cfgWeb, modules).length > 0}

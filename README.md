@@ -358,11 +358,24 @@ consegna ha in piu' il giro di chi consegna, e un locale puo' fare solo ritiri.
 L'ordine dal sito nasce `pending`: non entra in coda, non e' un conto aperto e
 **la comanda non parte**. Arriva anche mentre la cucina e' in ginocchio, o con
 la mozzarella finita, o da un indirizzo che si rivela dall'altra parte del
-fiume. In `Coda ordini` sta in cima, sotto «Da accettare», dove si puo'
-spostare l'ora concordata (`+15`, `+30`) e correggere il costo di consegna
-prima di dire di si'. Accettandolo entra in coda come tutti gli altri e **in
-quel momento** parte la comanda. Chi preferisce puo' accendere l'accettazione
-automatica; resta manuale per gli ordini di cui non si e' trovato l'indirizzo.
+fiume. In `Coda ordini` sta in cima, sotto «Da accettare», dove prima di dire
+di si' si puo' cambiare l'ora concordata — il campo si batte a mano, `+15` e
+`+30` sono la scorciatoia — correggere il costo di consegna e **cambiare il
+prezzo di ogni riga**, come al tavolo: l'ingrediente in piu' concordato al
+telefono, lo sconto fatto a voce. Un prezzo si corregge adesso o si scopre in
+cassa, davanti al cliente, e il totale corretto e' quello che gli arriva nella
+mail di conferma e sulla sua pagina. Accettandolo entra in coda come tutti gli
+altri e **in quel momento** parte la comanda. Chi preferisce puo' accendere
+l'accettazione automatica; resta manuale per gli ordini di cui non si e'
+trovato l'indirizzo.
+
+Sul filo va sempre l'orario intero, mai i minuti da sommare: `+15` e un'ora
+battuta nel campo sono la stessa cosa, e il server rilegge la regola in
+`oraSpostata()`. Oltre le dodici ore dall'ora concordata non e' piu' lo stesso
+ordine e l'accettazione si ferma, invece di confermare di nascosto all'ora
+vecchia — quella e' la conferma che fa arrivare la gente quando il locale non
+l'aspetta. Se l'ora torna quella di prima non parte nessuna mail: un cambio che
+non c'e' stato non si annuncia.
 
 «Sospendi per stasera» chiude il rubinetto quando la cucina e' al completo: la
 pagina resta in piedi e dice ai clienti di chiamare. Si riapre da sola a
@@ -393,10 +406,15 @@ lucchetto per locale.
 
 | Dove | Cosa |
 | --- | --- |
-| `/ordina` | canale, menu del canale **con la ricerca**, carrello, indirizzo **con i suggerimenti** e costo di consegna calcolato, giorno e ora fra quelle che la cucina regge davvero |
-| `/ordina/<token>` | il suo ordine: ricevuto, confermato, spostato o rifiutato, con il totale e come si paga |
+| `/ordina` | canale, menu del canale **con la ricerca**, carrello con **una nota per riga**, indirizzo **con i suggerimenti** e costo di consegna calcolato, giorno e ora fra quelle che la cucina regge davvero |
+| `/ordina/<token>` | a che punto e' il suo ordine, **aggiornato da solo**, con il totale e come si paga |
 
 Sul sito del locale il tasto «Ordina» sta accanto a «Prenota un tavolo», e compare con le stesse regole della pagina.
+
+Chi ha appena ordinato ritrova il suo ordine in cima a `/ordina`: il token sta
+in un cookie di sette giorni, cosi' chi ricarica la pagina, la chiude o torna il
+giorno dopo non deve cercare la mail. La striscia sparisce da sola quando
+l'ordine e' chiuso o rifiutato.
 
 Si paga **al ritiro o alla consegna**: online non si incassa niente (il modulo
 `payments` e' un'altra cosa e non e' ancora rilasciato). Il menu non e' tutto
@@ -404,20 +422,85 @@ ordinabile: ogni prodotto ha le spunte «Si porta via» e «Si consegna», acces
 di default, e quello che resta in sala — il cocktail versato, la birra alla
 spina — si segna li'.
 
+Ogni riga del carrello ha la sua nota — «senza cipolla», «ben cotta», «poco
+ghiaccio» — su qualunque prodotto, come al tavolo: e' la cosa che al telefono
+si dice sempre, e senza un posto dove scriverla il cliente o telefona lo stesso
+o rinuncia. La nota fa parte della chiave della riga, quindi la stessa pizza
+con due note diverse sono **due righe** — in cucina sono due cose diverse — e
+scrivendo su una la nota che ha gia' un'altra le due tornano una sola. I
+prodotti segnati «su richiesta» sono un altro caso: li' la nota e' il prodotto,
+e senza non si aggiungono al carrello.
+
+### A che punto e' l'ordine
+
+Il cliente che aspetta guarda l'orologio, e se non ha niente da guardare
+chiama. Il link col token e' quello che gli sostituisce la telefonata: da li'
+vede le tappe, e la pagina si ripassa da sola ogni venti secondi finche'
+l'ordine e' in ballo (`/api/ordine/<token>`). Chi mette il telefono in tasca e
+lo riprende dopo dieci minuti trova la pagina gia' aggiornata: si rilegge anche
+quando la scheda torna in primo piano, invece di far vedere lo stato di prima.
+
+Non sono solo le tappe: dal sondaggio arriva anche **l'ora concordata**, ed e'
+la cosa che il locale cambia piu' spesso mentre il cliente sta guardando —
+accettando un ordine per le 20:30 lo rimanda alle 21. Per questo la riga
+dell'ora sta dentro il componente che si aggiorna e non nella pagina servita
+dal server: un orario che si sistema solo ricaricando e' un orario che il
+cliente non vede, e lui a quell'ora esce di casa. Quando cambia mentre la
+pagina e' aperta compare anche un avviso — la riga in grigio piccolo che si
+riscrive da sola, da sola non si nota.
+
+| Tappa | Da dove esce |
+| --- | --- |
+| ricevuto | l'ordine e' `pending`, il locale non l'ha ancora guardato |
+| confermato | accettato, a mano o da solo |
+| in preparazione | la cucina si e' messa sotto (`preparing`) |
+| pronto | qualcuno ha premuto «È pronto» (`orders.ready_at`) |
+| in consegna | ed «È partito» (`orders.out_at`) — solo per il domicilio |
+| ritirato / consegnato | l'ordine e' chiuso (`served`) |
+
+Pronto e partito sono **due orari, non due stati**: la cucina ha gia' la sua
+macchina degli stati per le righe della comanda, e infilarci dentro due caselle
+nuove avrebbe voluto dire toccarla per una cosa che riguarda il cliente e non
+lei. `faseDi()` li legge in ordine — rifiutato batte chiuso, chiuso batte
+partito, partito batte pronto — e per l'asporto la tappa «in consegna» non
+compare nemmeno: non gli arrivera' mai.
+
+I tasti stanno in fondo alla scheda in `Coda ordini`, in fila: **Inizia a
+preparare → È pronto → È partito → Ritirato**. Sono gli stessi che fanno
+partire le mail al cliente, e «non era pronto» torna indietro quando qualcuno
+ha premuto per sbaglio.
+
 ### Le mail
 
 Partono dalla casella del locale, la stessa delle prenotazioni
-(`Impostazioni → Posta`), e sono scritte sullo stesso foglio (`lib/mittente.ts`).
-Al cliente: «ricevuto» quando l'ordine arriva e il locale accetta a mano,
-«confermato» quando lo accetta (o subito, con l'accettazione automatica),
-«spostato» se gli e' cambiata l'ora, «rifiutato» se non si e' potuto prendere.
-Al locale, sulla sua stessa casella, un avviso a ogni ordine nuovo: la coda sta
-su un altro schermo, e un ordine arrivato mentre nessuno guarda e' un ordine
-che scade.
+(`Impostazioni → Posta`), e sono **tre**, con tre interruttori per canale: due
+parlano al cliente, una parla a chi lavora.
 
-Dove la posta e' configurata l'email del cliente diventa obbligatoria — e' il
-modo in cui viene a sapere che l'ordine e' stato accettato — e dove non c'e' non
-si chiede nemmeno: chiederla per non mandare niente e' prometterla.
+| Interruttore | A chi | Cosa manda |
+| --- | --- | --- |
+| `Mail al cliente` | al cliente | «ricevuto» quando l'ordine arriva e il locale accetta a mano, «confermato» quando lo accetta (o subito, con l'accettazione automatica), «spostato» se gli e' cambiata l'ora, «rifiutato» se non si e' potuto prendere |
+| `Anche gli aggiornamenti` | al cliente | «in preparazione», «pronto», «e' partito»: le tappe che il locale segna dalla coda |
+| `Avviso a voi` | al locale | una riga sulla casella del locale a ogni ordine nuovo, con nome, telefono e cosa hanno preso |
+
+Divisi perche' sono mestieri diversi. La conferma la vuole chiunque prenda
+ordini dal sito; gli aggiornamenti sono tre mail in mezz'ora, che per una
+consegna dicono al cliente di scendere e per un ritiro a mezzogiorno possono
+essere di troppo. E l'avviso al locale non c'entra niente con i primi due: e'
+per chi il pannello non ce l'ha sempre davanti — la coda sta su un altro
+schermo, e un ordine arrivato mentre nessuno guarda e' un ordine che scade —
+mentre chi la coda la tiene aperta tutta la sera se lo toglie e non si riempie
+la casella. Prima erano una cosa sola, e configurare la posta voleva dire
+accettarle tutte.
+
+Chi le spegne tutte lascia comunque al cliente il link: la pagina si aggiorna
+da sola lo stesso. Ogni mail al cliente porta quel link, ed e' anche la sua
+copia di riserva quando il cookie scade o cambia telefono.
+
+L'email del cliente si chiede dove serve davvero: posta configurata **e**
+`Mail al cliente` acceso su quel canale. Spento, non si chiede nemmeno —
+chiederla per non mandare niente e' prometterla, ed e' una promessa per canale:
+un locale puo' scrivere a chi ritira e non a chi si fa consegnare. Se la mail
+non parte l'ordine vale lo stesso, come per le prenotazioni.
 
 ## Fatturazione
 

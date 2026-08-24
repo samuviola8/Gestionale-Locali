@@ -80,7 +80,7 @@ export default function ModuloOrdine({
   telefono,
   raggioKm,
   gratisSopraCents,
-  emailObbligatoria,
+  postaAttiva,
 }: {
   canali: Channel[];
   menu: MenuCategory[];
@@ -92,16 +92,26 @@ export default function ModuloOrdine({
   telefono: string | null;
   raggioKm: number;
   gratisSopraCents: number;
-  // Il locale ha la posta configurata: allora l'email si chiede sul serio, ed
-  // è lì che arriva la conferma quando l'ordine viene accettato.
-  emailObbligatoria: boolean;
+  // Il locale ha la posta configurata. Da sola non basta a chiedere l'email:
+  // conta anche che il canale scelto le mail al cliente le mandi davvero —
+  // chiedere un indirizzo per non scriverci mai e' prometterle una conferma
+  // che non arrivera'.
+  postaAttiva: boolean;
 }) {
   const router = useRouter();
 
   const [canale, setCanale] = useState<Channel>(canali[0]);
   // Le regole del canale scelto adesso.
   const regola = regole[canale];
+  // L'email si chiede dove serve: posta configurata e conferme accese su
+  // questo canale. Un locale puo' mandarle sull'asporto e non sul domicilio.
+  const emailObbligatoria = postaAttiva && regola.mailConferme;
   const [carrello, setCarrello] = useState<Riga[]>([]);
+  // La riga del carrello di cui si sta scrivendo la nota, e cosa c'e' scritto
+  // finora. Una sola per volta: sono due campi aperti su uno schermo da
+  // telefono, e due note aperte insieme sono due cose da chiudere.
+  const [notaSu, setNotaSu] = useState<string | null>(null);
+  const [testoNota, setTestoNota] = useState("");
   const [categoria, setCategoria] = useState(menu[0]?.id ?? "");
   const [cerca, setCerca] = useState("");
 
@@ -297,6 +307,53 @@ export default function ModuloOrdine({
     );
   }
 
+  // Una in piu' della stessa riga, dal carrello. Il «+» del menu aggiunge il
+  // prodotto nudo: da qui invece si aggiunge *questa* riga, con la sua nota —
+  // chi ne vuole due «senza cipolla» non deve risalire al menu e riscrivere la
+  // nota per non ritrovarsi due righe.
+  function aumenta(chiave: string) {
+    setErrore(null);
+    setCarrello((prev) =>
+      prev.map((r) =>
+        r.chiave === chiave
+          ? { ...r, quantita: Math.min(r.quantita + 1, 99) }
+          : r
+      )
+    );
+  }
+
+  // La nota di una riga del carrello: «senza cipolla», «ben cotta», «poco
+  // ghiaccio». Vale su qualunque prodotto, come al tavolo — non solo su quelli
+  // che nascono su richiesta — perche' e' la cosa che al telefono si dice
+  // sempre, e senza posto dove scriverla il cliente o telefona lo stesso o
+  // rinuncia.
+  //
+  // La nota fa parte della chiave: la stessa pizza con due note diverse sono
+  // due righe, perche' in cucina sono due cose diverse. Scrivendone una uguale
+  // a quella di una riga gia' presente, le due tornano una sola.
+  function scriviNota(chiave: string, testo: string) {
+    setCarrello((prev) => {
+      const riga = prev.find((r) => r.chiave === chiave);
+      if (!riga) return prev;
+      const nota = testo.trim().slice(0, 200);
+      if (nota === riga.note) return prev;
+
+      const nuova = chiaveDi(riga.productId, riga.variantId, nota);
+      if (prev.some((r) => r.chiave === nuova)) {
+        return prev
+          .filter((r) => r.chiave !== chiave)
+          .map((r) =>
+            r.chiave === nuova
+              ? { ...r, quantita: Math.min(r.quantita + riga.quantita, 99) }
+              : r
+          );
+      }
+      return prev.map((r) =>
+        r.chiave === chiave ? { ...r, chiave: nuova, note: nota } : r
+      );
+    });
+  }
+
   const quantitaDi = (productId: string, variantId: string | null) =>
     carrello
       .filter((r) => r.productId === productId && r.variantId === variantId)
@@ -460,27 +517,88 @@ export default function ModuloOrdine({
         {carrello.length > 0 && (
           <div className="or-carrello mt-4">
             {carrello.map((r) => (
-              <div key={r.chiave} className="or-voce">
-                <span className="flex-1">
-                  <span className="font-medium">{r.nome}</span>
-                  {r.note && (
-                    <span className="block text-xs" style={{ color: "var(--muted)" }}>
-                      {r.note}
-                    </span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => togli(r.chiave)}
-                  aria-label={`Togli uno ${r.nome}`}
-                  className="or-passo"
-                >
-                  −
-                </button>
-                <span className="or-quantita">{r.quantita}</span>
-                <span className="tnum w-16 text-right">
-                  {formatPrice(r.prezzoCents * r.quantita)}
-                </span>
+              <div key={r.chiave} className="or-riga-carrello">
+                <div className="or-voce">
+                  <span className="flex-1">
+                    <span className="font-medium">{r.nome}</span>
+                    {r.note && (
+                      <span
+                        className="block text-xs"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        {r.note}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => togli(r.chiave)}
+                    aria-label={`Togli uno ${r.nome}`}
+                    className="or-passo"
+                  >
+                    −
+                  </button>
+                  <span className="or-quantita">{r.quantita}</span>
+                  <button
+                    type="button"
+                    onClick={() => aumenta(r.chiave)}
+                    aria-label={`Aggiungi un altro ${r.nome}`}
+                    className="or-passo"
+                    data-forte="si"
+                  >
+                    +
+                  </button>
+                  <span className="tnum w-16 text-right">
+                    {formatPrice(r.prezzoCents * r.quantita)}
+                  </span>
+                </div>
+
+                {/* «Senza cipolla», «ben cotta»: la riga dove si scrive quello
+                    che al telefono si direbbe a voce. Sta chiusa finche' non
+                    serve — in un carrello da otto righe, otto campi aperti
+                    sono un muro — e si apre su quella che si sta guardando. */}
+                {notaSu === r.chiave ? (
+                  <div className="or-nota-riga">
+                    <input
+                      value={testoNota}
+                      onChange={(e) => setTestoNota(e.target.value)}
+                      maxLength={200}
+                      autoFocus
+                      placeholder="Senza cipolla, ben cotta…"
+                      aria-label={`Nota per ${r.nome}`}
+                      className="input"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          scriviNota(r.chiave, testoNota);
+                          setNotaSu(null);
+                        }
+                        if (e.key === "Escape") setNotaSu(null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        scriviNota(r.chiave, testoNota);
+                        setNotaSu(null);
+                      }}
+                      className="btn btn-sm"
+                    >
+                      Fatto
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotaSu(r.chiave);
+                      setTestoNota(r.note);
+                    }}
+                    className="or-nota-tasto"
+                  >
+                    {r.note ? "modifica la nota" : "+ nota"}
+                  </button>
+                )}
               </div>
             ))}
 
