@@ -19,9 +19,18 @@ export type ConfigSmtp = {
   da: string;
 };
 
-// Indirizzo mostrato in pagina quando il modulo non puo' funzionare: e' l'unico
-// valore scritto nel codice, il resto vive nell'ambiente.
-const INDIRIZZO_DI_RISERVA = "samu.viola8@gmail.com";
+// L'indirizzo pubblico di Comanda: quello che si legge in vetrina e dove
+// arrivano le richieste. E' scritto nel codice perche' e' una cosa del
+// prodotto, come il nome del dominio, e non della macchina su cui gira: la
+// casella da cui si spedisce puo' cambiare senza che cambi l'indirizzo a cui i
+// locali scrivono. `MAIL_TO` lo scavalca quando serve dirottarlo altrove.
+const INDIRIZZO_PUBBLICO = "info@samuviola.dev";
+
+// La casella dove le richieste arrivano davvero, che e' un'altra cosa:
+// l'indirizzo pubblico e' quello del prodotto, questa e' la posta in arrivo di
+// chi le legge e risponde. Tenerle separate vuol dire poter cambiare l'una
+// senza toccare l'altra. `MAIL_TO` la sposta senza passare dal codice.
+const CASELLA_RICHIESTE = "samu.viola8@gmail.com";
 
 export function configSmtp(): ConfigSmtp | null {
   const user = process.env.SMTP_USER?.trim();
@@ -36,18 +45,19 @@ export function configSmtp(): ConfigSmtp | null {
     port: Number(process.env.SMTP_PORT) || 465,
     user,
     pass,
-    a: process.env.MAIL_TO?.trim() || user,
+    a: process.env.MAIL_TO?.trim() || CASELLA_RICHIESTE,
     da: process.env.MAIL_FROM?.trim() || user,
   };
 }
 
-/** Indirizzo da mostrare come alternativa al modulo. */
+/**
+ * L'indirizzo da mostrare in vetrina. Non ricade su `SMTP_USER` ne' segue
+ * `MAIL_TO`: e' il recapito del prodotto, come il dominio, e non deve cambiare
+ * perche' e' cambiata la casella tecnica da cui si spedisce o quella in cui si
+ * leggono le richieste.
+ */
 export function indirizzoContatto(): string {
-  return (
-    process.env.MAIL_TO?.trim() ||
-    process.env.SMTP_USER?.trim() ||
-    INDIRIZZO_DI_RISERVA
-  );
+  return INDIRIZZO_PUBBLICO;
 }
 
 // Il trasporto tiene aperta una connessione riusabile: si crea una volta sola
@@ -169,6 +179,8 @@ export async function inviaMail(m: {
   oggetto: string;
   testo: string;
   rispondiA?: string;
+  /** Come si chiama chi ha scritto, per la finestra della risposta. */
+  rispondiANome?: string;
   /** Nome da mostrare al posto del nostro nella lista dei messaggi. */
   nomeVisibile?: string;
 }): Promise<void> {
@@ -177,14 +189,22 @@ export async function inviaMail(m: {
 
   await creaTrasporto(cfg).sendMail({
     // L'indirizzo del mittente resta il nostro — Gmail lo riscrive comunque
-    // sull'account autenticato — ma il nome mostrato e' quello di chi scrive:
-    // nella posta in arrivo si legge chi ha compilato il modulo invece di
-    // vedere una fila di messaggi partiti da noi stessi.
+    // sull'account autenticato, e una mail spedita da noi con l'indirizzo di un
+    // altro non passa i controlli di chi la riceve: finirebbe nello spam o non
+    // partirebbe affatto. Il nome mostrato e' pero' quello di chi scrive, e la
+    // risposta va a lui: nella posta in arrivo si legge chi ha compilato il
+    // modulo, e «Rispondi» apre una mail per il locale, non per noi stessi.
     from: { name: unaRigaSola(m.nomeVisibile || "Comanda"), address: cfg.da },
     to: cfg.a,
     subject: unaRigaSola(m.oggetto),
     text: m.testo,
-    // Rispondere alla mail scrive direttamente a chi ha compilato il modulo.
-    replyTo: m.rispondiA ? unaRigaSola(m.rispondiA) : undefined,
+    // Rispondere alla mail scrive direttamente a chi ha compilato il modulo,
+    // col suo nome nella finestra della risposta invece del solo indirizzo.
+    replyTo: m.rispondiA
+      ? {
+          name: unaRigaSola(m.rispondiANome || ""),
+          address: unaRigaSola(m.rispondiA),
+        }
+      : undefined,
   });
 }

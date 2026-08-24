@@ -107,6 +107,7 @@ export async function POST(req: Request) {
       oggetto: `Comanda — ${nome}${locale ? ` (${locale})` : ""} — ${email}`,
       nomeVisibile: `${nome} via Comanda`,
       rispondiA: email,
+      rispondiANome: nome,
       // I recapiti in cima, poi il messaggio staccato: i blocchi si uniscono
       // con la riga vuota in mezzo, altrimenti arriva tutto attaccato.
       testo: [
