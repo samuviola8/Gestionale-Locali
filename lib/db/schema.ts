@@ -30,6 +30,14 @@ export const tenants = pgTable("tenants", {
   // morosita | prova_scaduta
   blockedReason: text("blocked_reason"),
 
+  // Locale demo creato dal sistema di acquisizione: e' il menu di un
+  // prospect messo dentro il gestionale per fargli vedere il suo locale
+  // funzionante. Non e' un cliente, non va contato come tale, e alla
+  // scadenza si cancella da solo. La colonna esiste soprattutto per questo:
+  // la cancellazione automatica deve poter toccare SOLO questi.
+  demo: boolean("demo").notNull().default(false),
+  demoExpiresAt: timestamp("demo_expires_at", { withTimezone: true }),
+
   // Anagrafica del locale: serve in fase di onboarding e sui documenti.
   legalName: text("legal_name"),
   address: text("address"),
@@ -65,7 +73,9 @@ export const tenants = pgTable("tenants", {
   brandAccent: text("brand_accent"),
   logoUrl: text("logo_url"),
   // "dark" | "light" | "system": default proposto al cliente al primo accesso.
-  defaultTheme: text("default_theme").notNull().default("system"),
+  // Scuro, perche' il menu si guarda dal telefono di chi e' seduto in sala e
+  // spesso a luce bassa. Chi lo vuole chiaro lo cambia dalla sua scheda.
+  defaultTheme: text("default_theme").notNull().default("dark"),
 
   // Skin del menu: decide SOLO come si presenta la pagina cliente (layout,
   // animazioni, accenti). La logica di ordine e carrello e' la stessa per tutti.

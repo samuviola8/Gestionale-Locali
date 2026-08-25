@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comanda — primo contatto</title>
+</head>
+<!--
+  MODELLO DI PRIMO CONTATTO — Comanda
+  ===================================
+  Segnaposto da sostituire per ogni locale:
+
+    {{NOME_REFERENTE}}   nome di chi legge, se lo sai. Se non lo sai, togli
+                         il nome e lascia "Buongiorno,"
+    {{NOME_LOCALE}}      come si chiama il locale (2 occorrenze)
+    {{RIGA_PERSONALE}}   la riga che dice perche' scrivi PROPRIO a loro.
+                         E' la riga che decide se leggono il resto: non
+                         mandare mai la mail senza averla riscritta.
+    {{GIORNI_PROVA}}     giorni di prova offerti (di norma 30)
+    {{TELEFONO}}         il tuo numero, in chiaro
+    {{TELEFONO_TEL}}     il tuo numero per il link, es. +393331234567
+    {{WHATSAPP}}         il tuo numero per wa.me, es. 393331234567
+
+  Il blocco DEMO piu' in basso e' facoltativo: tienilo solo se hai gia'
+  importato il menu di quel locale, altrimenti cancellalo per intero
+  (e' delimitato da due commenti).
+-->
+<body style="margin:0; padding:0; background-color:#F4F2EF;">
+
+<!-- Anteprima nella lista dei messaggi, invisibile nel corpo della mail -->
+<div style="display:none; font-size:1px; color:#F4F2EF; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
+  I clienti ordinano dal tavolo e prenotano dal vostro sito, senza toccare la cassa che avete gi&agrave;.
+</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#F4F2EF;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px; max-width:600px; background-color:#FFFFFF; border-radius:10px;">
+
+        <!-- Filo dorato in testa -->
+        <tr>
+          <td style="background-color:#B08D57; height:4px; line-height:4px; font-size:4px; border-radius:10px 10px 0 0;">&nbsp;</td>
+        </tr>
+
+        <!-- Apertura -->
+        <tr>
+          <td style="padding:36px 36px 0 36px; font-family:Georgia, 'Times New Roman', serif; font-size:17px; line-height:1.65; color:#1F1D1B;">
+
+            <p style="margin:0 0 20px 0;">Buongiorno {{NOME_REFERENTE}},</p>
+
+            <p style="margin:0 0 24px 0;">
+              {{RIGA_PERSONALE}} &mdash; le scrivo perch&eacute; credo che una cosa che ho sviluppato possa
+              tornarvi utile.
+            </p>
+
+            <p style="margin:0 0 8px 0;">
+              Nel pieno del servizio il tempo si perde quasi sempre negli stessi due momenti:
+              <strong>il cliente che alza la mano e aspetta per ordinare</strong>, e
+              <strong>il conto</strong>, quando in otto chiedono di dividere e alla cassa si ricomincia da capo.
+            </p>
+
+            <p style="margin:0 0 4px 0;">
+              Comanda interviene esattamente l&igrave;.
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- I tre punti -->
+        <tr>
+          <td style="padding:24px 36px 8px 36px;">
+
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+
+              <tr>
+                <td width="34" valign="top" style="padding:0 0 20px 0; font-family:Georgia, serif; font-size:20px; line-height:1.2; color:#B08D57;">&#9679;</td>
+                <td valign="top" style="padding:0 0 20px 0; font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#3A352F;">
+                  <strong style="color:#1F1D1B; font-size:16px;">Ordinano dal tavolo, col loro telefono</strong><br>
+                  Inquadrano il QR, scelgono dal menu con foto e allergeni, e la comanda parte da sola
+                  verso il bar e la cucina. Nessuno resta ad aspettare di essere notato.
+                </td>
+              </tr>
+
+              <tr>
+                <td width="34" valign="top" style="padding:0 0 20px 0; font-family:Georgia, serif; font-size:20px; line-height:1.2; color:#B08D57;">&#9679;</td>
+                <td valign="top" style="padding:0 0 20px 0; font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#3A352F;">
+                  <strong style="color:#1F1D1B; font-size:16px;">Il conto arriva gi&agrave; diviso</strong><br>
+                  Ognuno paga la sua parte, con coperto e voci condivise calcolate. Alla cassa non si
+                  discute pi&ugrave; su chi ha preso cosa, e il tavolo si libera prima.
+                </td>
+              </tr>
+
+              <tr>
+                <td width="34" valign="top" style="padding:0 0 20px 0; font-family:Georgia, serif; font-size:20px; line-height:1.2; color:#B08D57;">&#9679;</td>
+                <td valign="top" style="padding:0 0 20px 0; font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#3A352F;">
+                  <strong style="color:#1F1D1B; font-size:16px;">Le prenotazioni arrivano dal vostro sito</strong><br>
+                  Il telefono smette di suonare nel mezzo del servizio. Il cliente vede solo gli orari in cui
+                  un tavolo c&rsquo;&egrave; davvero, e il sistema gli assegna la combinazione che spreca meno posti.
+                </td>
+              </tr>
+
+              <tr>
+                <td width="34" valign="top" style="padding:0 0 4px 0; font-family:Georgia, serif; font-size:20px; line-height:1.2; color:#B08D57;">&#9679;</td>
+                <td valign="top" style="padding:0 0 4px 0; font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#3A352F;">
+                  <strong style="color:#1F1D1B; font-size:16px;">E chi a tavola non ci viene</strong><br>
+                  Ordina lo stesso, per ritiro o consegna, con gli orari calcolati su quanto la cucina regge
+                  davvero in quel momento.
+                </td>
+              </tr>
+
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- Le due obiezioni -->
+        <tr>
+          <td style="padding:20px 36px 0 36px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#FAF8F5; border-radius:8px;">
+              <tr>
+                <td style="padding:22px 24px; font-family:Helvetica, Arial, sans-serif; font-size:14px; line-height:1.7; color:#5A544C;">
+                  <strong style="color:#1F1D1B;">Le due cose che mi chiedono tutti, subito:</strong><br><br>
+                  <strong style="color:#1F1D1B;">La vostra cassa non si tocca.</strong>
+                  Comanda ci sta sopra: registratore telematico, scontrini e fatture restano esattamente
+                  come sono oggi.<br><br>
+                  <strong style="color:#1F1D1B;">Nessuna app da scaricare</strong>, n&eacute; per voi n&eacute; per i vostri clienti.
+                  Basta il browser del telefono, e niente da installare in sala.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- DEMO — FACOLTATIVO: togliere tutto questo blocco se il menu non e' ancora importato -->
+        <tr>
+          <td style="padding:20px 36px 0 36px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#1F1D1B; border-radius:8px;">
+              <tr>
+                <td style="padding:24px; font-family:Helvetica, Arial, sans-serif; font-size:15px; line-height:1.65; color:#E8E3DA;">
+                  <strong style="color:#FFFFFF; font-size:16px;">L&rsquo;ho gi&agrave; preparato con il vostro menu.</strong><br>
+                  Invece di raccontarglielo, pu&ograve; guardarselo: questo &egrave; un tavolo di {{NOME_LOCALE}} su Comanda,
+                  come lo vedrebbe un vostro cliente seduto.
+                  <br><br>
+                  <a href="{{LINK_DEMO}}" style="color:#D9B67C; font-weight:bold; text-decoration:underline;">Apri il menu di {{NOME_LOCALE}} &rarr;</a>
+                  <br><br>
+                  <span style="font-size:13px; color:#A39B90;">
+                    L&rsquo;ho preparato solo per voi e non &egrave; raggiungibile se non da questo link.
+                    Se preferisce che lo tolga, mi scriva e lo cancello in giornata.
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- FINE BLOCCO DEMO -->
+
+        <!-- La prova -->
+        <tr>
+          <td style="padding:28px 36px 0 36px; font-family:Georgia, 'Times New Roman', serif; font-size:17px; line-height:1.65; color:#1F1D1B;">
+            <p style="margin:0;">
+              Se le sembra una cosa sensata, ve lo attivo per
+              <strong>{{GIORNI_PROVA}} giorni nel vostro locale, coi vostri clienti</strong>: senza carta di credito
+              e senza vincoli. Se al termine non vi ha cambiato la serata, si spegne e non se ne parla pi&ugrave;.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Pulsante -->
+        <tr>
+          <td align="center" style="padding:28px 36px 8px 36px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#1F1D1B" style="border-radius:8px;">
+                  <a href="https://comanda.samuviola.dev"
+                     style="display:inline-block; padding:16px 34px; font-family:Helvetica, Arial, sans-serif; font-size:16px; font-weight:bold; line-height:1; color:#FFFFFF; text-decoration:none; border-radius:8px;">
+                    Guardi com&rsquo;&egrave; fatto
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Alternative di contatto -->
+        <tr>
+          <td align="center" style="padding:6px 36px 0 36px; font-family:Helvetica, Arial, sans-serif; font-size:13px; line-height:1.7; color:#8A8378;">
+            Oppure mi scriva su
+            <a href="https://wa.me/{{WHATSAPP}}?text=Buongiorno%2C%20vorrei%20maggiori%20informazioni%20su%20Comanda" style="color:#B08D57; text-decoration:underline;">WhatsApp</a>,
+            o mi chiami al <a href="tel:{{TELEFONO_TEL}}" style="color:#8A8378; text-decoration:none;">{{TELEFONO}}</a>.
+          </td>
+        </tr>
+
+        <!-- Chiusura -->
+        <tr>
+          <td style="padding:26px 36px 36px 36px; font-family:Georgia, 'Times New Roman', serif; font-size:17px; line-height:1.65; color:#1F1D1B;">
+
+            <p style="margin:0 0 20px 0;">
+              Se preferisce sentirci, mi indichi pure giorno e ora e la chiamo io &mdash; oppure passo volentieri
+              da {{NOME_LOCALE}} a mostrarglielo dal vivo. Sono dieci minuti.
+            </p>
+
+            <p style="margin:0 0 4px 0;">La ringrazio per l&rsquo;attenzione e le auguro buon lavoro.</p>
+            <p style="margin:0 0 4px 0;">Un saluto,</p>
+            <p style="margin:0; font-size:16px;">
+              <strong>Samuele Viola</strong><br>
+              <span style="font-family:Helvetica, Arial, sans-serif; font-size:14px; color:#5A544C;">
+                <a href="tel:{{TELEFONO_TEL}}" style="color:#5A544C; text-decoration:none;">{{TELEFONO}}</a> &middot;
+                <a href="mailto:dev@nolex.it" style="color:#5A544C; text-decoration:none;">dev@nolex.it</a><br>
+                <a href="https://comanda.samuviola.dev" style="color:#B08D57; text-decoration:none;">comanda.samuviola.dev</a>
+              </span>
+            </p>
+
+          </td>
+        </tr>
+
+      </table>
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

@@ -198,6 +198,24 @@ solo. Lo smistamento lo fa `scripts\raggruppa-uploads.ts`, che il deploy lancia
 a ogni aggiornamento: sposta i file rimasti nel mucchio e riscrive gli
 indirizzi nel database, e quando non c'è più niente da spostare non fa nulla.
 
+**I locali dimostrativi si rifanno sul server, non si spostano.** Ristorante,
+lounge e gelateria (`osteria-del-melograno`, `aurea-lounge`,
+`gelateria-nivara`) vivono in `scripts\seed-demo.ts`: il menu è scritto lì e le
+foto viaggiano in git dentro `public\uploads\<slug>\`. Dopo un aggiornamento
+che porta lo script, sul server basta:
+
+```powershell
+$env:DEMO_OWNER_PASSWORD="<password del titolare demo>"
+npx tsx scripts/seed-demo.ts
+```
+
+Lo script riaggancia da solo le foto già presenti sul disco, quindi in
+produzione i tre menu escono completi senza rigenerare niente. Non serve
+nessun dump: un dump si porterebbe dietro gli id, che in un altro database non
+vogliono dire niente. **Rilanciarlo cancella e rifà i tre locali** — comprese
+le eventuali comande di prova fatte lì sopra — e tocca solo tenant col flag
+`demo` alzato: un locale vero non è raggiungibile da quello script.
+
 **Le immagini sono in git**, cartelle comprese. Vuol dire che il `git reset
 --hard` dell'aggiornamento rimette quelle versionate: le foto caricate in
 produzione dopo l'ultimo commit non sono tracciate e restano, ma se una foto

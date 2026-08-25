@@ -15,6 +15,12 @@ export type LocaleProfile = {
   moduleOverrides: Partial<Record<ModuleKey, boolean>>;
 };
 
+// Il tema di partenza e' scuro per tutti, e non e' una preferenza estetica: il
+// menu si guarda dal telefono di chi e' seduto, spesso a luce bassa, e uno
+// schermo bianco addosso a mezzanotte e' la prima cosa che fa chiudere la
+// pagina. Chi lo vuole chiaro lo cambia dalla scheda del locale — resta una
+// riga sola da correggere, mentre "system" lo lascia deciso dal telefono del
+// cliente, che e' l'unico che non sa com'e' fatta la sala.
 export const PROFILES: LocaleProfile[] = [
   {
     key: "lounge",
@@ -51,9 +57,9 @@ export const PROFILES: LocaleProfile[] = [
   {
     key: "ristorante",
     label: "Ristorante / trattoria",
-    description: "Servizio al tavolo con portate. Tema chiaro, menu per portata.",
+    description: "Servizio al tavolo con portate. Tema scuro, menu per portata.",
     themePreset: "bistrot",
-    defaultTheme: "light",
+    defaultTheme: "dark",
     menuCategories: [
       "Antipasti",
       "Primi",
@@ -72,7 +78,7 @@ export const PROFILES: LocaleProfile[] = [
     label: "Parti da zero",
     description: "Nessuna categoria precompilata, tema base. Da usare per casi atipici.",
     themePreset: "default",
-    defaultTheme: "system",
+    defaultTheme: "dark",
     menuCategories: [],
     moduleOverrides: {},
   },

@@ -8,6 +8,13 @@ config({ path: ".env.local" });
 //   npx tsx scripts/genera-foto-menu.ts --dry-run
 //   npx tsx scripts/genera-foto-menu.ts --tenant "Noya Lounge Bar"
 //   npx tsx scripts/genera-foto-menu.ts --categoria "Food,Spritz" --limit 3
+//   npx tsx scripts/genera-foto-menu.ts --tenant "Gelateria Nivara" --stile gelateria
+//
+// --stile dice dove si fotografa: `lounge` (il default) e' il bancone scuro
+// del bar, `osteria` il tavolo apparecchiato a luce di giorno, `gelateria` il
+// marmo bianco del banco. Si passa per locale, perche' e' il locale a dire
+// quale dei tre e': lo stesso caffe' e' un after dinner o una colazione a
+// seconda di dove lo si serve.
 //
 // Prerequisiti (una volta sola):
 //   npm install -g @google/gemini-cli
@@ -26,21 +33,31 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 
+type Stile = "lounge" | "osteria" | "gelateria";
+
 type Args = {
   tenant?: string;
   categorie: string[];
   limit?: number;
   rifai: boolean;
   dryRun: boolean;
+  stile: Stile;
 };
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { categorie: [], rifai: false, dryRun: false };
+  const a: Args = { categorie: [], rifai: false, dryRun: false, stile: "lounge" };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     if (v === "--rifai") a.rifai = true;
     else if (v === "--dry-run") a.dryRun = true;
-    else if (v === "--tenant") a.tenant = argv[++i];
+    else if (v === "--stile") {
+      const s = argv[++i];
+      if (s === "lounge" || s === "osteria" || s === "gelateria") a.stile = s;
+      else {
+        console.error(`Stile sconosciuto: ${s}. Sono lounge, osteria, gelateria.`);
+        process.exit(1);
+      }
+    } else if (v === "--tenant") a.tenant = argv[++i];
     // Ripetibile e con la virgola: le categorie da illustrare sono quasi
     // sempre un gruppo ("le bevute vere"), non una sola.
     else if (v === "--categoria") a.categorie.push(...argv[++i].split(",").map((s) => s.trim()));
@@ -192,13 +209,93 @@ const DIGESTIVI: { test: RegExp; scena: string }[] = [
   { test: /amarena|ratafia|ciliegi/i, scena: "un bicchierino con liquore all'amarena rosso scuro e amarene accanto" },
 ];
 
-const STILE =
-  "fotografia professionale da menu, luce calda radente, sfondo scuro sfocato di lounge bar, " +
+// Il piatto e la bevuta non si fotografano nello stesso posto: un piatto di
+// pasta sul bancone scuro di un lounge sembra servito alle due di notte, e una
+// granita al pistacchio pure. Cambia lo sfondo, la luce e il piano d'appoggio;
+// la parte che vieta scritte, marchi e mani vale sempre.
+const PULIZIA =
   "profondita' di campo ridotta, composizione quadrata centrata, aspetto appetitoso e pulito, " +
   "senza testo, senza scritte, senza etichette, senza loghi, senza marchi, senza persone, senza mani";
 
-function costruisciPrompt(prodotto: string, categoria: string, descrizione: string | null): string {
+const STILI: Record<Stile, { stile: string; fallback: string }> = {
+  lounge: {
+    stile: `fotografia professionale da menu, luce calda radente, sfondo scuro sfocato di lounge bar, ${PULIZIA}`,
+    fallback: "il prodotto servito e pronto da bere, su bancone di legno scuro del bar",
+  },
+  osteria: {
+    stile:
+      "fotografia professionale da menu, luce naturale morbida di giorno, tavolo di legno chiaro " +
+      `con tovaglietta di lino, sfondo di sala di trattoria sfocato, ${PULIZIA}`,
+    fallback: "il piatto impiattato su ceramica chiara, visto di tre quarti dall'alto",
+  },
+  gelateria: {
+    stile:
+      "fotografia professionale da menu, luce chiara e fresca, piano di marmo bianco, " +
+      `banco di gelateria sfocato sullo sfondo, ${PULIZIA}`,
+    fallback: "il prodotto servito e pronto da mangiare, sul piano di marmo del banco",
+  },
+};
+
+// Fuori dal bar la differenza sta nel piatto, non nella categoria: dentro
+// "Primi" ci sono un risotto nero e una pasta col pesto verde, e la scena di
+// categoria li farebbe uguali. Qui si guarda il nome e si descrive cosa
+// arriva davvero in tavola — il nome del prodotto poi non entra nel prompt,
+// perche' la scena lo dice gia' meglio di lui ("Coppa Etna" al modello
+// suggerisce un vulcano, non un gelato al pistacchio).
+//
+// L'ordine conta: la prima riga che corrisponde vince, quindi il caso
+// particolare sta sempre sopra a quello generale.
+const PIATTI: { test: RegExp; scena: string }[] = [
+  // Osteria
+  { test: /caponata/i, scena: "una porzione di caponata di melanzane a cubetti, lucida di agrodolce, in una ciotola di ceramica" },
+  { test: /tartare/i, scena: "una tartare di tonno rosso a cubetti composta a cilindro, con spicchi di agrume ed erbe fresche" },
+  { test: /polpo/i, scena: "un tentacolo di polpo grigliato appoggiato su una crema chiara di ceci, con un filo d'olio" },
+  { test: /norma|spaghetti/i, scena: "un nido di spaghetti al pomodoro con melanzane fritte e ricotta salata grattugiata, foglia di basilico in cima" },
+  { test: /busiate|pesto/i, scena: "un piatto di pasta corta attorcigliata condita con pesto verde di pistacchio e granella" },
+  { test: /risotto/i, scena: "un risotto al nero di seppia steso nel piatto, lucido, con anelli di seppia e prezzemolo" },
+  { test: /sarde/i, scena: "un piatto di bucatini con sarde, finocchietto selvatico e mollica tostata" },
+  { test: /spada|ghiotta/i, scena: "una fetta di pesce spada in umido con pomodorini, olive nere e capperi" },
+  { test: /filetto|manzo/i, scena: "un filetto di manzo al sangue tagliato a meta', con salsa scura ridotta e pure' di patate" },
+  { test: /frittura|paranza/i, scena: "una frittura mista di pesciolini, gamberi e anelli di calamaro dorati, con uno spicchio di limone" },
+  { test: /patate al forno/i, scena: "spicchi di patate al forno dorati e croccanti con rametti di rosmarino" },
+  { test: /insalata di arance/i, scena: "fette d'arancia disposte a raggiera con finocchi affettati sottili e olive nere" },
+  { test: /semifreddo/i, scena: "una fetta di semifreddo verde al pistacchio con granella e una riga di cioccolato fondente" },
+  // Il cannolo gelato della gelateria non e' il cannolo di ricotta: sta
+  // sopra apposta, altrimenti se lo prende la riga qui sotto.
+  { test: /cannolo gelato/i, scena: "un cannolo dalla scorza croccante riempito di gelato bianco, in un piattino" },
+  { test: /cannolo/i, scena: "un cannolo siciliano riempito di ricotta, con granella di pistacchio alle estremita'" },
+  // Gelateria
+  { test: /cono piccolo/i, scena: "un cono di cialda con una pallina di gelato, tenuto dritto" },
+  { test: /cono medio/i, scena: "un cono di cialda con due palline di gelato e un ciuffo di panna montata" },
+  { test: /coppetta maxi/i, scena: "una coppetta con tre palline di gelato di gusti diversi e panna montata" },
+  { test: /coppa etna/i, scena: "una coppa di vetro con gelato al pistacchio e al cioccolato fondente, granella verde in cima" },
+  { test: /coppa amarena/i, scena: "una coppa di vetro con gelato bianco, amarene rosse sciroppate e panna montata" },
+  { test: /affogato/i, scena: "una coppetta con una pallina di gelato bianco annegata nel caffe' espresso caldo" },
+  { test: /banana split/i, scena: "una banana aperta a meta' in una coppa allungata, tre palline di gelato, panna e granella" },
+  { test: /granita di limone/i, scena: "un bicchiere di granita di limone bianca e ghiacciata, con una fetta di limone" },
+  { test: /granita di mandorla/i, scena: "un bicchiere di granita di mandorla bianca e cremosa, con mandorle accanto" },
+  { test: /granita al pistacchio/i, scena: "un bicchiere di granita verde al pistacchio, con granella di pistacchio in cima" },
+  { test: /granita/i, scena: "un bicchiere di granita ghiacciata, con una cannuccia corta" },
+  { test: /brioche/i, scena: "una brioche col tuppo dorata e soffice, appoggiata su un piattino" },
+  { test: /crepe/i, scena: "una crepe piegata a triangolo con crema di nocciola e granella, su un piatto chiaro" },
+  { test: /waffle/i, scena: "un waffle dorato a quadretti con frutti di bosco freschi e panna montata" },
+  { test: /vaschetta/i, scena: "una vaschetta da asporto aperta, riempita di gelato di piu' gusti a strisce" },
+  { test: /frappe|frappè/i, scena: "un frappe' rosa alla fragola in un bicchiere alto, con cannuccia e panna" },
+  { test: /caffe|caffè/i, scena: "una tazzina di caffe' espresso con la crema densa, sul piattino" },
+  // Bevande comuni ai due
+  { test: /etna rosso|vino|calice/i, scena: "un calice di vino rosso riempito a meta'" },
+  { test: /birra/i, scena: "un bicchiere di birra bionda con la schiuma compatta e il vetro appannato" },
+  { test: /acqua/i, scena: "un bicchiere d'acqua naturale limpida con una bottiglia di vetro accanto" },
+];
+
+function costruisciPrompt(
+  prodotto: string,
+  categoria: string,
+  descrizione: string | null,
+  stile: Stile
+): string {
   const s = SCENE.find((x) => x.test.test(categoria));
+  const piatto = stile === "lounge" ? undefined : PIATTI.find((p) => p.test.test(prodotto))?.scena;
 
   // Fra i soft drink la differenza sta nella bevanda, non nella categoria:
   // una tonica e una ginger beer non si somigliano per niente.
@@ -208,13 +305,18 @@ function costruisciPrompt(prodotto: string, categoria: string, descrizione: stri
       ? DIGESTIVI.find((d) => d.test.test(prodotto))?.scena
       : undefined;
 
-  const base = bibita
-    ? `${bibita}, su bancone di legno scuro del bar`
-    : (s?.scena ?? "il prodotto servito e pronto da bere, su bancone di legno scuro del bar");
+  const base = piatto
+    ? piatto
+    : bibita
+      ? `${bibita}, su bancone di legno scuro del bar`
+      : (s?.scena ?? STILI[stile].fallback);
 
-  const testa = s?.nome ? `${pulisci(prodotto)}: ` : "";
+  // Il nome entra solo dove aggiunge qualcosa: davanti a una scena gia'
+  // descritta piatto per piatto sarebbe rumore, e su una bottiglia di marca
+  // sarebbe un'etichetta inventata.
+  const testa = !piatto && s?.nome ? `${pulisci(prodotto)}: ` : "";
   const dettaglio = descrizione ? `, ${pulisci(descrizione).slice(0, 160)}` : "";
-  return pulisci(`${testa}${base}${dettaglio}. ${STILE}`);
+  return pulisci(`${testa}${base}${dettaglio}. ${STILI[stile].stile}`);
 }
 
 const GEMINI = process.platform === "win32" ? "gemini.cmd" : "gemini";
@@ -327,7 +429,7 @@ async function main() {
   let saltate = 0;
 
   for (const [i, p] of righe.entries()) {
-    const prompt = costruisciPrompt(p.name, p.categoria, p.description);
+    const prompt = costruisciPrompt(p.name, p.categoria, p.description, args.stile);
     const testa = `[${i + 1}/${righe.length}] ${p.locale} / ${p.categoria} / ${p.name}`;
 
     if (args.dryRun) {
